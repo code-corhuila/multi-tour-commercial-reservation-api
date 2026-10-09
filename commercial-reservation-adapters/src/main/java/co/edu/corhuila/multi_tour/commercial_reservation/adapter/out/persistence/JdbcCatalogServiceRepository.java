@@ -13,6 +13,8 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.ArrayList;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CatalogPage;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -77,6 +79,28 @@ public final class JdbcCatalogServiceRepository implements CatalogServiceReposit
                 ? jdbc.query(SELECT + " WHERE tenant_id = ? AND catalog_status = ?" + order, this::restore,
                         tenantId, status.get().name())
                 : jdbc.query(SELECT + " WHERE tenant_id = ?" + order, this::restore, tenantId);
+    }
+
+    @Override
+    public CatalogPage pageByTenant(UUID tenantId, Optional<CatalogStatus> status,
+            Optional<CatalogServiceType> type, int page, int limit) {
+        String where = " WHERE tenant_id = ?";
+        List<Object> parameters = new ArrayList<>(List.of(tenantId));
+        if (status.isPresent()) {
+            where += " AND catalog_status = ?";
+            parameters.add(status.get().name());
+        }
+        if (type.isPresent()) {
+            where += " AND service_type = ?";
+            parameters.add(type.get().name());
+        }
+        long total = jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.catalog_service" + where,
+                Long.class, parameters.toArray());
+        parameters.add(limit);
+        parameters.add((page - 1L) * limit);
+        var items = jdbc.query(SELECT + where + " ORDER BY created_at DESC, service_id DESC LIMIT ? OFFSET ?",
+                this::restore, parameters.toArray());
+        return new CatalogPage(items, total);
     }
 
     private CatalogService restore(ResultSet row, int index) throws SQLException {
