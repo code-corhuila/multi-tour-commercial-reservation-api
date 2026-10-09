@@ -3,13 +3,18 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.HealthController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ApiErrorWriter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthFilter;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CorrelationFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ErrorHandler;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCatalogRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.JwtPublicKeyLoader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Rs256Verifier;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCatalogServiceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.UuidGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCatalogServiceUseCase;
@@ -20,9 +25,13 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Rea
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RegisterCatalogServiceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.UpdateCommercialTermsUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.UpdateDescriptiveInformationUseCase;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Clock;
+import java.time.Duration;
+import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -37,8 +46,26 @@ import org.springframework.transaction.support.TransactionTemplate;
 class CommercialReservationConfiguration {
 
     @Bean
+    Jackson2ObjectMapperBuilderCustomizer strictJson() {
+        return builder -> builder.featuresToEnable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES,
+                DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES, DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
+                .featuresToDisable(DeserializationFeature.ACCEPT_FLOAT_AS_INT, MapperFeature.ALLOW_COERCION_OF_SCALARS);
+    }
+
+    @Bean
+    IdempotentCatalogRegistration catalogRegistration(RegisterCatalogService register, GetCatalogService get,
+            IdempotencyKeys keys, PlatformTransactionManager manager) {
+        return new IdempotentCatalogRegistration(register, get, keys, new TransactionTemplate(manager));
+    }
+
+    @Bean
+    CatalogController catalogController(GetCatalogService get, IdempotentCatalogRegistration registration) {
+        return new CatalogController(get, registration);
+    }
+
+    @Bean
     Clock clock() {
-        return Clock.systemUTC();
+        return Clock.tick(Clock.systemUTC(), Duration.ofNanos(1000));
     }
 
     @Bean
