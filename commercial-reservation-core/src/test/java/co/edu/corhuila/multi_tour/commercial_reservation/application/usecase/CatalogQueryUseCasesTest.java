@@ -48,11 +48,11 @@ class CatalogQueryUseCasesTest extends UseCaseFixture {
         CatalogService active = plantTour(TENANT, "Chicamocha Canyon");
         CatalogService inactive = plantInactiveTour(TENANT, "Old town walk");
 
-        assertThat(listForManagement.list(TENANT, Optional.empty())).extracting(CatalogService::serviceId)
+        assertThat(listForManagement.list(TENANT, Optional.empty(), Optional.empty(), 1, 20).items()).extracting(CatalogService::serviceId)
                 .containsExactly(inactive.serviceId(), active.serviceId());
-        assertThat(listForManagement.list(TENANT, Optional.of(CatalogStatus.INACTIVE)))
+        assertThat(listForManagement.list(TENANT, Optional.of(CatalogStatus.INACTIVE), Optional.empty(), 1, 20).items())
                 .extracting(CatalogService::serviceId).containsExactly(inactive.serviceId());
-        assertThat(listForManagement.list(TENANT, Optional.of(CatalogStatus.ACTIVE)))
+        assertThat(listForManagement.list(TENANT, Optional.of(CatalogStatus.ACTIVE), Optional.empty(), 1, 20).items())
                 .extracting(CatalogService::serviceId).containsExactly(active.serviceId());
     }
 
@@ -89,7 +89,7 @@ class CatalogQueryUseCasesTest extends UseCaseFixture {
                 .isInstanceOf(CatalogServiceNotFoundException.class);
         assertThatThrownBy(() -> inactivate.inactivate(TENANT, id, ACTOR))
                 .isInstanceOf(CatalogServiceNotFoundException.class);
-        assertThat(listForManagement.list(TENANT, Optional.empty())).isEmpty();
+        assertThat(listForManagement.list(TENANT, Optional.empty(), Optional.empty(), 1, 20).items()).isEmpty();
         assertThat(listOffered.list(TENANT)).isEmpty();
         assertThat(repository.findByTenantAndId(OTHER_TENANT, id).orElseThrow().catalogStatus())
                 .isEqualTo(CatalogStatus.ACTIVE);
@@ -117,7 +117,26 @@ class CatalogQueryUseCasesTest extends UseCaseFixture {
 
         assertThatThrownBy(() -> new GetCatalogServiceUseCase(leaky).get(TENANT, foreign.serviceId()))
                 .isInstanceOf(CatalogServiceNotFoundException.class);
-        assertThat(new ListCatalogServicesForManagementUseCase(leaky).list(TENANT, Optional.empty())).isEmpty();
+        assertThat(new ListCatalogServicesForManagementUseCase(leaky)
+                .list(TENANT, Optional.empty(), Optional.empty(), 1, 20).items()).isEmpty();
         assertThat(new ListOfferedCatalogServicesUseCase(leaky).list(TENANT)).isEmpty();
+    }
+    @Test
+    void managementPagesKeepTheMatchingTotalAndApplyTypeAndStatusTogether() {
+        var active = plantTour(TENANT, "Active tour");
+        var inactive = plantInactiveTour(TENANT, "Inactive tour");
+        plantTour(OTHER_TENANT, "Foreign tour");
+        repository.plant(CatalogService.register(new UUID(0, 90), TENANT, CatalogServiceType.TRANSPORTATION,
+                "Transport", CommercialTerms.of(10L, 5L, null, false, false), START));
+        var second = listForManagement.list(TENANT, Optional.empty(), Optional.empty(), 2, 1);
+        assertThat(second.total()).isEqualTo(3);
+        assertThat(second.items()).extracting(CatalogService::serviceId).containsExactly(active.serviceId());
+        var filtered = listForManagement.list(TENANT, Optional.of(CatalogStatus.INACTIVE),
+                Optional.of(CatalogServiceType.TOUR), 1, 20);
+        assertThat(filtered.total()).isEqualTo(1);
+        assertThat(filtered.items()).extracting(CatalogService::serviceId).containsExactly(inactive.serviceId());
+        var beyond = listForManagement.list(TENANT, Optional.empty(), Optional.empty(), Integer.MAX_VALUE, 20);
+        assertThat(beyond.items()).isEmpty();
+        assertThat(beyond.total()).isEqualTo(3);
     }
 }
