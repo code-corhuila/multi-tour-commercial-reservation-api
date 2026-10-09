@@ -14,8 +14,7 @@ import java.util.Set;
 import org.springframework.test.web.servlet.MvcResult;
 
 final class CatalogContract {
-    static final Set<String> PENDING = Set.of("listCatalogServices", "updateCatalogService",
-            "inactivateCatalogService", "reactivateCatalogService");
+    static final Set<String> PENDING = Set.of("inactivateCatalogService", "reactivateCatalogService");
     private static final String SPEC = Path.of("../openapi/openapi.yaml").toAbsolutePath().toUri().toString();
     private static final OpenAPI API = new OpenAPIV3Parser().read(SPEC);
     private static final OpenApiInteractionValidator CATALOG = OpenApiInteractionValidator

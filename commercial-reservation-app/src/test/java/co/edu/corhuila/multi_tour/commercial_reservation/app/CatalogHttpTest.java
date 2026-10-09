@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -69,8 +70,8 @@ class CatalogHttpTest {
 
     MvcResult exchange(MockHttpServletRequestBuilder request, int code, boolean invalidRequest) throws Exception {
         MvcResult result = mvc.perform(request.header("X-Correlation-Id", TRACE)).andReturn();
-        contract.validate(result, invalidRequest);
         status().is(code).match(result);
+        contract.validate(result, invalidRequest);
         return result;
     }
 
@@ -249,6 +250,170 @@ class CatalogHttpTest {
         assertThat(error.get("traceId").asText()).isEqualTo(TRACE);
         List<String> fields = new ArrayList<>(); error.fieldNames().forEachRemaining(fields::add);
         assertThat(fields).containsExactlyInAnyOrder("error", "message", "traceId");
+    }
+
+    MockHttpServletRequestBuilder listing(String tenant, String role) throws Exception {
+        return get(BASE).header("Authorization", "Bearer " + token(tenant, role));
+    }
+
+    MockHttpServletRequestBuilder update(String id, Map<String, Object> changes, String tenant, String role)
+            throws Exception {
+        return patch(BASE + "/" + id).header("Authorization", "Bearer " + token(tenant, role))
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(changes));
+    }
+
+    CatalogService plant(int index, CatalogServiceType type, boolean inactive, String tenant) {
+        var item = CatalogService.register(new UUID(0, index), UUID.fromString(tenant), type, "Item " + index,
+                CommercialTerms.of(100L, 50L, 18, true, false), TestJwtKeys.NOW.minusSeconds(100 - index));
+        if (inactive) item.inactivate(UUID.randomUUID(), TestJwtKeys.NOW.minusSeconds(1));
+        catalog.save(item);
+        return item;
+    }
+
+    static List<String> identifiers(JsonNode data) {
+        List<String> ids = new ArrayList<>();
+        data.forEach(item -> { assertDto(item); ids.add(item.get("serviceId").asText()); });
+        return ids;
+    }
+
+    @Test void listingAnswersDataAndMetaNewestFirst() throws Exception {
+        var older = plant(1, CatalogServiceType.TOUR, false, TestJwtKeys.TENANT);
+        var inactive = plant(2, CatalogServiceType.TOUR, true, TestJwtKeys.TENANT);
+        var transport = plant(3, CatalogServiceType.TRANSPORTATION, false, TestJwtKeys.TENANT);
+        plant(4, CatalogServiceType.TOUR, false, UUID.randomUUID().toString());
+        var response = json(exchange(listing(TestJwtKeys.TENANT, "OPERATIONAL_COLLABORATOR"), 200, false));
+        assertThat(identifiers(response.get("data"))).containsExactly(transport.serviceId().toString(),
+                inactive.serviceId().toString(), older.serviceId().toString());
+        assertThat(response.get("meta")).isEqualTo(TestJwtKeys.JSON.readTree(
+                "{\"page\":1,\"limit\":20,\"total\":3,\"totalPages\":1}"));
+        var filtered = json(exchange(listing(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR")
+                .param("catalogStatus", "INACTIVE").param("serviceType", "TOUR"), 200, false));
+        assertThat(identifiers(filtered.get("data"))).containsExactly(inactive.serviceId().toString());
+        assertThat(filtered.at("/meta/total").longValue()).isEqualTo(1);
+        var byType = json(exchange(listing(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR")
+                .param("serviceType", "TRANSPORTATION"), 200, false));
+        assertThat(identifiers(byType.get("data"))).containsExactly(transport.serviceId().toString());
+    }
+
+    @ParameterizedTest @CsvSource({"limit,0", "limit,101", "limit,-1", "limit,invalid", "page,0",
+            "page,invalid", "unknown,extra", "catalogStatus,OTHER", "serviceType,OTHER"})
+    void listingRefusesALimitOutOfRangeAndAnUnknownFilter(String field, String value) throws Exception {
+        // The draft leaves query names open; the HTTP assertion enforces Annex C's stricter boundary.
+        assertField(exchange(listing(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR").param(field, value),
+                400, !field.equals("unknown")), field);
+    }
+
+    @Test void listingHasThreePagesForFortyFiveItemsAndAllowsAnEmptyPage() throws Exception {
+        for (int i = 1; i <= 45; i++) plant(i, CatalogServiceType.TOUR, false, TestJwtKeys.TENANT);
+        var third = json(exchange(listing(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR")
+                .param("page", "3").param("limit", "20"), 200, false));
+        assertThat(identifiers(third.get("data"))).containsExactly(new UUID(0, 5).toString(),
+                new UUID(0, 4).toString(), new UUID(0, 3).toString(), new UUID(0, 2).toString(),
+                new UUID(0, 1).toString());
+        assertThat(third.get("meta")).isEqualTo(TestJwtKeys.JSON.readTree(
+                "{\"page\":3,\"limit\":20,\"total\":45,\"totalPages\":3}"));
+        var beyond = json(exchange(listing(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR")
+                .param("page", "2147483647"), 200, false));
+        assertThat(beyond.get("data").size()).isZero();
+        assertThat(beyond.at("/meta/total").longValue()).isEqualTo(45);
+        catalog.items.clear();
+        var empty = json(exchange(listing(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false));
+        assertThat(empty.get("data").size()).isZero();
+        assertThat(empty.at("/meta/totalPages").longValue()).isZero();
+    }
+
+    @Test void updateKeepsTheIdentifier() throws Exception {
+        var item = plant(1, CatalogServiceType.TOUR, false, TestJwtKeys.TENANT);
+        var before = json(exchange(read(item.serviceId().toString(), TestJwtKeys.TENANT,
+                "TENANT_ADMINISTRATOR"), 200, false));
+        var after = json(exchange(update(item.serviceId().toString(),
+                Map.of("commercialName", "New name", "baseRateCents", 200L),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false));
+        assertDto(after);
+        for (String field : List.of("serviceId", "serviceType", "createdAt", "configuredCapacity",
+                "baseOperationalCostCents", "transportRequired", "highRisk", "catalogStatus")) {
+            assertThat(after.get(field)).as(field).isEqualTo(before.get(field));
+        }
+        assertThat(after.get("commercialName").asText()).isEqualTo("New name");
+        assertThat(after.get("baseRateCents").longValue()).isEqualTo(200);
+        assertThat(Instant.parse(after.get("updatedAt").asText()))
+                .isAfter(Instant.parse(before.get("updatedAt").asText()));
+        var fetched = json(exchange(read(item.serviceId().toString(), TestJwtKeys.TENANT,
+                "TENANT_ADMINISTRATOR"), 200, false));
+        assertThat(fetched).isEqualTo(after);
+    }
+
+    @ParameterizedTest @CsvSource({"commercialName,New name", "baseRateCents,200",
+            "baseOperationalCostCents,75", "configuredCapacity,25", "transportRequired,false", "highRisk,true"})
+    void patchChangesOnlyTheProvidedField(String field, String value) throws Exception {
+        var item = plant(1, CatalogServiceType.TOUR, false, TestJwtKeys.TENANT);
+        var before = json(exchange(read(item.serviceId().toString(), TestJwtKeys.TENANT,
+                "TENANT_ADMINISTRATOR"), 200, false));
+        Object changed = field.equals("commercialName") ? value
+                : field.equals("transportRequired") || field.equals("highRisk") ? Boolean.valueOf(value)
+                : Integer.valueOf(value);
+        var after = json(exchange(update(item.serviceId().toString(), Map.of(field, changed),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false));
+        assertThat(after.get(field)).isEqualTo(TestJwtKeys.JSON.valueToTree(changed));
+        for (String untouched : FIELDS) {
+            if (!untouched.equals(field) && !untouched.equals("updatedAt")) {
+                assertThat(after.get(untouched)).as(untouched).isEqualTo(before.get(untouched));
+            }
+        }
+    }
+
+    @ParameterizedTest @CsvSource({"serviceType,TOUR", "tenantId,tenant", "unknown,extra",
+            "baseRateCents,10.5", "baseOperationalCostCents,10.5", "configuredCapacity,10.5",
+            "baseRateCents,100", "transportRequired,true", "highRisk,true"})
+    void patchStrictJsonNamesTheRejectedField(String field, String value) throws Exception {
+        Object invalid = value.equals("10.5") ? Double.valueOf(value) : value;
+        assertField(exchange(update(seed().serviceId().toString(), Map.of(field, invalid),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 400, true), field);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"commercialName", "baseRateCents",
+            "baseOperationalCostCents", "configuredCapacity", "transportRequired", "highRisk"})
+    void patchRejectsEveryExplicitNull(String field) throws Exception {
+        Map<String, Object> changes = new LinkedHashMap<>(); changes.put(field, null);
+        assertField(exchange(update(seed().serviceId().toString(), changes,
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 400, true), field);
+    }
+
+    @Test void patchRejectsAnEmptyBody() throws Exception {
+        assertField(exchange(update(seed().serviceId().toString(), Map.of(), TestJwtKeys.TENANT,
+                "TENANT_ADMINISTRATOR"), 400, true), "body");
+    }
+
+    @ParameterizedTest @CsvSource({"configuredCapacity,0", "configuredCapacity,-1",
+            "baseRateCents,-1", "baseOperationalCostCents,-1", "commercialName,''"})
+    void patchRepeatsAggregateValidation(String field, String value) throws Exception {
+        Object invalid = field.equals("commercialName") ? value : Integer.valueOf(value);
+        assertField(exchange(update(seed().serviceId().toString(), Map.of(field, invalid),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 400, true), field);
+    }
+
+    @Test void patchOtherTenantItemAnswersAsNonexistent() throws Exception {
+        String stranger = UUID.randomUUID().toString();
+        var foreign = json(exchange(update(seed().serviceId().toString(), Map.of("highRisk", true),
+                stranger, "TENANT_ADMINISTRATOR"), 404, false));
+        var missing = json(exchange(update(UUID.randomUUID().toString(), Map.of("highRisk", true),
+                stranger, "TENANT_ADMINISTRATOR"), 404, false));
+        assertThat(foreign).isEqualTo(missing);
+        assertThat(foreign.get("error").asText()).isEqualTo("NOT_FOUND");
+        assertThat(foreign.get("traceId").asText()).isEqualTo(TRACE);
+        assertField(exchange(update("not-a-uuid", Map.of("highRisk", true), TestJwtKeys.TENANT,
+                "TENANT_ADMINISTRATOR"), 400, true), "serviceId");
+    }
+
+    @ParameterizedTest @CsvSource({"PATCH,OPERATIONAL_COLLABORATOR,false", "PATCH,OTHER,false",
+            "PATCH,TENANT_ADMINISTRATOR,true", "GET,OTHER,false", "GET,TENANT_ADMINISTRATOR,true",
+            "GET,OPERATIONAL_COLLABORATOR,true"})
+    void listingAndPatchRequireThePermittedRoleAndTenant(String method, String role, boolean noTenant)
+            throws Exception {
+        String tenant = noTenant ? null : TestJwtKeys.TENANT;
+        var request = method.equals("PATCH") ? update(seed().serviceId().toString(), Map.of("highRisk", true),
+                tenant, role) : listing(tenant, role);
+        assertForbidden(exchange(request, 403, false));
     }
 
     @Test @Order(Integer.MAX_VALUE)

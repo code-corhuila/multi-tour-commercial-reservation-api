@@ -4,6 +4,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Ca
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceType;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CatalogPage;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -38,6 +40,16 @@ class InMemoryCatalogServiceRepository implements CatalogServiceRepository {
                 .sorted(Comparator.comparing(CatalogService::createdAt).reversed())
                 .map(InMemoryCatalogServiceRepository::copyOf)
                 .toList();
+    }
+
+    @Override
+    public CatalogPage pageByTenant(UUID tenantId, Optional<CatalogStatus> status,
+            Optional<CatalogServiceType> type, int page, int limit) {
+        var matching = listByTenant(tenantId, status).stream()
+                .filter(service -> type.isEmpty() || service.serviceType() == type.get())
+                .sorted(Comparator.comparing(CatalogService::createdAt)
+                        .thenComparing(service -> service.serviceId().toString()).reversed()).toList();
+        return new CatalogPage(matching.stream().skip((page - 1L) * limit).limit(limit).toList(), matching.size());
     }
 
     List<CatalogServiceEvent> outbox() {
