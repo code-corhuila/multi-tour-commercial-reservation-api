@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 
 // Annex C: a default value that is not declared is not a decision. Values follow ADR-004 D10.
+@org.springframework.test.context.ContextConfiguration(initializers = TestJwtKeys.class)
 @SpringBootTest
 class ExplicitLimitsTest {
 

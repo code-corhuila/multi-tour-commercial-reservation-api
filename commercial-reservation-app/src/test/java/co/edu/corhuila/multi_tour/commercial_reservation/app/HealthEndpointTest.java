@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+@org.springframework.test.context.ContextConfiguration(initializers = TestJwtKeys.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class HealthEndpointTest {

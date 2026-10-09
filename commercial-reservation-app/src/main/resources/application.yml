@@ -1,5 +1,10 @@
 # Annex C 5.3.10 / ADR-004 D10: every limit is declared, none is left to a framework default.
 # Secrets have no default on purpose: a missing one must stop the start with its name in the message.
+logging:
+  structured:
+    format:
+      console: ecs
+
 spring:
   application:
     name: commercial-reservation-api
