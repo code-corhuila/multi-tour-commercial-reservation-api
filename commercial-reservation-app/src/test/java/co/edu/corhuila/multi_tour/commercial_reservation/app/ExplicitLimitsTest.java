@@ -9,6 +9,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
+import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.mock.env.MockEnvironment;
 
 // Annex C: a default value that is not declared is not a decision. Values follow ADR-004 D10.
 @org.springframework.test.context.ContextConfiguration(initializers = TestJwtKeys.class)
@@ -60,9 +63,13 @@ class ExplicitLimitsTest {
     }
 
     @Test
-    void aMissingDatabasePasswordHasNoDefaultAndNamesTheVariable() {
+    void aMissingDatabasePasswordHasNoDefaultAndNamesTheVariable() throws Exception {
+        // Load the real configuration without host or startup-test credentials masking a missing secret.
+        MockEnvironment isolated = new MockEnvironment();
+        new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yml"))
+                .forEach(source -> isolated.getPropertySources().addLast(source));
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
-                () -> env.getProperty("spring.datasource.password"));
+                () -> isolated.getProperty("spring.datasource.password"));
         assertTrue(failure.getMessage().contains("DB_PASSWORD"));
     }
 }
