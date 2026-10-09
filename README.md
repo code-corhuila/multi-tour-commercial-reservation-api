@@ -23,6 +23,8 @@ curl http://localhost:8080/health
 
 Export the variables of `.env` in your shell first; the application does not read the file itself.
 Until the persistence adapter exists, `DB_URL`, `DB_USER` and `DB_PASSWORD` are declared but unused.
+Set `JWT_PUBLIC_KEY` (PEM with literal `\n`) or `JWT_PUBLIC_KEY_FILE` (an RSA public-key file).
+Startup requires a valid key; the inline value takes precedence when both variables are set.
 
 ## Where its data is
 
@@ -41,6 +43,6 @@ Integration tests that need PostgreSQL will read `TEST_DATABASE_URL` and be skip
 
 ## What is missing
 
-Only the skeleton exists: the module split, `GET /health` and the explicit runtime limits. The catalog
-operations, token validation, the error envelope, persistence and the outbox are not implemented.
+The HTTP foundation provides token validation, correlation and a common error envelope.
+Catalog endpoints, persistence and the outbox are not implemented.
 The pool, connection-wait and statement limits are declared but take effect only once a datasource exists.
