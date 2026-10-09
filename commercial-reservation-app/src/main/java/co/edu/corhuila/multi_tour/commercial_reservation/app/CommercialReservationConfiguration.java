@@ -7,6 +7,19 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Correla
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ErrorHandler;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.JwtPublicKeyLoader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Rs256Verifier;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCatalogServiceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyKeys;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.UuidGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCatalogServiceUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.InactivateCatalogServiceUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListCatalogServicesForManagementUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListOfferedCatalogServicesUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReactivateCatalogServiceUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RegisterCatalogServiceUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.UpdateCommercialTermsUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.UpdateDescriptiveInformationUseCase;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Clock;
@@ -15,6 +28,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 // The only place that knows every concrete type; adapters never instantiate each other.
 @Configuration
@@ -23,6 +39,61 @@ class CommercialReservationConfiguration {
     @Bean
     Clock clock() {
         return Clock.systemUTC();
+    }
+
+    @Bean
+    CatalogServiceRepository catalogServiceRepository(JdbcTemplate jdbc, PlatformTransactionManager manager) {
+        return new JdbcCatalogServiceRepository(jdbc, new TransactionTemplate(manager));
+    }
+
+    @Bean
+    IdGenerator idGenerator() {
+        return new UuidGenerator();
+    }
+
+    @Bean
+    JdbcIdempotencyKeys idempotencyKeys(JdbcTemplate jdbc) {
+        return new JdbcIdempotencyKeys(jdbc);
+    }
+
+    @Bean
+    RegisterCatalogServiceUseCase registerCatalogService(CatalogServiceRepository repository, IdGenerator ids, Clock clock) {
+        return new RegisterCatalogServiceUseCase(repository, ids, clock);
+    }
+
+    @Bean
+    UpdateCommercialTermsUseCase updateCommercialTerms(CatalogServiceRepository repository, Clock clock) {
+        return new UpdateCommercialTermsUseCase(repository, clock);
+    }
+
+    @Bean
+    UpdateDescriptiveInformationUseCase updateDescriptiveInformation(CatalogServiceRepository repository, Clock clock) {
+        return new UpdateDescriptiveInformationUseCase(repository, clock);
+    }
+
+    @Bean
+    InactivateCatalogServiceUseCase inactivateCatalogService(CatalogServiceRepository repository, Clock clock) {
+        return new InactivateCatalogServiceUseCase(repository, clock);
+    }
+
+    @Bean
+    ReactivateCatalogServiceUseCase reactivateCatalogService(CatalogServiceRepository repository, Clock clock) {
+        return new ReactivateCatalogServiceUseCase(repository, clock);
+    }
+
+    @Bean
+    GetCatalogServiceUseCase getCatalogService(CatalogServiceRepository repository) {
+        return new GetCatalogServiceUseCase(repository);
+    }
+
+    @Bean
+    ListCatalogServicesForManagementUseCase listCatalogServicesForManagement(CatalogServiceRepository repository) {
+        return new ListCatalogServicesForManagementUseCase(repository);
+    }
+
+    @Bean
+    ListOfferedCatalogServicesUseCase listOfferedCatalogServices(CatalogServiceRepository repository) {
+        return new ListOfferedCatalogServicesUseCase(repository);
     }
 
     @Bean
