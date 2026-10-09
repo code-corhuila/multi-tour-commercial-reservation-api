@@ -4,6 +4,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.HealthC
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ApiErrorWriter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalCatalogUpdate;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CorrelationFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ErrorHandler;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCatalogRegistration;
@@ -15,6 +16,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.UuidGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterCatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListCatalogServicesForManagement;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.UpdateCommercialTerms;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.UpdateDescriptiveInformation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCatalogServiceUseCase;
@@ -59,8 +63,15 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    CatalogController catalogController(GetCatalogService get, IdempotentCatalogRegistration registration) {
-        return new CatalogController(get, registration);
+    CatalogController catalogController(GetCatalogService get, IdempotentCatalogRegistration registration,
+            ListCatalogServicesForManagement management, TransactionalCatalogUpdate updates) {
+        return new CatalogController(get, registration, management, updates);
+    }
+
+    @Bean
+    TransactionalCatalogUpdate catalogUpdate(UpdateDescriptiveInformation description, UpdateCommercialTerms terms,
+            PlatformTransactionManager manager) {
+        return new TransactionalCatalogUpdate(description, terms, new TransactionTemplate(manager));
     }
 
     @Bean
