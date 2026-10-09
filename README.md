@@ -22,7 +22,7 @@ curl http://localhost:8080/health
 ```
 
 Export the variables of `.env` in your shell first; the application does not read the file itself.
-Until the persistence adapter exists, `DB_URL`, `DB_USER` and `DB_PASSWORD` are declared but unused.
+Set `DB_URL` to a PostgreSQL JDBC URL and provide `DB_USER` and `DB_PASSWORD` for the domain user.
 Set `JWT_PUBLIC_KEY` (PEM with literal `\n`) or `JWT_PUBLIC_KEY_FILE` (an RSA public-key file).
 Startup requires a valid key; the inline value takes precedence when both variables are set.
 
@@ -30,7 +30,7 @@ Startup requires a valid key; the inline value takes precedence when both variab
 
 In the shared PostgreSQL instance of `multi-tour-infra-postgres`, in this domain's own schema,
 created by the `-db` repository. This service connects with its domain user, never an administrator.
-No data is read or written yet.
+The JDBC adapter stores catalog items, status events in the outbox and tenant-scoped idempotency keys.
 
 ## How to test it
 
@@ -39,10 +39,15 @@ mvn -B verify
 ```
 
 Without Maven installed: `docker run --rm -v "$PWD":/w -w /w maven:3.9-eclipse-temurin-21 mvn -B verify`.
-Integration tests that need PostgreSQL will read `TEST_DATABASE_URL` and be skipped when it is unset.
+Startup tests use a fictitious JDBC URL and never open a connection. Integration tests require a real
+PostgreSQL database with the schema migrated by `multi-tour-commercial-reservation-db`.
+Export `TEST_DATABASE_URL` (a JDBC URL), `TEST_DATABASE_USER` (`commercial_reservation_app`) and
+`TEST_DATABASE_PASSWORD`, then run `mvn -B verify`. Integration tests are skipped if any variable is missing.
+When using Docker, pass all three variables with `-e` and use a URL reachable from its network.
+The application user cannot delete catalog items; the schema separately allows technical-table cleanup.
 
 ## What is missing
 
 The HTTP foundation provides token validation, correlation and a common error envelope.
-Catalog endpoints, persistence and the outbox are not implemented.
-The pool, connection-wait and statement limits are declared but take effect only once a datasource exists.
+Catalog endpoints, pagination and the controller's resource-and-key transaction are pending.
+Publishing outbox events belongs to the worker and future internal API routes.
