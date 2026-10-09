@@ -24,6 +24,7 @@ public class TestJwtKeys implements ApplicationContextInitializer<ConfigurableAp
 
     @Override
     public void initialize(ConfigurableApplicationContext context) {
+        new TestDatabaseProperties().initialize(context);
         TestPropertySourceUtils.addInlinedPropertiesToEnvironment(context,
                 "JWT_PUBLIC_KEY=" + pem(TRUSTED).replace("\n", "\\n"), "JWT_PUBLIC_KEY_FILE=");
     }
