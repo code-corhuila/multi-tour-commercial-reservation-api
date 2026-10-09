@@ -7,6 +7,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogSta
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.Comparator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CatalogPage;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceType;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,6 +46,14 @@ class CatalogHttpFixture {
         public List<CatalogService> listByTenant(UUID tenant, Optional<CatalogStatus> status) {
             return items.values().stream().filter(service -> service.tenantId().equals(tenant))
                     .filter(service -> status.isEmpty() || service.catalogStatus() == status.get()).toList();
+        }
+        public CatalogPage pageByTenant(UUID tenant, Optional<CatalogStatus> status,
+                Optional<CatalogServiceType> type, int page, int limit) {
+            var matching = listByTenant(tenant, status).stream()
+                    .filter(service -> type.isEmpty() || service.serviceType() == type.get())
+                    .sorted(Comparator.comparing(CatalogService::createdAt)
+                            .thenComparing(service -> service.serviceId().toString()).reversed()).toList();
+            return new CatalogPage(matching.stream().skip((page - 1L) * limit).limit(limit).toList(), matching.size());
         }
     }
 
