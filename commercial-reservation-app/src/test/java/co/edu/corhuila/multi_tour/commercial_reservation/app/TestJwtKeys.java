@@ -18,6 +18,7 @@ import org.springframework.test.context.support.TestPropertySourceUtils;
 public class TestJwtKeys implements ApplicationContextInitializer<ConfigurableApplicationContext> {
     static final Instant NOW = Instant.parse("2026-10-09T12:00:00Z");
     static final String TENANT = "00000000-0000-0000-0000-000000000123";
+    static final String ACCOUNT = "00000000-0000-0000-0000-000000000456";
     static final KeyPair TRUSTED = generate();
     static final KeyPair OTHER = generate();
     static final ObjectMapper JSON = new ObjectMapper();
@@ -46,7 +47,7 @@ public class TestJwtKeys implements ApplicationContextInitializer<ConfigurableAp
 
     static Map<String, Object> claims() {
         Map<String, Object> claims = new LinkedHashMap<>();
-        claims.put("sub", "test-account");
+        claims.put("sub", ACCOUNT);
         claims.put("exp", NOW.plusSeconds(300).getEpochSecond());
         claims.put("tenantId", TENANT);
         claims.put("roles", List.of("TENANT_ADMINISTRATOR"));

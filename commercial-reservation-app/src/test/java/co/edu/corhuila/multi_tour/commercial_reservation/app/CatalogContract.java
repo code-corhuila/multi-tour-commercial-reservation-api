@@ -14,7 +14,7 @@ import java.util.Set;
 import org.springframework.test.web.servlet.MvcResult;
 
 final class CatalogContract {
-    static final Set<String> PENDING = Set.of("inactivateCatalogService", "reactivateCatalogService");
+    static final Set<String> PENDING = Set.of();
     private static final String SPEC = Path.of("../openapi/openapi.yaml").toAbsolutePath().toUri().toString();
     private static final OpenAPI API = new OpenAPIV3Parser().read(SPEC);
     private static final OpenApiInteractionValidator CATALOG = OpenApiInteractionValidator
@@ -32,20 +32,23 @@ final class CatalogContract {
                 MockMvcResponse.of(result.getResponse()));
         assertThat(responseReport.hasErrors()).as("response contract: %s", responseReport).isFalse();
         String path = request.getPath().replaceFirst("^/api/v1", "")
-                .replaceFirst("^(/catalog/services)/[^/]+$", "$1/{serviceId}");
+                .replaceFirst("^(/catalog/services)/[^/]+(?=/|$)", "$1/{serviceId}");
         var operation = API.getPaths().get(path).readOperationsMap()
                 .get(PathItem.HttpMethod.valueOf(request.getMethod().name()));
         assertThat(operation).as("declared HTTP operation").isNotNull();
         exercised.add(operation.getOperationId());
     }
 
+    static void assertNoDeletion() {
+        API.getPaths().values().forEach(path -> assertThat(path.readOperationsMap())
+                .doesNotContainKeys(PathItem.HttpMethod.DELETE, PathItem.HttpMethod.PUT));
+    }
+
     void assertCoverage() {
         Set<String> declared = new HashSet<>();
         API.getPaths().values().forEach(path -> path.readOperations()
                 .forEach(operation -> declared.add(operation.getOperationId())));
-        assertThat(exercised).doesNotContainAnyElementsOf(PENDING);
-        Set<String> covered = new HashSet<>(exercised);
-        covered.addAll(PENDING);
-        assertThat(covered).containsExactlyInAnyOrderElementsOf(declared);
+        assertThat(PENDING).isEmpty();
+        assertThat(exercised).containsExactlyInAnyOrderElementsOf(declared);
     }
 }

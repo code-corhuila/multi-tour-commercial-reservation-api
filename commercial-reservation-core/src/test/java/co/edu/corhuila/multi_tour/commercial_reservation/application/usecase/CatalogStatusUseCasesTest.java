@@ -11,7 +11,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogSer
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CommercialTerms;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -72,7 +72,7 @@ class CatalogStatusUseCasesTest extends UseCaseFixture {
                 CatalogStatus.INACTIVE, new CommercialTerms(new Cents(1), new Cents(1), null, false, false),
                 START, START));
 
-        assertThatThrownBy(() -> reactivate.reactivate(TENANT, id, ACTOR)).isInstanceOf(DomainException.class);
+        assertThatThrownBy(() -> reactivate.reactivate(TENANT, id, ACTOR)).isInstanceOf(BusinessRuleViolation.class);
 
         assertThat(repository.findByTenantAndId(TENANT, id).orElseThrow().catalogStatus())
                 .isEqualTo(CatalogStatus.INACTIVE);
