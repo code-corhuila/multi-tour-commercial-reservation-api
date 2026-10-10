@@ -34,7 +34,7 @@ The JDBC adapter stores catalog items, status events in the outbox and tenant-sc
 
 ## How to test it
 
-The contract reference copies and the declared pending operations are documented in [openapi/README.md](openapi/README.md).
+The contract reference copies and complete operation coverage are documented in [openapi/README.md](openapi/README.md).
 
 ```bash
 mvn -B verify
