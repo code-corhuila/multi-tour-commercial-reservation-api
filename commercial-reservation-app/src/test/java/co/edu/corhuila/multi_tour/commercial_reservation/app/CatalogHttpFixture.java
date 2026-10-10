@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogStatus;
 import java.time.Clock;
@@ -26,6 +27,11 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
 class CatalogHttpFixture {
     @Bean @Primary MemoryCatalog memoryCatalog() { return new MemoryCatalog(); }
     @Bean @Primary MemoryKeys memoryKeys() { return new MemoryKeys(); }
+    @Bean @Primary SalidaCapacityReader memoryCapacity(MemoryCatalog catalog) {
+        return (tenant, service) -> catalog.findByTenantAndId(tenant, service)
+                .map(item -> catalog.held.getOrDefault(service, List.of()).stream()
+                        .mapToInt(Integer::intValue).max().orElse(0)).orElse(0);
+    }
     @Bean @Primary Clock catalogClock() { return Clock.fixed(TestJwtKeys.NOW, ZoneOffset.UTC); }
     @Bean @Primary PlatformTransactionManager memoryTransactions() {
         // This fake only lets HTTP tests run; a PostgreSQL test must prove rollback.
@@ -38,6 +44,7 @@ class CatalogHttpFixture {
     }
 
     static final class MemoryCatalog implements CatalogServiceRepository {
+        final Map<UUID, List<Integer>> held = new HashMap<>();
         final Map<UUID, CatalogService> items = new HashMap<>();
         public void save(CatalogService service) { items.put(service.serviceId(), service); }
         public Optional<CatalogService> findByTenantAndId(UUID tenant, UUID id) {
