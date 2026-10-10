@@ -207,7 +207,7 @@ class HttpFoundationTest {
     void aValidTokenAnswers200AndExposesItsPrincipal() throws Exception {
         withToken(TestJwtKeys.token()).andExpect(status().isOk());
         mvc.perform(get("/test-support/principal").header("Authorization", "Bearer " + TestJwtKeys.token()))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.sub").value("test-account"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.sub").value(TestJwtKeys.ACCOUNT))
                 .andExpect(jsonPath("$.tenantId").value(TestJwtKeys.TENANT))
                 .andExpect(jsonPath("$.roles[0]").value("TENANT_ADMINISTRATOR"));
     }

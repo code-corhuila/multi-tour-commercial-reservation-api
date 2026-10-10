@@ -10,6 +10,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class CatalogServiceStatusTest {
 
@@ -88,9 +90,21 @@ class CatalogServiceStatusTest {
         CatalogService stale = CatalogService.restore(ID, TENANT, CatalogServiceType.TOUR, "Chicamocha Canyon",
                 CatalogStatus.INACTIVE, new CommercialTerms(new Cents(1), new Cents(1), null, false, false), NOW, NOW);
 
-        assertThatThrownBy(() -> stale.reactivate(ACTOR, LATER)).isInstanceOf(DomainException.class)
-                .extracting(e -> ((DomainException) e).field()).isEqualTo("configuredCapacity");
+        assertThatThrownBy(() -> stale.reactivate(ACTOR, LATER)).isInstanceOf(BusinessRuleViolation.class);
         assertThat(stale.catalogStatus()).isEqualTo(CatalogStatus.INACTIVE);
+        assertThat(stale.pullEvents()).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"capacity", "name", "blankName"})
+    void reactivationRefusedByAnInvariantRaisesABusinessRuleViolation(String invariant) {
+        var stale = CatalogService.restore(ID, TENANT, CatalogServiceType.TOUR,
+                invariant.equals("name") ? null : invariant.equals("blankName") ? " " : "Stored tour",
+                CatalogStatus.INACTIVE, new CommercialTerms(new Cents(1), new Cents(1),
+                        invariant.equals("capacity") ? null : 18, false, false), NOW, NOW);
+        assertThatThrownBy(() -> stale.reactivate(ACTOR, LATER)).isInstanceOf(BusinessRuleViolation.class);
+        assertThat(stale.catalogStatus()).isEqualTo(CatalogStatus.INACTIVE);
+        assertThat(stale.updatedAt()).isEqualTo(NOW);
         assertThat(stale.pullEvents()).isEmpty();
     }
 

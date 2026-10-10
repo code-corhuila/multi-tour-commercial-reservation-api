@@ -3,12 +3,15 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CommercialTerms;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogStatus;
+import org.springframework.http.HttpMethod;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -414,6 +417,133 @@ class CatalogHttpTest {
         var request = method.equals("PATCH") ? update(seed().serviceId().toString(), Map.of("highRisk", true),
                 tenant, role) : listing(tenant, role);
         assertForbidden(exchange(request, 403, false));
+    }
+
+    MockHttpServletRequestBuilder transition(String operation, String id, String tenant, String role)
+            throws Exception {
+        return post(BASE + "/" + id + "/" + operation).header("Authorization", "Bearer " + token(tenant, role));
+    }
+
+    @Test void inactivatedItemIsNotOfferedAndKeepsItsHistory() throws Exception {
+        var original = seed();
+        var inactive = json(exchange(transition("inactivate", original.serviceId().toString(),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false));
+        assertDto(inactive);
+        assertThat(inactive.get("catalogStatus").asText()).isEqualTo("INACTIVE");
+        var fetched = json(exchange(read(original.serviceId().toString(), TestJwtKeys.TENANT,
+                "TENANT_ADMINISTRATOR"), 200, false));
+        assertThat(fetched).isEqualTo(inactive);
+        var management = json(exchange(listing(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR")
+                .param("catalogStatus", "INACTIVE"), 200, false));
+        assertThat(identifiers(management.get("data"))).containsExactly(original.serviceId().toString());
+        var offer = json(exchange(listing(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR")
+                .param("catalogStatus", "ACTIVE"), 200, false));
+        assertThat(offer.get("data").size()).isZero();
+        var repeated = json(exchange(transition("inactivate", original.serviceId().toString(),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false));
+        assertThat(repeated).isEqualTo(inactive);
+        assertThat(original.pullEvents()).hasSize(1);
+    }
+
+    @Test void reactivationKeepsHistoryAndBypassesNoRestriction() throws Exception {
+        var original = plant(1, CatalogServiceType.TOUR, true, TestJwtKeys.TENANT);
+        original.pullEvents();
+        var before = json(exchange(read(original.serviceId().toString(), TestJwtKeys.TENANT,
+                "TENANT_ADMINISTRATOR"), 200, false));
+        var active = json(exchange(transition("reactivate", original.serviceId().toString(),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false));
+        assertDto(active);
+        assertThat(active.get("catalogStatus").asText()).isEqualTo("ACTIVE");
+        for (String field : FIELDS) {
+            if (!field.equals("catalogStatus") && !field.equals("updatedAt")) {
+                assertThat(active.get(field)).as(field).isEqualTo(before.get(field));
+            }
+        }
+        var repeated = json(exchange(transition("reactivate", original.serviceId().toString(),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false));
+        assertThat(repeated).isEqualTo(active);
+        assertThat(original.pullEvents()).hasSize(1);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"capacity", "name"})
+    void forbiddenTransitionAnswers422(String invariant) throws Exception {
+        var stale = CatalogService.restore(UUID.randomUUID(), UUID.fromString(TestJwtKeys.TENANT),
+                CatalogServiceType.TOUR, invariant.equals("name") ? "" : "Stale tour",
+                CatalogStatus.INACTIVE, CommercialTerms.of(100L, 50L,
+                        invariant.equals("capacity") ? null : 18, false, false), TestJwtKeys.NOW, TestJwtKeys.NOW);
+        catalog.save(stale);
+        var result = exchange(transition("reactivate", stale.serviceId().toString(),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 422, false);
+        assertError(result, "BUSINESS_RULE_VIOLATION", "The item cannot be reactivated while a restriction applies");
+        assertThat(stale.catalogStatus()).isEqualTo(CatalogStatus.INACTIVE);
+        assertThat(stale.pullEvents()).isEmpty();
+    }
+
+    static void assertError(MvcResult result, String code, String message) throws Exception {
+        var error = json(result);
+        List<String> fields = new ArrayList<>(); error.fieldNames().forEachRemaining(fields::add);
+        assertThat(fields).containsExactlyInAnyOrder("error", "message", "traceId");
+        assertThat(error.get("error").asText()).isEqualTo(code);
+        assertThat(error.get("message").asText()).isEqualTo(message);
+        assertThat(error.get("traceId").asText()).isEqualTo(TRACE);
+        assertThat(result.getResponse().getHeader("X-Correlation-Id")).isEqualTo(TRACE);
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"inactivate", "reactivate"})
+    void collaboratorCannotChangeStatus(String operation) throws Exception {
+        assertForbidden(exchange(transition(operation, seed().serviceId().toString(),
+                TestJwtKeys.TENANT, "OPERATIONAL_COLLABORATOR"), 403, false));
+    }
+
+    @ParameterizedTest @CsvSource({"inactivate,OTHER,false", "reactivate,OTHER,false",
+            "inactivate,SERVICE,false", "reactivate,SERVICE,false",
+            "inactivate,TENANT_ADMINISTRATOR,true", "reactivate,TENANT_ADMINISTRATOR,true"})
+    void statusChangesRequireThePermittedRoleAndTenant(String operation, String role, boolean noTenant)
+            throws Exception {
+        assertForbidden(exchange(transition(operation, seed().serviceId().toString(),
+                noTenant ? null : TestJwtKeys.TENANT, role), 403, false));
+    }
+
+    @ParameterizedTest @CsvSource({"inactivate,not-a-uuid", "reactivate,not-a-uuid",
+            "inactivate,1-1-1-1-1", "reactivate,1-1-1-1-1"})
+    void statusChangesRejectANonUuidSubject(String operation, String subject) throws Exception {
+        var claims = TestJwtKeys.claims(); claims.put("sub", subject);
+        String token = TestJwtKeys.token(Map.of("alg", "RS256"), claims, TestJwtKeys.TRUSTED);
+        var result = exchange(post(BASE + "/" + seed().serviceId() + "/" + operation)
+                .header("Authorization", "Bearer " + token), 401, false);
+        assertError(result, "UNAUTHORIZED", "authentication is required");
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"inactivate", "reactivate"})
+    void statusChangeOtherTenantItemAnswersAsNonexistent(String operation) throws Exception {
+        String stranger = UUID.randomUUID().toString();
+        var foreign = json(exchange(transition(operation, seed().serviceId().toString(), stranger,
+                "TENANT_ADMINISTRATOR"), 404, false));
+        var missing = json(exchange(transition(operation, UUID.randomUUID().toString(), stranger,
+                "TENANT_ADMINISTRATOR"), 404, false));
+        assertThat(foreign).isEqualTo(missing);
+        assertThat(foreign.get("error").asText()).isEqualTo("NOT_FOUND");
+        assertField(exchange(transition(operation, "not-a-uuid", TestJwtKeys.TENANT,
+                "TENANT_ADMINISTRATOR"), 400, true), "serviceId");
+    }
+
+    @ParameterizedTest @CsvSource({"POST,OTHER", "POST,OPERATIONAL_COLLABORATOR",
+            "PATCH,OTHER", "PATCH,OPERATIONAL_COLLABORATOR"})
+    void authorizationPrecedesReadingAnInvalidBody(String method, String role) throws Exception {
+        var forbidden = method.equals("POST") ? create(body(), "catalog-key", TestJwtKeys.TENANT, role)
+                : update(seed().serviceId().toString(), Map.of("highRisk", true), TestJwtKeys.TENANT, role);
+        assertForbidden(exchange(forbidden.content("{"), 403, true));
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"DELETE", "PUT"})
+    void noDeleteOperationExistsInRoutesPortsOrContract(String method) throws Exception {
+        var item = seed();
+        var result = mvc.perform(request(HttpMethod.valueOf(method), BASE + "/" + item.serviceId())
+                .header("Authorization", "Bearer " + token(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"))
+                .header("X-Correlation-Id", TRACE)).andReturn();
+        status().isNotFound().match(result);
+        assertError(result, "NOT_FOUND", "resource not found");
+        exchange(read(item.serviceId().toString(), TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false);
     }
 
     @Test @Order(Integer.MAX_VALUE)
