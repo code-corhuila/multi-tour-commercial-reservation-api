@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Clock;
+import java.time.OffsetDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -136,6 +138,50 @@ class CatalogHttpPersistenceTest {
         assertThat(updated.get("updatedAt").asText()).isEqualTo(TestJwtKeys.NOW.toString());
         assertThat(updated.get("commercialName").asText()).isEqualTo("Changed name");
         assertThat(updated.get("baseRateCents").longValue()).isEqualTo(200);
+    }
+
+    @Test void inactivationAndReactivationWriteTheirOutboxRowInTheSameTransactionOverHttp() throws Exception {
+        UUID tenant = UUID.randomUUID();
+        var original = CatalogService.register(UUID.randomUUID(), tenant, CatalogServiceType.TOUR, "Stateful tour",
+                CommercialTerms.of(100L, 50L, 18, true, false), TestJwtKeys.NOW.minusSeconds(1));
+        repository.save(original);
+        String previous = "ACTIVE";
+        int count = 0;
+        for (String operation : List.of("inactivate", "reactivate")) {
+            String next = operation.equals("inactivate") ? "INACTIVE" : "ACTIVE";
+            String eventType = operation.equals("inactivate") ? "CatalogServiceInactivated" : "CatalogServiceReactivated";
+            var changed = CatalogHttpTest.json(exchange(post(CatalogHttpTest.BASE + "/" +
+                    original.serviceId() + "/" + operation), tenant.toString(), 200, false));
+            assertThat(changed.get("catalogStatus").asText()).isEqualTo(next);
+            assertThat(changed.get("createdAt").asText()).isEqualTo(original.createdAt().toString());
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event " +
+                    "WHERE tenant_id = ? AND service_id = ?", Long.class, tenant, original.serviceId()))
+                    .isEqualTo((long) ++count);
+            var event = jdbc.queryForMap("SELECT tenant_id, service_id, previous_catalog_status, " +
+                    "new_catalog_status, actor_id, published_at FROM commercial_reservation.outbox_event " +
+                    "WHERE tenant_id = ? AND service_id = ? AND event_type = ?", tenant, original.serviceId(), eventType);
+            assertThat(event.get("tenant_id")).isEqualTo(tenant);
+            assertThat(event.get("service_id")).isEqualTo(original.serviceId());
+            assertThat(event.get("previous_catalog_status")).isEqualTo(previous);
+            assertThat(event.get("new_catalog_status")).isEqualTo(changed.get("catalogStatus").asText());
+            assertThat(event.get("actor_id")).isEqualTo(UUID.fromString(TestJwtKeys.ACCOUNT));
+            assertThat(event.get("published_at")).isNull();
+            var eventTime = jdbc.queryForObject("SELECT occurred_at FROM commercial_reservation.outbox_event " +
+                    "WHERE tenant_id = ? AND service_id = ? AND event_type = ?",
+                    (row, index) -> row.getObject("occurred_at", OffsetDateTime.class).toInstant(),
+                    tenant, original.serviceId(), eventType);
+            assertThat(eventTime).isEqualTo(Instant.parse(changed.get("updatedAt").asText()));
+            var persisted = CatalogHttpTest.json(exchange(get(CatalogHttpTest.BASE + "/" + original.serviceId()),
+                    tenant.toString(), 200, false));
+            assertThat(persisted).isEqualTo(changed);
+            var repeated = CatalogHttpTest.json(exchange(post(CatalogHttpTest.BASE + "/" +
+                    original.serviceId() + "/" + operation), tenant.toString(), 200, false));
+            assertThat(repeated).isEqualTo(changed);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event " +
+                    "WHERE tenant_id = ? AND service_id = ?", Long.class, tenant, original.serviceId()))
+                    .isEqualTo((long) count);
+            previous = next;
+        }
     }
 
     @Test void repeatedPostRollsBackTheSecondResource() throws Exception {
