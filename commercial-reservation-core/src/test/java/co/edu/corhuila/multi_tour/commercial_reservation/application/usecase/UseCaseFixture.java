@@ -24,7 +24,7 @@ abstract class UseCaseFixture {
     final IdGenerator ids = new SequentialIds();
 
     final RegisterCatalogServiceUseCase register = new RegisterCatalogServiceUseCase(repository, ids, clock);
-    final UpdateCommercialTermsUseCase updateTerms = new UpdateCommercialTermsUseCase(repository, clock);
+    final UpdateCommercialTermsUseCase updateTerms = new UpdateCommercialTermsUseCase(repository, clock, (tenant, id) -> 0);
     final UpdateDescriptiveInformationUseCase updateDescription =
             new UpdateDescriptiveInformationUseCase(repository, clock);
     final InactivateCatalogServiceUseCase inactivate = new InactivateCatalogServiceUseCase(repository, clock);
