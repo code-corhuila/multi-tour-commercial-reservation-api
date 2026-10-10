@@ -5,4 +5,4 @@ _shared.yaml is a reference copy of multi-tour-docs origin/main:07-api/contracts
 The source documents own the contract; these copies only add provenance headers.
 
 Catalog HTTP tests validate requests and responses against these files.
-The coverage gate explicitly defers inactivateCatalogService and reactivateCatalogService to the following branches.
+The coverage gate requires every declared operation, including inactivation and reactivation, to be exercised.

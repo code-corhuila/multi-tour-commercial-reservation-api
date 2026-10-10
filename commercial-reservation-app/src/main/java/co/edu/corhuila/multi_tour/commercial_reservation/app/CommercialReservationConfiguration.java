@@ -4,6 +4,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.HealthC
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ApiErrorWriter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogAuthorization;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalCatalogUpdate;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CorrelationFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ErrorHandler;
@@ -15,6 +16,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.UuidGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateCatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReactivateCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListCatalogServicesForManagement;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.UpdateCommercialTerms;
@@ -44,6 +47,8 @@ import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 // The only place that knows every concrete type; adapters never instantiate each other.
 @Configuration
@@ -64,8 +69,19 @@ class CommercialReservationConfiguration {
 
     @Bean
     CatalogController catalogController(GetCatalogService get, IdempotentCatalogRegistration registration,
-            ListCatalogServicesForManagement management, TransactionalCatalogUpdate updates) {
-        return new CatalogController(get, registration, management, updates);
+            ListCatalogServicesForManagement management, TransactionalCatalogUpdate updates,
+            InactivateCatalogService inactivate, ReactivateCatalogService reactivate) {
+        return new CatalogController(get, registration, management, updates, inactivate, reactivate);
+    }
+
+    @Bean
+    WebMvcConfigurer catalogAuthorization() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addInterceptors(InterceptorRegistry registry) {
+                registry.addInterceptor(new CatalogAuthorization()).addPathPatterns("/api/v1/catalog/**");
+            }
+        };
     }
 
     @Bean

@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import jakarta.servlet.http.HttpServletRequest;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import java.util.List;
@@ -30,7 +31,13 @@ public class ErrorHandler {
         ApiError.Code code = ApiError.Code.INTERNAL_ERROR;
         String message = "an unexpected error occurred";
         List<ApiError.Detail> details = null;
-        if (ex instanceof DomainException domain) {
+        if (ex instanceof BusinessRuleViolation) {
+            code = ApiError.Code.BUSINESS_RULE_VIOLATION;
+            message = "The item cannot be reactivated while a restriction applies";
+        } else if (ex instanceof InvalidTokenException) {
+            code = ApiError.Code.UNAUTHORIZED;
+            message = "authentication is required";
+        } else if (ex instanceof DomainException domain) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
             details = List.of(new ApiError.Detail(domain.field() == null ? "body" : domain.field(), domain.getMessage()));

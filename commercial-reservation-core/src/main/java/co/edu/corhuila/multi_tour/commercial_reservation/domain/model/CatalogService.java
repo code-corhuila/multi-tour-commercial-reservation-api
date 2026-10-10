@@ -84,8 +84,13 @@ public class CatalogService {
         if (catalogStatus == CatalogStatus.ACTIVE) {
             return;
         }
-        requireName(commercialName);
-        this.terms = coherentWith(serviceType, terms);
+        try {
+            requireName(commercialName);
+            this.terms = coherentWith(serviceType, terms);
+        } catch (DomainException restriction) {
+            // A stored row can be readable yet ineligible to return to the offer (RN-03).
+            throw new BusinessRuleViolation("catalog service is not eligible for reactivation", restriction);
+        }
         transitionTo(CatalogStatus.ACTIVE, now);
         pendingEvents.add(new CatalogServiceReactivated(tenantId, serviceId, CatalogStatus.INACTIVE,
                 CatalogStatus.ACTIVE, actorId, now));

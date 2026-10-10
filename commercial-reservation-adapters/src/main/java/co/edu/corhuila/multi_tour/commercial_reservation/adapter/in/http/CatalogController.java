@@ -1,6 +1,8 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateCatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReactivateCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListCatalogServicesForManagement;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogStatus;
@@ -11,7 +13,6 @@ import java.util.UUID;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -23,7 +24,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1/catalog/services")
@@ -32,13 +32,18 @@ public final class CatalogController {
     private final IdempotentCatalogRegistration registration;
     private final ListCatalogServicesForManagement management;
     private final TransactionalCatalogUpdate updates;
+    private final InactivateCatalogService inactivate;
+    private final ReactivateCatalogService reactivate;
 
     public CatalogController(GetCatalogService get, IdempotentCatalogRegistration registration,
-            ListCatalogServicesForManagement management, TransactionalCatalogUpdate updates) {
+            ListCatalogServicesForManagement management, TransactionalCatalogUpdate updates,
+            InactivateCatalogService inactivate, ReactivateCatalogService reactivate) {
         this.get = get;
         this.registration = registration;
         this.management = management;
         this.updates = updates;
+        this.inactivate = inactivate;
+        this.reactivate = reactivate;
     }
 
     @PostMapping
@@ -46,8 +51,6 @@ public final class CatalogController {
             @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @RequestBody CreateCatalogServiceRequest request) {
-        requireTenant(principal);
-        if (!principal.roles().contains("TENANT_ADMINISTRATOR")) forbid();
         if (key == null || key.length() < 8 || key.length() > 128) {
             throw new DomainException("Idempotency-Key", "header required, 8 to 128 characters");
         }
@@ -64,9 +67,6 @@ public final class CatalogController {
     public CatalogServiceResponse read(
             @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("serviceId") UUID serviceId) {
-        requireTenant(principal);
-        if (!principal.roles().contains("TENANT_ADMINISTRATOR")
-                && !principal.roles().contains("OPERATIONAL_COLLABORATOR")) forbid();
         return CatalogServiceResponse.from(get.get(principal.tenantId(), serviceId));
     }
 
@@ -74,9 +74,6 @@ public final class CatalogController {
     public CatalogPageResponse list(
             @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @RequestParam Map<String, String> query) {
-        requireTenant(principal);
-        if (!principal.roles().contains("TENANT_ADMINISTRATOR")
-                && !principal.roles().contains("OPERATIONAL_COLLABORATOR")) forbid();
         for (String field : query.keySet()) {
             if (!Set.of("page", "limit", "catalogStatus", "serviceType").contains(field)) {
                 throw new DomainException(field, "unknown query parameter");
@@ -93,9 +90,32 @@ public final class CatalogController {
     public CatalogServiceResponse update(
             @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("serviceId") UUID serviceId, @RequestBody UpdateCatalogServiceRequest request) {
-        requireTenant(principal);
-        if (!principal.roles().contains("TENANT_ADMINISTRATOR")) forbid();
         return CatalogServiceResponse.from(updates.update(principal.tenantId(), serviceId, request));
+    }
+
+    @PostMapping("/{serviceId}/inactivate")
+    public CatalogServiceResponse inactivate(
+            @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @PathVariable("serviceId") UUID serviceId) {
+        return CatalogServiceResponse.from(inactivate.inactivate(principal.tenantId(), serviceId, actor(principal)));
+    }
+
+    @PostMapping("/{serviceId}/reactivate")
+    public CatalogServiceResponse reactivate(
+            @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @PathVariable("serviceId") UUID serviceId) {
+        return CatalogServiceResponse.from(reactivate.reactivate(principal.tenantId(), serviceId, actor(principal)));
+    }
+
+    private static UUID actor(AuthenticatedPrincipal principal) {
+        try {
+            UUID actor = UUID.fromString(principal.sub());
+            // UUID.fromString accepts abbreviated groups; account claims must use the full UUID form.
+            if (!actor.toString().equalsIgnoreCase(principal.sub())) throw new IllegalArgumentException();
+            return actor;
+        } catch (IllegalArgumentException error) {
+            throw new InvalidTokenException();
+        }
     }
 
     private static int integer(Map<String, String> query, String field, int fallback, int maximum) {
@@ -116,11 +136,4 @@ public final class CatalogController {
         }
     }
 
-    private static void requireTenant(AuthenticatedPrincipal principal) {
-        if (principal.tenantId() == null) forbid();
-    }
-
-    private static void forbid() {
-        throw new ResponseStatusException(HttpStatus.FORBIDDEN);
-    }
 }
