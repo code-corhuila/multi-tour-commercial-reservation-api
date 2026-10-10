@@ -12,6 +12,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Idempot
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.JwtPublicKeyLoader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Rs256Verifier;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCatalogServiceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.UuidGenerator;
@@ -24,6 +25,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Upd
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.UpdateDescriptiveInformation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCatalogServiceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.InactivateCatalogServiceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListCatalogServicesForManagementUseCase;
@@ -106,6 +108,11 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
+    SalidaCapacityReader salidaCapacityReader(JdbcTemplate jdbc) {
+        return new JdbcSalidaCapacityReader(jdbc);
+    }
+
+    @Bean
     JdbcIdempotencyKeys idempotencyKeys(JdbcTemplate jdbc) {
         return new JdbcIdempotencyKeys(jdbc);
     }
@@ -116,8 +123,9 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    UpdateCommercialTermsUseCase updateCommercialTerms(CatalogServiceRepository repository, Clock clock) {
-        return new UpdateCommercialTermsUseCase(repository, clock);
+    UpdateCommercialTermsUseCase updateCommercialTerms(CatalogServiceRepository repository, Clock clock,
+            SalidaCapacityReader capacity) {
+        return new UpdateCommercialTermsUseCase(repository, clock, capacity);
     }
 
     @Bean
