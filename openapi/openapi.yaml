@@ -1,4 +1,5 @@
 # Reference copy of specs/Commercial and Reservations/commercial-reservation.yaml.
+# PROPOSED, not yet published in 07-api
 openapi: 3.0.3
 info:
   title: Commercial Reservation API
@@ -78,6 +79,8 @@ tags:
     description: Tours and transport items the tenant offers (HU-COM-001)
   - name: Health
     description: Service health check
+  - name: Associated establishments
+    description: Tenant-scoped promotional hotel and restaurant associations (HU-COM-002)
 
 paths:
 
@@ -487,8 +490,337 @@ paths:
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
+  /associated-establishments:
+    get:
+      summary: List associated establishments for management
+      description: |
+        Returns the tenant's promotional associations, including active and inactive records,
+        most recent first. Manager and Analyst access is available only when the tenant enables
+        those roles. The tenant is resolved from the bearer token; `tenantId` is not accepted in
+        the request (ADR-003, guidelines D-C04).
+      operationId: listAssociatedEstablishments
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: './_shared.yaml#/components/parameters/PageParam'
+        - $ref: './_shared.yaml#/components/parameters/LimitParam'
+        - name: associationStatus
+          in: query
+          description: Filter by association visibility status
+          schema:
+            $ref: '#/components/schemas/AssociatedEstablishmentStatus'
+        - name: establishmentType
+          in: query
+          description: Filter by establishment type
+          schema:
+            $ref: '#/components/schemas/AssociatedEstablishmentType'
+      responses:
+        '200':
+          description: Paginated tenant-scoped association list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+                  meta:
+                    $ref: './_shared.yaml#/components/schemas/PaginatedMeta'
+        '400':
+          description: Invalid pagination or filter value
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+    post:
+      summary: Register an associated establishment
+      description: |
+        Registers one promotional hotel or restaurant association for the tenant resolved from
+        the bearer token. `tenantId` is not accepted. The initial state is ACTIVE when the
+        association is registered and published in the same act (PDR RF-018, AC1). Commercial
+        information and image are required at registration. This operation does not create rooms,
+        dishes, menus, seats, rates or availability.
+      operationId: createAssociatedEstablishment
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateAssociatedEstablishmentRequest'
+      responses:
+        '201':
+          description: Associated establishment created
+          headers:
+            Location:
+              description: Path of the created associated establishment
+              schema:
+                type: string
+                example: /api/v1/associated-establishments/3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '200':
+          description: Same resource returned for an idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '400':
+          description: Invalid fields, unsupported type, invalid image content or missing required data
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '413':
+          description: Image exceeds 800 KB
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '415':
+          description: Image content is not PNG, JPEG or WebP; SVG is refused
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /associated-establishments/{associationId}:
+    parameters:
+      - $ref: '#/components/parameters/AssociationIdPath'
+    get:
+      summary: Get an associated establishment
+      description: |
+        Returns the association by identifier, including when inactive. An association owned by
+        another tenant answers `404`, the same as an unknown identifier (AC-02.2).
+        **Requires:** `TENANT_ADMINISTRATOR`, or an enabled `MANAGER` or `ANALYST`.
+      operationId: getAssociatedEstablishment
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The tenant-scoped association
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '400':
+          description: The identifier is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /public/tenants/{identifier}/associated-establishments/{associationId}/image:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdentifierPath'
+      - $ref: '#/components/parameters/AssociationIdPath'
+    get:
+      summary: Get a public association image
+      description: |
+        Public promotional image route used before sign-in. The tenant identifier in the path is
+        the convention from `authentication.md`; how it resolves to the owning `tenantId` remains
+        **PROPUESTO** (DD-5). The route is public and must be cacheable, never `no-store` (ADR-005 E6).
+      operationId: getAssociatedEstablishmentImage
+      tags: [Associated establishments]
+      security: []
+      responses:
+        '200':
+          description: PNG, JPEG or WebP image
+          headers:
+            Cache-Control:
+              description: Public cache policy for promotional images
+              schema:
+                type: string
+                example: public, max-age=86400
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: The tenant identifier or association identifier is not a valid value
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /associated-establishments/{associationId}/inactivate:
+    parameters:
+      - $ref: '#/components/parameters/AssociationIdPath'
+    post:
+      summary: Inactivate an associated establishment
+      description: |
+        Inactivates the tenant-scoped association, retaining its history and excluding it from
+        new promotional consultations. The operation is idempotent for an already inactive
+        association (plan D-09) and does not delete or modify catalog services.
+      operationId: inactivateAssociatedEstablishment
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Association after inactivation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '400':
+          description: The identifier is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /associated-establishments/{associationId}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/AssociationIdPath'
+    post:
+      summary: Reactivate an associated establishment
+      description: |
+        Reactivates the tenant-scoped association, retaining its history and making it eligible
+        for new promotional consultations. The operation is idempotent for an already active
+        association (plan D-09) and does not create rooms, dishes, menus, seats, rates or
+        availability.
+      operationId: reactivateAssociatedEstablishment
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Association after reactivation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '400':
+          description: The identifier is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
 components:
   schemas:
+
+    AssociatedEstablishmentType:
+      type: string
+      enum: [HOTEL, RESTAURANT]
+      description: Closed establishment type set from RN-ASO-001 (AC-02.3).
+
+    AssociatedEstablishmentStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+      description: |
+        Association visibility. The initial state is `ACTIVE` when the association is registered
+        and published in the same act (PDR RF-018, AC1). `INACTIVE` is retained and excluded from
+        new promotional consultations.
+
+    AssociatedEstablishmentResponse:
+      type: object
+      description: |
+        Tenant promotional association. It creates no rooms, dishes, menus, seats, rates or
+        availability (AC-02.7). `tenantId` is deliberately not exposed.
+      required: [associationId, establishmentType, commercialName, commercialInformation, imageReference, associationStatus]
+      properties:
+        associationId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        establishmentType:
+          $ref: '#/components/schemas/AssociatedEstablishmentType'
+        commercialName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        commercialInformation:
+          type: string
+          description: Promotional description and contact text; final content details remain PROPUESTO under D5.
+        imageReference:
+          type: string
+          description: Customer-visible image reference; storage target remains PROPUESTO under DP-01.
+          x-proposed: DP-01
+        associationStatus:
+          $ref: '#/components/schemas/AssociatedEstablishmentStatus'
+
+    CreateAssociatedEstablishmentRequest:
+      type: object
+      description: |
+        Multipart registration payload. Commercial information and image are required by PDR
+        RF-018 and AC1. The image is validated from content before storage: PNG, JPEG or WebP,
+        at most 800 KB; SVG is refused (ADR-005 E6).
+      additionalProperties: false
+      required: [establishmentType, commercialName, commercialInformation, image]
+      properties:
+        establishmentType:
+          $ref: '#/components/schemas/AssociatedEstablishmentType'
+        commercialName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        commercialInformation:
+          type: string
+          description: Promotional description and contact text; final content details remain PROPUESTO under D5.
+        image:
+          type: string
+          format: binary
+          description: Required image; max 800 KB, PNG/JPEG/WebP by content. SVG is refused.
 
     # ── Catalog services ──────────────────────────────────────────────────────
 
@@ -637,6 +969,22 @@ components:
           type: boolean
 
   parameters:
+    AssociationIdPath:
+      name: associationId
+      in: path
+      required: true
+      description: Identifier of the associated establishment (UUID)
+      schema:
+        $ref: './_shared.yaml#/components/schemas/UUID'
+    TenantIdentifierPath:
+      name: identifier
+      in: path
+      required: true
+      description: Public tenant identifier; resolution to tenantId is PROPUESTO (DD-5)
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
     IdempotencyKey:
       name: Idempotency-Key
       in: header
