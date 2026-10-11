@@ -33,7 +33,9 @@ public class ErrorHandler {
         List<ApiError.Detail> details = null;
         if (ex instanceof BusinessRuleViolation) {
             code = ApiError.Code.BUSINESS_RULE_VIOLATION;
-            message = "The item cannot be reactivated while a restriction applies";
+            message = "PATCH".equals(request.getMethod())
+                    ? "The capacity cannot be lower than the seats already held in a scheduled departure"
+                    : "The item cannot be reactivated while a restriction applies";
         } else if (ex instanceof InvalidTokenException) {
             code = ApiError.Code.UNAUTHORIZED;
             message = "authentication is required";
