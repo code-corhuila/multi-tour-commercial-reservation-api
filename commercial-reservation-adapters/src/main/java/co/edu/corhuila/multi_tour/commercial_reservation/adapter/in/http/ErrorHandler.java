@@ -1,6 +1,8 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AssociatedEstablishmentNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.EstablishmentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,10 +45,14 @@ public class ErrorHandler {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
             details = List.of(new ApiError.Detail(domain.field() == null ? "body" : domain.field(), domain.getMessage()));
+        } else if (ex instanceof org.springframework.web.multipart.MultipartException) {
+            code = ApiError.Code.VALIDATION_ERROR;
+            message = "the request has invalid fields";
+            details = List.of(new ApiError.Detail("image", "must be a valid image within the multipart size limit"));
         } else if (ex instanceof HttpMediaTypeNotSupportedException) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
-            details = List.of(new ApiError.Detail("Content-Type", "must be application/json"));
+            details = List.of(new ApiError.Detail("Content-Type", "must use a supported media type"));
         } else if (ex instanceof HttpMessageNotReadableException) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
@@ -57,19 +63,23 @@ public class ErrorHandler {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
             details = List.of(new ApiError.Detail(mismatch.getName(), "has an invalid format"));
-        } else if (ex instanceof CatalogServiceNotFoundException || ex instanceof NoResourceFoundException
+        } else if (ex instanceof CatalogServiceNotFoundException || ex instanceof AssociatedEstablishmentNotFoundException
+                || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.
             code = ApiError.Code.NOT_FOUND;
             message = "resource not found";
-        } else if (ex instanceof ResponseStatusException status && status.getStatusCode().value() == 403) {
+        } else if (ex instanceof EstablishmentAccessDeniedException
+                || ex instanceof ResponseStatusException status && status.getStatusCode().value() == 403) {
             code = ApiError.Code.FORBIDDEN;
             message = "access is forbidden";
         } else {
             LoggerFactory.getLogger(ErrorHandler.class).error("Unexpected request failure, traceId={}",
                     request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE), ex);
         }
-        return ResponseEntity.status(code.status()).body(errors.body(request, code, message, details));
+        int status = ex instanceof EstablishmentImageContent.Rejected image ? image.status : code.status();
+        if (ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException) status = 413;
+        return ResponseEntity.status(status).body(errors.body(request, code, message, details));
     }
 
     private static String jsonField(Throwable error) {
