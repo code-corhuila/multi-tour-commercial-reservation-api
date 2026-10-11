@@ -6,6 +6,10 @@ logging:
       console: ecs
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 800KB
+      max-request-size: 1MB
   application:
     name: commercial-reservation-api
   mvc:
