@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.memory.InMemoryEstablishments;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
@@ -25,6 +26,7 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
 
 @TestConfiguration
 class CatalogHttpFixture {
+    @Bean @Primary InMemoryEstablishments memoryEstablishments() { return new InMemoryEstablishments(); }
     @Bean @Primary MemoryCatalog memoryCatalog() { return new MemoryCatalog(); }
     @Bean @Primary MemoryKeys memoryKeys() { return new MemoryKeys(); }
     @Bean @Primary SalidaCapacityReader memoryCapacity(MemoryCatalog catalog) {
