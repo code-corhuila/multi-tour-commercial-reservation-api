@@ -20,7 +20,9 @@ public class AuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         return "GET".equals(request.getMethod())
-                && "/health".equals(request.getRequestURI().substring(request.getContextPath().length()));
+                && ("/health".equals(request.getRequestURI().substring(request.getContextPath().length()))
+                || request.getRequestURI().substring(request.getContextPath().length()).matches(
+                        "/api/v1/public/tenants/[^/]+/associated-establishments/[^/]+/image"));
     }
 
     @Override

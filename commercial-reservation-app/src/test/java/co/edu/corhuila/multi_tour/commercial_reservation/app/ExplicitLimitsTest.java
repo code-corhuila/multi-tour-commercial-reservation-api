@@ -26,6 +26,14 @@ class ExplicitLimitsTest {
     }
 
     @Test
+    void multipartLimitsAreDeclaredAtTheCompositionRoot() {
+        assertEquals(819200L, env.getRequiredProperty("spring.servlet.multipart.max-file-size",
+                org.springframework.util.unit.DataSize.class).toBytes());
+        assertEquals(1048576L, env.getRequiredProperty("spring.servlet.multipart.max-request-size",
+                org.springframework.util.unit.DataSize.class).toBytes());
+    }
+
+    @Test
     void headerReadIsFiveSeconds() {
         assertEquals(Duration.ofSeconds(5), duration("server.tomcat.connection-timeout"));
     }

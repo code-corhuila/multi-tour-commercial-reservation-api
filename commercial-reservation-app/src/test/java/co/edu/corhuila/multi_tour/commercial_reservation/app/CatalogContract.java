@@ -49,6 +49,8 @@ final class CatalogContract {
         API.getPaths().values().forEach(path -> path.readOperations()
                 .forEach(operation -> declared.add(operation.getOperationId())));
         assertThat(PENDING).isEmpty();
+        // EstablishmentHttpTest has its own gate for all six establishment operations.
+        declared.removeIf(operation -> operation.contains("AssociatedEstablishment"));
         assertThat(exercised).containsExactlyInAnyOrderElementsOf(declared);
     }
 }
