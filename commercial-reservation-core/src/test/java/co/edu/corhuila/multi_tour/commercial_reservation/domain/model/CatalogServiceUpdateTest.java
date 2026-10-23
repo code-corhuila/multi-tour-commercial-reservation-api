@@ -78,6 +78,41 @@ class CatalogServiceUpdateTest {
         assertThat(transport.terms().baseRate().amount()).isEqualTo(13_000L);
     }
 
+    // AC-01.6, RN-04, plan D-03: one method per intent, so a caller of one intent cannot reach the fields of the other.
+    @Test
+    void theDescriptiveIntentLeavesEveryCommercialTermUntouched() {
+        CatalogService item = tour(true);
+        CommercialTerms before = item.terms();
+
+        item.updateDescriptiveInformation("Renamed tour", LATER);
+
+        assertThat(item.commercialName()).isEqualTo("Renamed tour");
+        assertThat(item.terms()).isEqualTo(before);
+        assertThat(item.catalogStatus()).isEqualTo(CatalogStatus.ACTIVE);
+        assertThat(item.serviceType()).isEqualTo(CatalogServiceType.TOUR);
+    }
+
+    @Test
+    void theCommercialIntentLeavesTheDescriptiveInformationAndTheStatusUntouched() {
+        CatalogService item = tour(false);
+        String name = item.commercialName();
+
+        item.updateCommercialTerms(new CommercialTermsChange(40_000_000L, 25_000_000L, 20, true, true), LATER);
+
+        assertThat(item.commercialName()).isEqualTo(name);
+        assertThat(item.catalogStatus()).isEqualTo(CatalogStatus.ACTIVE);
+        assertThat(item.pullEvents()).isEmpty();
+    }
+
+    @Test
+    void theTwoIntentsTakeDifferentArgumentsSoNeitherCanCarryTheOthersFields() {
+        assertThat(java.util.Arrays.stream(CommercialTermsChange.class.getRecordComponents()).map(c -> c.getName()))
+                .doesNotContain("commercialName");
+        assertThat(java.util.Arrays.stream(CatalogService.class.getMethods())
+                .filter(m -> m.getName().equals("updateDescriptiveInformation")).findFirst().orElseThrow().getParameterTypes())
+                .containsExactly(String.class, Instant.class);
+    }
+
     @Test
     void theCommercialNameMustBeNonBlankAndAtMost255Characters() {
         assertThatThrownBy(() -> CatalogService.register(ID, TENANT, CatalogServiceType.TOUR, "  ",
