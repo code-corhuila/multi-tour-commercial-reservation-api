@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/catalog/services")
+@RequestMapping("/api/v1/commercial-reservation/catalog/services")
 public final class CatalogController {
     private final GetCatalogService get;
     private final IdempotentCatalogRegistration registration;
@@ -59,7 +59,7 @@ public final class CatalogController {
                 request.configuredCapacity(), request.transportRequired(), request.highRisk());
         var result = registration.register(command, key);
         var body = CatalogServiceResponse.from(result.item());
-        return result.created() ? ResponseEntity.created(URI.create("/api/v1/catalog/services/" + body.serviceId()))
+        return result.created() ? ResponseEntity.created(URI.create("/api/v1/commercial-reservation/catalog/services/" + body.serviceId()))
                 .body(body) : ResponseEntity.ok(body);
     }
 
