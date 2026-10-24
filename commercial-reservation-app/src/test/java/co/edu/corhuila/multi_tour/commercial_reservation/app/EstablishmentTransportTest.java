@@ -55,7 +55,7 @@ class EstablishmentTransportTest {
             servletResponse.setContentType(response.headers().firstValue("Content-Type").orElseThrow());
             servletResponse.getWriter().write(response.body());
             var report = com.atlassian.oai.validator.OpenApiInteractionValidator
-                    .createForSpecificationUrl(EstablishmentHttpTest.SPEC).withBasePathOverride("/api/v1").build()
+                    .createForSpecificationUrl(EstablishmentHttpTest.SPEC).withBasePathOverride("/api/v1/commercial-reservation").build()
                     .validateResponse("/associated-establishments", com.atlassian.oai.validator.model.Request.Method.POST,
                             com.atlassian.oai.validator.mockmvc.MockMvcResponse.of(servletResponse));
             assertThat(report.hasErrors()).as("response contract: %s", report).isFalse();

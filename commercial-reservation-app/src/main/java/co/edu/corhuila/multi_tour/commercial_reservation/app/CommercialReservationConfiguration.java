@@ -25,6 +25,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Upd
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.UpdateDescriptiveInformation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.policy.NoCollaboratorEditing;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CollaboratorEditingPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCatalogServiceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.InactivateCatalogServiceUseCase;
@@ -77,11 +79,16 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    WebMvcConfigurer catalogAuthorization() {
+    CollaboratorEditingPolicy collaboratorEditingPolicy() {
+        return new NoCollaboratorEditing();
+    }
+
+    @Bean
+    WebMvcConfigurer catalogAuthorization(CollaboratorEditingPolicy collaboratorEditing) {
         return new WebMvcConfigurer() {
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                registry.addInterceptor(new CatalogAuthorization()).addPathPatterns("/api/v1/catalog/**");
+                registry.addInterceptor(new CatalogAuthorization(collaboratorEditing)).addPathPatterns("/api/v1/commercial-reservation/catalog/**");
             }
         };
     }

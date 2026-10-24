@@ -65,7 +65,7 @@ info:
     - **Reads of other roles.** Manager, Analyst and Accountant are outside HU-COM-001.
 
 servers:
-  - url: https://{gatewayHost}/api/v1
+  - url: https://{gatewayHost}/api/v1/commercial-reservation
     description: Through multi-tour-api-gateway; the service port (8083) is internal
     variables:
       gatewayHost:
@@ -570,7 +570,7 @@ paths:
               description: Path of the created associated establishment
               schema:
                 type: string
-                example: /api/v1/associated-establishments/3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
+                example: /api/v1/commercial-reservation/associated-establishments/3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
           content:
             application/json:
               schema:
@@ -1007,7 +1007,7 @@ components:
       description: Path of the created resource
       schema:
         type: string
-        example: /api/v1/catalog/services/3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
+        example: /api/v1/commercial-reservation/catalog/services/3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
 
   securitySchemes:
     bearerAuth:

@@ -31,12 +31,12 @@ import org.springframework.test.web.servlet.request.*;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class EstablishmentHttpTest {
-    static final String BASE = "/api/v1/associated-establishments";
+    static final String BASE = "/api/v1/commercial-reservation/associated-establishments";
     static final byte[] PNG = Base64.getDecoder().decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=");
     static final String SPEC = Path.of("../openapi/openapi.yaml").toAbsolutePath().toUri().toString();
     final OpenApiInteractionValidator validator = OpenApiInteractionValidator
-            .createForSpecificationUrl(SPEC).withBasePathOverride("/api/v1").build();
+            .createForSpecificationUrl(SPEC).withBasePathOverride("/api/v1/commercial-reservation").build();
     final Set<String> exercised = new HashSet<>();
     @Autowired MockMvc mvc;
     String tenant;
@@ -249,10 +249,10 @@ class EstablishmentHttpTest {
         return request;
     }
     private String path(JsonNode item) { return BASE + "/" + item.get("associationId").asText(); }
-    private String imagePath(String owner, JsonNode item) { return "/api/v1/public/tenants/" + owner + path(item).substring(7) + "/image"; }
+    private String imagePath(String owner, JsonNode item) { return "/api/v1/commercial-reservation/public/tenants/" + owner + path(item).substring(30) + "/image"; }
     private MockHttpServletRequestBuilder operation(String operation, String id) {
         return operation.equals("GET") ? get(BASE + "/" + id) : operation.equals("image")
-                ? get("/api/v1/public/tenants/" + tenant + "/associated-establishments/" + id + "/image") : post(BASE + "/" + id + "/" + operation);
+                ? get("/api/v1/commercial-reservation/public/tenants/" + tenant + "/associated-establishments/" + id + "/image") : post(BASE + "/" + id + "/" + operation);
     }
     private JsonNode json(MvcResult result) throws Exception { return CatalogHttpTest.json(result); }
     private void assertField(MvcResult result, String field) throws Exception {
@@ -264,7 +264,7 @@ class EstablishmentHttpTest {
         if (role != null) request.header("Authorization", "Bearer " + CatalogHttpTest.token(tenant, role));
         var result = mvc.perform(request.header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn();
         status().is(code).match(result);
-        String path = result.getRequest().getRequestURI().substring(7);
+        String path = result.getRequest().getRequestURI().substring(30);
         String template = path.replaceFirst("/associated-establishments/[^/]+(?=/|$)", "/associated-establishments/{associationId}")
                 .replaceFirst("/public/tenants/[^/]+", "/public/tenants/{identifier}");
         var method = PathItem.HttpMethod.valueOf(result.getRequest().getMethod());

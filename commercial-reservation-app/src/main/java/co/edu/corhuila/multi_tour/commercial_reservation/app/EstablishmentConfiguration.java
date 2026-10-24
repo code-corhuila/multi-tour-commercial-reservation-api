@@ -65,7 +65,7 @@ class EstablishmentConfiguration {
     @Bean WebMvcConfigurer establishmentAccess() {
         return new WebMvcConfigurer() {
             @Override public void addInterceptors(InterceptorRegistry registry) {
-                registry.addInterceptor(new EstablishmentHttpAccess()).addPathPatterns("/api/v1/associated-establishments/**");
+                registry.addInterceptor(new EstablishmentHttpAccess()).addPathPatterns("/api/v1/commercial-reservation/associated-establishments/**");
             }
         };
     }

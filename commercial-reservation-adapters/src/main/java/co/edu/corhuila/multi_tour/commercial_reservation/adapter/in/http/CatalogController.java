@@ -13,6 +13,7 @@ import java.util.UUID;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -24,9 +25,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping("/api/v1/catalog/services")
+@RequestMapping("/api/v1/commercial-reservation/catalog/services")
 public final class CatalogController {
     private final GetCatalogService get;
     private final IdempotentCatalogRegistration registration;
@@ -59,7 +61,7 @@ public final class CatalogController {
                 request.configuredCapacity(), request.transportRequired(), request.highRisk());
         var result = registration.register(command, key);
         var body = CatalogServiceResponse.from(result.item());
-        return result.created() ? ResponseEntity.created(URI.create("/api/v1/catalog/services/" + body.serviceId()))
+        return result.created() ? ResponseEntity.created(URI.create("/api/v1/commercial-reservation/catalog/services/" + body.serviceId()))
                 .body(body) : ResponseEntity.ok(body);
     }
 
@@ -90,6 +92,10 @@ public final class CatalogController {
     public CatalogServiceResponse update(
             @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("serviceId") UUID serviceId, @RequestBody UpdateCatalogServiceRequest request) {
+        // Only the Administrator touches rates, costs and structural parameters; the enabled Collaborator, the name (RN-04, AC-01.6).
+        if (!principal.roles().contains("TENANT_ADMINISTRATOR") && request.hasTerms()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
         return CatalogServiceResponse.from(updates.update(principal.tenantId(), serviceId, request));
     }
 

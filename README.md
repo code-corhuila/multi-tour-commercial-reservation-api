@@ -52,5 +52,5 @@ The application user cannot delete catalog items; the schema separately allows t
 
 The HTTP foundation provides token validation, correlation and a common error envelope.
 Catalog routes provide idempotent creation, reading by identifier, paginated management listing and partial updates.
-GET /api/v1/catalog/services accepts page, limit, catalogStatus and serviceType; PATCH /api/v1/catalog/services/{serviceId} is administrator-only.
+GET /api/v1/commercial-reservation/catalog/services accepts page, limit, catalogStatus and serviceType; PATCH /api/v1/commercial-reservation/catalog/services/{serviceId} is administrator-only.
 Publishing outbox events belongs to the worker and future internal API routes.

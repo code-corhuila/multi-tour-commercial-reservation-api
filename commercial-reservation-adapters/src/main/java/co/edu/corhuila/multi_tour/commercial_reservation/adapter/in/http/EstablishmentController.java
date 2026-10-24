@@ -26,7 +26,7 @@ public final class EstablishmentController {
         this.register = register; this.get = get; this.list = list; this.inactivate = inactivate;
         this.reactivate = reactivate; this.repository = repository; this.images = images;
     }
-    @PostMapping(value = "/api/v1/associated-establishments", consumes = "multipart/form-data")
+    @PostMapping(value = "/api/v1/commercial-reservation/associated-establishments", consumes = "multipart/form-data")
     public ResponseEntity<Response> create(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @RequestParam(value = "establishmentType", required = false) String type,
@@ -45,15 +45,15 @@ public final class EstablishmentController {
         var result = images.register(bytes, mediaType, () -> register.register(actor(principal), key,
                 new RegisterAssociatedEstablishment.Command(type, name, information, reference)));
         var body = Response.from(result.association());
-        return result.created() ? ResponseEntity.created(URI.create("/api/v1/associated-establishments/" + body.associationId()))
+        return result.created() ? ResponseEntity.created(URI.create("/api/v1/commercial-reservation/associated-establishments/" + body.associationId()))
                 .body(body) : ResponseEntity.ok(body);
     }
-    @GetMapping("/api/v1/associated-establishments/{associationId}")
+    @GetMapping("/api/v1/commercial-reservation/associated-establishments/{associationId}")
     public Response read(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("associationId") UUID id) {
         return Response.from(get.get(actor(principal), id));
     }
-    @GetMapping("/api/v1/associated-establishments")
+    @GetMapping("/api/v1/commercial-reservation/associated-establishments")
     public Map<String, Object> list(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @RequestParam Map<String, String> query) {
         for (String field : query.keySet()) {
@@ -66,13 +66,13 @@ public final class EstablishmentController {
         return Map.of("data", result.items().stream().map(Response::from).toList(), "meta",
                 Map.of("page", page, "limit", limit, "total", result.total(), "totalPages", (result.total() + limit - 1) / limit));
     }
-    @PostMapping("/api/v1/associated-establishments/{associationId}/inactivate")
+    @PostMapping("/api/v1/commercial-reservation/associated-establishments/{associationId}/inactivate")
     public Response inactivate(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("associationId") UUID id) { return Response.from(inactivate.inactivate(actor(principal), id)); }
-    @PostMapping("/api/v1/associated-establishments/{associationId}/reactivate")
+    @PostMapping("/api/v1/commercial-reservation/associated-establishments/{associationId}/reactivate")
     public Response reactivate(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("associationId") UUID id) { return Response.from(reactivate.reactivate(actor(principal), id)); }
-    @GetMapping("/api/v1/public/tenants/{identifier}/associated-establishments/{associationId}/image")
+    @GetMapping("/api/v1/commercial-reservation/public/tenants/{identifier}/associated-establishments/{associationId}/image")
     public ResponseEntity<byte[]> image(@PathVariable("identifier") UUID tenant, @PathVariable("associationId") UUID id) {
         // DD-5 remains proposed: this slice interprets the public identifier as the tenant UUID.
         var item = repository.findByTenantAndId(tenant, id).filter(value -> value.tenantId().equals(tenant))
