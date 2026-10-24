@@ -45,7 +45,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class CatalogHttpTest {
-    static final String BASE = "/api/v1/catalog/services";
+    static final String BASE = "/api/v1/commercial-reservation/catalog/services";
     static final String TRACE = "catalog-http-test";
     static final List<String> FIELDS = List.of("serviceId", "serviceType", "commercialName", "catalogStatus",
             "baseRateCents", "baseOperationalCostCents", "configuredCapacity", "transportRequired",
