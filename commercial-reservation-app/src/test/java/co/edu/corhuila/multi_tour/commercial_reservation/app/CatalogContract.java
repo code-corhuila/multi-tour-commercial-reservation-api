@@ -18,7 +18,7 @@ final class CatalogContract {
     private static final String SPEC = Path.of("../openapi/openapi.yaml").toAbsolutePath().toUri().toString();
     private static final OpenAPI API = new OpenAPIV3Parser().read(SPEC);
     private static final OpenApiInteractionValidator CATALOG = OpenApiInteractionValidator
-            .createForSpecificationUrl(SPEC).withBasePathOverride("/api/v1").build();
+            .createForSpecificationUrl(SPEC).withBasePathOverride("/api/v1/commercial-reservation").build();
     private static final OpenApiInteractionValidator HEALTH = OpenApiInteractionValidator
             .createForSpecificationUrl(SPEC).withBasePathOverride("").build();
     private final Set<String> exercised = new HashSet<>();
@@ -31,7 +31,7 @@ final class CatalogContract {
         var responseReport = validator.validateResponse(request.getPath(), request.getMethod(),
                 MockMvcResponse.of(result.getResponse()));
         assertThat(responseReport.hasErrors()).as("response contract: %s", responseReport).isFalse();
-        String path = request.getPath().replaceFirst("^/api/v1", "")
+        String path = request.getPath().replaceFirst("^/api/v1/commercial-reservation", "")
                 .replaceFirst("^(/catalog/services)/[^/]+(?=/|$)", "$1/{serviceId}");
         var operation = API.getPaths().get(path).readOperationsMap()
                 .get(PathItem.HttpMethod.valueOf(request.getMethod().name()));

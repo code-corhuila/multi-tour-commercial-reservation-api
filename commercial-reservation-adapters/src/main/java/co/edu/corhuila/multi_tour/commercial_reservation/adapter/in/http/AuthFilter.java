@@ -22,7 +22,7 @@ public class AuthFilter extends OncePerRequestFilter {
         return "GET".equals(request.getMethod())
                 && ("/health".equals(request.getRequestURI().substring(request.getContextPath().length()))
                 || request.getRequestURI().substring(request.getContextPath().length()).matches(
-                        "/api/v1/public/tenants/[^/]+/associated-establishments/[^/]+/image"));
+                        "/api/v1/commercial-reservation/public/tenants/[^/]+/associated-establishments/[^/]+/image"));
     }
 
     @Override

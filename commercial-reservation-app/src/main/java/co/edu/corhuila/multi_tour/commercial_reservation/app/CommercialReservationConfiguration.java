@@ -88,7 +88,7 @@ class CommercialReservationConfiguration {
         return new WebMvcConfigurer() {
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                registry.addInterceptor(new CatalogAuthorization(collaboratorEditing)).addPathPatterns("/api/v1/catalog/**");
+                registry.addInterceptor(new CatalogAuthorization(collaboratorEditing)).addPathPatterns("/api/v1/commercial-reservation/catalog/**");
             }
         };
     }
