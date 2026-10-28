@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CustomerActor;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CustomerActor.Role;
 
 public final class CustomerAuthorization {
     private CustomerAuthorization() {}
@@ -8,5 +9,8 @@ public final class CustomerAuthorization {
     // RBAC matrix (authentication.md): Administrator and Collaborator write.
     // TODO DP-09: the Final Customer's own routes are not decided, so they are refused here.
     public static void requireWrite(CustomerActor actor) {
+        if (actor == null || actor.tenantId() == null || actor.actorId() == null
+                || (actor.role() != Role.TENANT_ADMINISTRATOR && actor.role() != Role.OPERATIONAL_COLLABORATOR))
+            throw new CustomerAccessDeniedException();
     }
 }
