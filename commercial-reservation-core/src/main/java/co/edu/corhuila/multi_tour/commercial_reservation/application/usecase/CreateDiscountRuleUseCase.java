@@ -35,7 +35,7 @@ public class CreateDiscountRuleUseCase implements CreateDiscountRule {
         Instant now = clock.instant();
         DiscountRule rule = DiscountRule.create(ids.newId(), actor.tenantId(), command.name(), command.validFrom(),
                 command.validTo(), command.priority(), command.calculationBase(), command.percentageBasisPoints(),
-                command.amountCents(), now);
+                command.amountCents(), command.serviceCoverage(), command.capCents(), now);
         // The rule and its event commit or roll back together (plan D-10, norm 5.3.11).
         return transaction.inTransaction(() -> {
             repository.save(rule);

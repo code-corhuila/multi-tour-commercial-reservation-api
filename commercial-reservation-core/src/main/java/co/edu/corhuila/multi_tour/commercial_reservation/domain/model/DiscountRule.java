@@ -1,34 +1,38 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public final class DiscountRule {
     private final UUID ruleId, tenantId;
     private final String name;
-    private final Instant validFrom, validTo, createdAt;
+    private final LocalDate validFrom, validTo;
+    private final Instant createdAt;
+    private final ServiceCoverage serviceCoverage;
+    private final Long capCents;
     private final Integer priority, percentageBasisPoints;
     private final Long amountCents;
     private final DiscountBase calculationBase;
     private DiscountStatus status;
     private Instant updatedAt;
 
-    private DiscountRule(UUID id, UUID tenant, String name, Instant from, Instant to, Integer priority,
-            DiscountBase base, Integer basisPoints, Long cents, DiscountStatus status, Instant created, Instant updated) {
+    private DiscountRule(UUID id, UUID tenant, String name, LocalDate from, LocalDate to, Integer priority,
+            DiscountBase base, Integer basisPoints, Long cents, ServiceCoverage coverage, Long cap, DiscountStatus status, Instant created, Instant updated) {
         ruleId = id; tenantId = tenant; this.name = name; validFrom = from; validTo = to; this.priority = priority;
-        calculationBase = base; percentageBasisPoints = basisPoints; amountCents = cents; this.status = status;
+        calculationBase = base; percentageBasisPoints = basisPoints; amountCents = cents; serviceCoverage = coverage; capCents = cap; this.status = status;
         createdAt = created; updatedAt = updated;
     }
 
-    public static DiscountRule create(UUID id, UUID tenant, String name, Instant from, Instant to, Integer priority,
-            DiscountBase base, Integer basisPoints, Long cents, Instant now) {
+    public static DiscountRule create(UUID id, UUID tenant, String name, LocalDate from, LocalDate to, Integer priority,
+            DiscountBase base, Integer basisPoints, Long cents, ServiceCoverage coverage, Long cap, Instant now) {
         required(id, "ruleId"); required(tenant, "tenantId"); required(now, "occurredAt");
         if (name == null || name.isBlank()) throw new DomainException("name", "name is required");
         required(priority, "priority"); required(base, "calculationBase");
         required(from, "validFrom"); required(to, "validTo");
         if (from.isAfter(to)) throw new DomainException("validFrom", "validFrom cannot be after validTo");
         validateValue(basisPoints, cents);
-        return new DiscountRule(id, tenant, name, from, to, priority, base, basisPoints, cents, DiscountStatus.ACTIVE, now, now);
+        return new DiscountRule(id, tenant, name, from, to, priority, base, basisPoints, cents, coverage, cap, DiscountStatus.ACTIVE, now, now);
     }
 
     // Exactly one of the two (RN-08); no decimal crosses a port (plan D-07).
@@ -48,9 +52,9 @@ public final class DiscountRule {
         return value;
     }
 
-    public static DiscountRule restore(UUID id, UUID tenant, String name, Instant from, Instant to, Integer priority,
-            DiscountBase base, Integer basisPoints, Long cents, DiscountStatus status, Instant created, Instant updated) {
-        return new DiscountRule(id, tenant, name, from, to, priority, base, basisPoints, cents, status, created, updated);
+    public static DiscountRule restore(UUID id, UUID tenant, String name, LocalDate from, LocalDate to, Integer priority,
+            DiscountBase base, Integer basisPoints, Long cents, ServiceCoverage coverage, Long cap, DiscountStatus status, Instant created, Instant updated) {
+        return new DiscountRule(id, tenant, name, from, to, priority, base, basisPoints, cents, coverage, cap, status, created, updated);
     }
 
     // A transition, never a deletion (RN-13). A repeated one is not a new fact and keeps the audit time.
@@ -63,12 +67,14 @@ public final class DiscountRule {
     public UUID ruleId() { return ruleId; }
     public UUID tenantId() { return tenantId; }
     public String name() { return name; }
-    public Instant validFrom() { return validFrom; }
-    public Instant validTo() { return validTo; }
+    public LocalDate validFrom() { return validFrom; }
+    public LocalDate validTo() { return validTo; }
     public Integer priority() { return priority; }
     public DiscountBase calculationBase() { return calculationBase; }
     public Integer percentageBasisPoints() { return percentageBasisPoints; }
     public Long amountCents() { return amountCents; }
+    public ServiceCoverage serviceCoverage() { return serviceCoverage; }
+    public Long capCents() { return capCents; }
     public DiscountStatus status() { return status; }
     public boolean isActive() { return status == DiscountStatus.ACTIVE; }
     public Instant createdAt() { return createdAt; }

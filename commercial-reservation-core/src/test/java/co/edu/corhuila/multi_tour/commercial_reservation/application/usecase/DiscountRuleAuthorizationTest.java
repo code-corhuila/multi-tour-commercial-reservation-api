@@ -10,8 +10,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Disco
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DiscountRuleActor.Role;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountBase;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ServiceCoverage;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
-import java.time.Instant;
+import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -24,8 +25,8 @@ class DiscountRuleAuthorizationTest {
     private final InactivateDiscountRuleUseCase inactivate =
             new InactivateDiscountRuleUseCase(fakes, fakes, fakes, fakes.clock);
     private final CreateDiscountRule.Command command = new CreateDiscountRule.Command("Low season",
-            Instant.parse("2026-11-01T00:00:00Z"), Instant.parse("2026-11-30T00:00:00Z"), 1,
-            DiscountBase.ORIGINAL_VALUE, 1250, null);
+            LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30), 1,
+            DiscountBase.ORIGINAL_VALUE, 1250, null, ServiceCoverage.all(), null);
 
     @Test void theTenantAdministratorCreatesAndInactivates() {
         var admin = actor(Role.TENANT_ADMINISTRATOR);
