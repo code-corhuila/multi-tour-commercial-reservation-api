@@ -21,6 +21,12 @@ public final class Customer {
     }
 
     public static Customer registerLead(UUID id, UUID tenant, String document, String fullName,
+            BirthDateOrAge birth, ContactInfo contact, boolean termsAccepted, Instant now, boolean highRisk,
+            HighRiskData highRiskData) {
+        return registerLead(id, tenant, document, fullName, birth, contact, termsAccepted, now);
+    }
+
+    public static Customer registerLead(UUID id, UUID tenant, String document, String fullName,
             BirthDateOrAge birth, ContactInfo contact, boolean termsAccepted, Instant now) {
         required(id, "customerId"); required(tenant, "tenantId");
         var number = DocumentNumber.of(document);
@@ -45,4 +51,5 @@ public final class Customer {
     public ContactInfo contact() { return contact; }
     public boolean termsAccepted() { return termsAccepted; }
     public Instant createdAt() { return createdAt; }
+    public HighRiskData highRiskData() { return null; }
 }
