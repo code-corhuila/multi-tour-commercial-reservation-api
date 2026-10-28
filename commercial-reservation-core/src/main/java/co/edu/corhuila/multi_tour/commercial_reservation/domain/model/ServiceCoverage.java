@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -17,14 +18,18 @@ public final class ServiceCoverage {
     }
 
     public static ServiceCoverage of(Set<UUID> serviceIds) {
-        return new ServiceCoverage(serviceIds);
+        if (serviceIds == null || serviceIds.isEmpty())
+            throw new DomainException("serviceCoverage", "a selection needs at least one service");
+        if (serviceIds.stream().anyMatch(Objects::isNull))
+            throw new DomainException("serviceCoverage", "a selected service id cannot be null");
+        return new ServiceCoverage(Set.copyOf(serviceIds));
     }
 
     public boolean isAll() { return serviceIds == null; }
     public Set<UUID> serviceIds() { return serviceIds == null ? Set.of() : serviceIds; }
 
     @Override public boolean equals(Object other) {
-        return other instanceof ServiceCoverage c && java.util.Objects.equals(serviceIds, c.serviceIds);
+        return other instanceof ServiceCoverage c && Objects.equals(serviceIds, c.serviceIds);
     }
-    @Override public int hashCode() { return java.util.Objects.hashCode(serviceIds); }
+    @Override public int hashCode() { return Objects.hashCode(serviceIds); }
 }

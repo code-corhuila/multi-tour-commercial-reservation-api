@@ -32,6 +32,8 @@ public final class DiscountRule {
         required(from, "validFrom"); required(to, "validTo");
         if (from.isAfter(to)) throw new DomainException("validFrom", "validFrom cannot be after validTo");
         validateValue(basisPoints, cents);
+        required(coverage, "serviceCoverage");
+        if (cap != null && cap <= 0) throw new DomainException("capCents", "capCents must be above zero");
         return new DiscountRule(id, tenant, name, from, to, priority, base, basisPoints, cents, coverage, cap, DiscountStatus.ACTIVE, now, now);
     }
 
