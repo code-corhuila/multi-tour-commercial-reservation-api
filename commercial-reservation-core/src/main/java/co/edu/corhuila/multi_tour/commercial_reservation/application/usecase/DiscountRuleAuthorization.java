@@ -12,4 +12,9 @@ public final class DiscountRuleAuthorization {
                 || actor.role() != DiscountRuleActor.Role.TENANT_ADMINISTRATOR)
             throw new DiscountRuleAccessDeniedException();
     }
+
+    // DP-09 default: only the Tenant Administrator reads a rule.
+    public static void requireRead(DiscountRuleActor actor) {
+        requireWrite(actor);
+    }
 }
