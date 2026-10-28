@@ -9,7 +9,16 @@ public record HighRiskData(String bloodType, String emergencyContact, String mob
         boolean informedConsentSigned) {
 
     public List<String> missingFields() {
-        return List.of();
+        var missing = new ArrayList<String>();
+        if (isBlank(bloodType)) missing.add("bloodType");
+        if (isBlank(emergencyContact)) missing.add("emergencyContact");
+        if (isBlank(mobilityRestrictions)) missing.add("mobilityRestrictions");
+        if (!informedConsentSigned) missing.add("informedConsentSigned");
+        return missing;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     // Sensitive values never reach a log through a stray toString (RN-13).

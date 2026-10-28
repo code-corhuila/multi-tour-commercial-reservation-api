@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 // Lead customer (RN-01). Only the 06-data fields: document, name, birth date or age, contact, terms.
-// TODO: emergencyInfo/consents (T-02, DP-03/DP-04), companions (T-03, DP-02), events (T-08) are not here.
+// Optional high-risk data (RN-02). TODO: companions (T-03, DP-02), events (T-08) are not here.
 public final class Customer {
     private final UUID customerId, tenantId;
     private final DocumentNumber documentNumber;
@@ -13,21 +13,23 @@ public final class Customer {
     private final ContactInfo contact;
     private final boolean termsAccepted;
     private final Instant createdAt;
+    private final HighRiskData highRiskData;
 
     private Customer(UUID id, UUID tenant, DocumentNumber document, String name, BirthDateOrAge birth,
-            ContactInfo contact, boolean terms, Instant created) {
+            ContactInfo contact, boolean terms, Instant created, HighRiskData highRisk) {
         customerId = id; tenantId = tenant; documentNumber = document; fullName = name;
-        birthDateOrAge = birth; this.contact = contact; termsAccepted = terms; createdAt = created;
-    }
-
-    public static Customer registerLead(UUID id, UUID tenant, String document, String fullName,
-            BirthDateOrAge birth, ContactInfo contact, boolean termsAccepted, Instant now, boolean highRisk,
-            HighRiskData highRiskData) {
-        return registerLead(id, tenant, document, fullName, birth, contact, termsAccepted, now);
+        birthDateOrAge = birth; this.contact = contact; termsAccepted = terms; createdAt = created; highRiskData = highRisk;
     }
 
     public static Customer registerLead(UUID id, UUID tenant, String document, String fullName,
             BirthDateOrAge birth, ContactInfo contact, boolean termsAccepted, Instant now) {
+        return registerLead(id, tenant, document, fullName, birth, contact, termsAccepted, now, false, null);
+    }
+
+    // RN-02: when the activity is high risk the extra data must be complete; each missing field is named.
+    public static Customer registerLead(UUID id, UUID tenant, String document, String fullName,
+            BirthDateOrAge birth, ContactInfo contact, boolean termsAccepted, Instant now, boolean highRisk,
+            HighRiskData highRiskData) {
         required(id, "customerId"); required(tenant, "tenantId");
         var number = DocumentNumber.of(document);
         if (fullName == null || fullName.isBlank()) throw new DomainException("fullName", "fullName is required");
@@ -35,7 +37,12 @@ public final class Customer {
         if (contact == null || !contact.isPresent()) throw new DomainException("contact", "contact is required");
         if (!termsAccepted) throw new DomainException("termsAccepted", "terms must be accepted");
         required(now, "occurredAt");
-        return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now);
+        if (highRisk) {
+            var missing = highRiskData == null
+                    ? new HighRiskData(null, null, null, false).missingFields() : highRiskData.missingFields();
+            if (!missing.isEmpty()) throw new MissingHighRiskDataException(missing);
+        }
+        return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now, highRiskData);
     }
 
     private static <T> T required(T value, String field) {
@@ -51,5 +58,5 @@ public final class Customer {
     public ContactInfo contact() { return contact; }
     public boolean termsAccepted() { return termsAccepted; }
     public Instant createdAt() { return createdAt; }
-    public HighRiskData highRiskData() { return null; }
+    public HighRiskData highRiskData() { return highRiskData; }
 }
