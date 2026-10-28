@@ -25,6 +25,10 @@ public final class InMemoryDiscountRules implements DiscountRuleRepository, Disc
         return Optional.ofNullable(rows.get(ruleId)).filter(rule -> rule.tenantId().equals(tenantId));
     }
 
+    @Override public synchronized List<DiscountRule> findByTenant(UUID tenantId) {
+        return rows.values().stream().filter(rule -> rule.tenantId().equals(tenantId)).toList();
+    }
+
     @Override public synchronized void append(DiscountRuleChanged event) { outbox.add(event); }
 
     @Override public synchronized <T> T inTransaction(Supplier<T> work) { return work.get(); }
