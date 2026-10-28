@@ -3,6 +3,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 import java.time.Instant;
 import java.util.UUID;
 
+// Lead customer (RN-01). Only the 06-data fields: document, name, birth date or age, contact, terms.
+// TODO: emergencyInfo/consents (T-02, DP-03/DP-04), companions (T-03, DP-02), events (T-08) are not here.
 public final class Customer {
     private final UUID customerId, tenantId;
     private final DocumentNumber documentNumber;
@@ -20,7 +22,19 @@ public final class Customer {
 
     public static Customer registerLead(UUID id, UUID tenant, String document, String fullName,
             BirthDateOrAge birth, ContactInfo contact, boolean termsAccepted, Instant now) {
-        return new Customer(id, tenant, DocumentNumber.of(document), fullName, birth, contact, termsAccepted, now);
+        required(id, "customerId"); required(tenant, "tenantId");
+        var number = DocumentNumber.of(document);
+        if (fullName == null || fullName.isBlank()) throw new DomainException("fullName", "fullName is required");
+        required(birth, "birthDateOrAge");
+        if (contact == null || !contact.isPresent()) throw new DomainException("contact", "contact is required");
+        if (!termsAccepted) throw new DomainException("termsAccepted", "terms must be accepted");
+        required(now, "occurredAt");
+        return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now);
+    }
+
+    private static <T> T required(T value, String field) {
+        if (value == null) throw new DomainException(field, field + " is required");
+        return value;
     }
 
     public UUID customerId() { return customerId; }
