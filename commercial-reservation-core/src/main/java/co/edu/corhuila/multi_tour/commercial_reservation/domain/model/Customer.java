@@ -45,6 +45,12 @@ public final class Customer {
         return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now, highRiskData);
     }
 
+    // Rebuilds a stored customer: its rules were checked when it was registered, so none is repeated here.
+    public static Customer restore(UUID id, UUID tenant, DocumentNumber document, String fullName,
+            BirthDateOrAge birth, ContactInfo contact, Instant createdAt, HighRiskData highRiskData) {
+        return new Customer(id, tenant, document, fullName, birth, contact, true, createdAt, highRiskData);
+    }
+
     private static <T> T required(T value, String field) {
         if (value == null) throw new DomainException(field, field + " is required");
         return value;
