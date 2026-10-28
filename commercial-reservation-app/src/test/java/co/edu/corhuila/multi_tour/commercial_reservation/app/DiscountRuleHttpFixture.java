@@ -29,6 +29,9 @@ class DiscountRuleHttpFixture {
         public Optional<DiscountRule> findByTenantAndId(UUID tenant, UUID id) {
             return Optional.ofNullable(rules.get(id)).filter(rule -> rule.tenantId().equals(tenant));
         }
+        public List<DiscountRule> findByTenant(UUID tenant) {
+            return rules.values().stream().filter(rule -> rule.tenantId().equals(tenant)).toList();
+        }
         public void append(DiscountRuleChanged event) { events.add(event); }
         public <T> T inTransaction(Supplier<T> work) { return work.get(); }
     }
