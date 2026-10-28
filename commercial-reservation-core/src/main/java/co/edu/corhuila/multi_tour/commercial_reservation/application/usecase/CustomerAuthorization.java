@@ -10,6 +10,15 @@ public final class CustomerAuthorization {
 
     private CustomerAuthorization() {}
 
+    // RN-07: authorized by the token claim "permissions", never by role. Manager, Accountant and Analyst
+    // can never hold it, so they are refused even with a forged claim (plan D-07); so is the Final Customer.
+    public static void requireSensitiveRead(CustomerActor actor) {
+        if (actor == null || actor.tenantId() == null || actor.actorId() == null
+                || (actor.role() != Role.TENANT_ADMINISTRATOR && actor.role() != Role.OPERATIONAL_COLLABORATOR)
+                || !actor.permissions().contains(SENSITIVE_DATA_PERMISSION))
+            throw new CustomerAccessDeniedException();
+    }
+
     // RBAC matrix (authentication.md): Administrator and Collaborator write.
     // TODO DP-09: the Final Customer's own routes are not decided, so they are refused here.
     public static void requireWrite(CustomerActor actor) {
