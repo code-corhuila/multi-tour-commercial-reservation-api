@@ -84,6 +84,14 @@ public final class JdbcCatalogServiceRepository implements CatalogServiceReposit
     @Override
     public CatalogPage pageByTenant(UUID tenantId, Optional<CatalogStatus> status,
             Optional<CatalogServiceType> type, int page, int limit) {
+        return pageByTenant(tenantId, status, type, Optional.empty(), page, limit);
+    }
+
+    // The term is a bound parameter and a literal "contains": strpos has no wildcard, so % and _ mean themselves.
+    // It runs in the query, so the total counts the matches and not the whole tenant (HU-COM-006 plan D-05, DP-15).
+    @Override
+    public CatalogPage pageByTenant(UUID tenantId, Optional<CatalogStatus> status,
+            Optional<CatalogServiceType> type, Optional<String> search, int page, int limit) {
         String where = " WHERE tenant_id = ?";
         List<Object> parameters = new ArrayList<>(List.of(tenantId));
         if (status.isPresent()) {
@@ -93,6 +101,10 @@ public final class JdbcCatalogServiceRepository implements CatalogServiceReposit
         if (type.isPresent()) {
             where += " AND service_type = ?";
             parameters.add(type.get().name());
+        }
+        if (search.isPresent()) {
+            where += " AND strpos(lower(commercial_name), lower(?)) > 0";
+            parameters.add(search.get());
         }
         long total = jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.catalog_service" + where,
                 Long.class, parameters.toArray());
