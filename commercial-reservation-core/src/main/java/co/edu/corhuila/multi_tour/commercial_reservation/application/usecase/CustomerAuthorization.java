@@ -19,6 +19,15 @@ public final class CustomerAuthorization {
             throw new CustomerAccessDeniedException();
     }
 
+    // RBAC matrix (authentication.md): Administrator, Collaborator, Manager and Analyst read the ordinary data;
+    // the Accountant and the Final Customer (DP-09) are refused, with or without a claim.
+    public static void requireRead(CustomerActor actor) {
+        if (actor == null || actor.tenantId() == null || actor.actorId() == null
+                || (actor.role() != Role.TENANT_ADMINISTRATOR && actor.role() != Role.OPERATIONAL_COLLABORATOR
+                && actor.role() != Role.MANAGER && actor.role() != Role.ANALYST))
+            throw new CustomerAccessDeniedException();
+    }
+
     // RBAC matrix (authentication.md): Administrator and Collaborator write.
     // TODO DP-09: the Final Customer's own routes are not decided, so they are refused here.
     public static void requireWrite(CustomerActor actor) {

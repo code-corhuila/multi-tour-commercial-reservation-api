@@ -60,7 +60,16 @@ public class Rs256Verifier {
                     names.add(role.textValue());
                 }
             }
-            return new AuthenticatedPrincipal(sub.textValue(), tenantId, names);
+            Set<String> granted = new HashSet<>();
+            JsonNode permissions = claims.path("permissions");
+            if (!permissions.isMissingNode()) {
+                require(permissions.isArray(), "permissions must be an array");
+                for (JsonNode permission : permissions) {
+                    require(permission.isTextual(), "permissions must contain strings");
+                    granted.add(permission.textValue());
+                }
+            }
+            return new AuthenticatedPrincipal(sub.textValue(), tenantId, names, granted);
         } catch (Exception failure) {
             LOG.warn("Access token rejected: {}", failure instanceof IllegalArgumentException
                     ? failure.getMessage() : failure.getClass().getSimpleName());
