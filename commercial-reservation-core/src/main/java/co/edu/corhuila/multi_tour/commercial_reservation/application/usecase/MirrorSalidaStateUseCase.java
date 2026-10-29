@@ -81,7 +81,14 @@ public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
 
     private MirrorOutcome changeVehicles(SalidaEvent.VehiclesChanged event) {
         Optional<DepartureState> row = departures.find(event.tenantId(), event.departureId());
-        Optional<CatalogService> tour = row.flatMap(state -> tour(state.tenantId(), state.serviceId()));
+        if (row.isEmpty()) {
+            return MirrorOutcome.IGNORED_UNKNOWN;
+        }
+        // A final departure keeps its capacity: the event is ignored and still marked processed (ADR-004 D4).
+        if (row.get().status() == DepartureStatus.FINALIZED || row.get().status() == DepartureStatus.CANCELLED) {
+            return MirrorOutcome.IGNORED_OUT_OF_ORDER;
+        }
+        Optional<CatalogService> tour = tour(row.get().tenantId(), row.get().serviceId());
         if (tour.isEmpty()) {
             return MirrorOutcome.IGNORED_UNKNOWN;
         }
