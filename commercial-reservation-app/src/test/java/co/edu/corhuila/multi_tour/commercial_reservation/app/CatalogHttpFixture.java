@@ -28,6 +28,7 @@ import org.springframework.transaction.support.AbstractPlatformTransactionManage
 import org.springframework.transaction.support.DefaultTransactionStatus;
 
 @TestConfiguration
+@org.springframework.context.annotation.Import({TenantStatusHttpFixture.class, TenantDirectoryHttpFixture.class})
 class CatalogHttpFixture {
     @Bean @Primary InMemoryEstablishments memoryEstablishments() { return new InMemoryEstablishments(); }
     @Bean @Primary MemoryCatalog memoryCatalog() { return new MemoryCatalog(); }

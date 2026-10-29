@@ -51,6 +51,12 @@ class HttpFoundationTest {
             return Clock.fixed(TestJwtKeys.NOW, ZoneOffset.UTC);
         }
 
+        // The status lookup is not under test here: no copy of any tenant, so every token passes.
+        @Bean @Primary
+        co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader noTenantCopy() {
+            return tenantId -> java.util.Optional.empty();
+        }
+
         @Bean
         ProbeController probeController() {
             return new ProbeController();

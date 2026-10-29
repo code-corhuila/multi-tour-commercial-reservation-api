@@ -18,7 +18,7 @@ class JwtKeyStartupTest {
             .withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class,
                     DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class,
                     DataSourceTransactionManagerAutoConfiguration.class))
-            .withUserConfiguration(CommercialReservationConfiguration.class)
+            .withUserConfiguration(CommercialReservationConfiguration.class, TenantStatusConfiguration.class)
             .withInitializer(context -> {
                 // Host credentials must not mask missing-configuration failures.
                 context.getEnvironment().getPropertySources().remove("systemEnvironment");
