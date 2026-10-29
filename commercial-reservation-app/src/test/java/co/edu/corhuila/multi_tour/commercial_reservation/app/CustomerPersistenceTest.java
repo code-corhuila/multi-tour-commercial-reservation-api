@@ -121,6 +121,28 @@ class CustomerPersistenceTest {
     }
 
     @Test
+    void theAcceptanceOfTheTermsIsStoredOnTheCustomerAndReadBack() {
+        var saved = register.register(actor(tenant), command(plainService, true));
+        var raw = jdbc.queryForMap("SELECT terms_accepted, terms_accepted_at FROM commercial_reservation.customer "
+                + "WHERE customer_id = ?", saved.customerId());
+        assertThat(raw.get("terms_accepted")).isEqualTo(true);
+        assertThat(((OffsetDateTime) raw.get("terms_accepted_at")).toInstant()).isEqualTo(NOW);
+        var found = repository.findByTenantAndId(tenant, saved.customerId()).orElseThrow();
+        assertThat(found.termsAccepted()).isTrue();
+        assertThat(found.termsAcceptedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void theStoredMomentOfTheAcceptanceWinsOverTheRegistrationMoment() {
+        var saved = register.register(actor(tenant), command(plainService, true));
+        var earlier = NOW.minusSeconds(86_400);
+        jdbc.update("UPDATE commercial_reservation.customer SET terms_accepted_at = ? WHERE customer_id = ?",
+                OffsetDateTime.ofInstant(earlier, ZoneOffset.UTC), saved.customerId());
+        assertThat(repository.findByTenantAndId(tenant, saved.customerId()).orElseThrow().termsAcceptedAt())
+                .isEqualTo(earlier);
+    }
+
+    @Test
     void anAgeAndAnOrdinaryActivityStoreNoSensitiveRow() {
         var saved = register.register(actor(tenant), new RegisterLeadCustomer.Command(plainService, DOCUMENT,
                 "Persona Ficticia Uno", null, 34, null, PHONE, true, null));
