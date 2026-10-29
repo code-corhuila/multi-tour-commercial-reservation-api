@@ -2,21 +2,23 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistenc
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AuthorizableReason;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReasonRuleViolation;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 // A reason is disabled, never deleted: the only update allowed is the status of a row of the same tenant.
-public final class JdbcAuthorizableReasonRepository implements AuthorizableReasonRepository {
+public final class JdbcAuthorizableReasonRepository implements AuthorizableReasonRepository, AuthorizableReasonTimes {
     private static final String COLUMNS = "SELECT authorizable_reason_id, tenant_id, reason, status "
             + "FROM commercial_reservation.authorizable_reason ";
     private final JdbcTemplate jdbc;
@@ -47,7 +49,7 @@ public final class JdbcAuthorizableReasonRepository implements AuthorizableReaso
                     + "(authorizable_reason_id, tenant_id, reason, status, created_at, updated_at) "
                     + "VALUES (?, ?, ?, ?, ?, ?)", reason.reasonId(), reason.tenantId(), reason.text(), status, now, now);
         } catch (DuplicateKeyException duplicate) {
-            throw new DomainException("reason", "the reason already exists");
+            throw new ReasonRuleViolation("the reason already exists");
         }
     }
 
@@ -61,6 +63,24 @@ public final class JdbcAuthorizableReasonRepository implements AuthorizableReaso
     public List<AuthorizableReason> findByTenant(UUID tenantId) {
         return jdbc.query(COLUMNS + "WHERE tenant_id = ? ORDER BY created_at, authorizable_reason_id",
                 (row, index) -> map(row), tenantId);
+    }
+
+    @Override
+    public Map<UUID, Times> timesByTenant(UUID tenantId) {
+        Map<UUID, Times> found = new HashMap<>();
+        jdbc.query("SELECT authorizable_reason_id, created_at, updated_at FROM commercial_reservation.authorizable_reason "
+                + "WHERE tenant_id = ?", row -> {
+            found.put(row.getObject("authorizable_reason_id", UUID.class), new Times(
+                    row.getObject("created_at", OffsetDateTime.class).toInstant(),
+                    row.getObject("updated_at", OffsetDateTime.class).toInstant()));
+        }, tenantId);
+        return found;
+    }
+
+    @Override
+    public void lockCatalogue(UUID tenantId) {
+        jdbc.queryForList("SELECT authorizable_reason_id FROM commercial_reservation.authorizable_reason "
+                + "WHERE tenant_id = ? ORDER BY authorizable_reason_id FOR UPDATE", UUID.class, tenantId);
     }
 
     private static AuthorizableReason map(ResultSet row) throws SQLException {
