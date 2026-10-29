@@ -6,6 +6,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Di
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingHighRiskDataException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReasonRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DiscountRuleAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.EstablishmentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
@@ -51,6 +53,9 @@ public class ErrorHandler {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
             details = missing.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
+        } else if (ex instanceof ReasonRuleViolation violation) {
+            code = ApiError.Code.BUSINESS_RULE_VIOLATION;
+            message = violation.getMessage();
         } else if (ex instanceof DomainException domain) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
@@ -74,7 +79,7 @@ public class ErrorHandler {
             message = "the request has invalid fields";
             details = List.of(new ApiError.Detail(mismatch.getName(), "has an invalid format"));
         } else if (ex instanceof CatalogServiceNotFoundException || ex instanceof AssociatedEstablishmentNotFoundException
-                || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException
+                || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException || ex instanceof AuthorizableReasonNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.
