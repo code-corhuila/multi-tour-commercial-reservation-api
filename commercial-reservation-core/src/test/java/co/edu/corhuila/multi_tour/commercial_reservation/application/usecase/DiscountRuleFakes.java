@@ -39,6 +39,9 @@ final class DiscountRuleFakes implements DiscountRuleRepository, DiscountRuleCha
     @Override public Optional<DiscountRule> findByTenantAndId(UUID tenantId, UUID ruleId) {
         return Optional.ofNullable(rules.get(tenantId + "/" + ruleId));
     }
+    @Override public List<DiscountRule> findByTenant(UUID tenantId) {
+        return rules.values().stream().filter(r -> r.tenantId().equals(tenantId)).toList();
+    }
     @Override public void append(DiscountRuleChanged event) {
         if (failOnAppend != null) throw failOnAppend;
         events.add(event);
