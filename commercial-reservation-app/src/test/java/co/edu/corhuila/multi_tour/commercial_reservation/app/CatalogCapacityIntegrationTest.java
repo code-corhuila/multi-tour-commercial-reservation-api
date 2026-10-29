@@ -90,8 +90,9 @@ class CatalogCapacityIntegrationTest {
 
     private void row(UUID tenant, UUID service, int held) {
         jdbc.update("INSERT INTO commercial_reservation.salida_capacity " +
-                "(salida_capacity_id, tenant_id, salida_id, effective_capacity, held_seats, service_id) " +
-                "VALUES (?, ?, ?, ?, ?, ?)", UUID.randomUUID(), tenant, UUID.randomUUID(), 18, held, service);
+                "(salida_capacity_id, tenant_id, salida_id, effective_capacity, held_seats, service_id, hora_inicio, status) " +
+                "VALUES (?, ?, ?, ?, ?, ?, now() + interval '30 days', 'SCHEDULED')",
+                UUID.randomUUID(), tenant, UUID.randomUUID(), 18, held, service);
     }
     private Map<String, Object> stored(UUID tenant, UUID service) {
         return jdbc.queryForMap("SELECT * FROM commercial_reservation.catalog_service WHERE tenant_id = ? AND service_id = ?",
