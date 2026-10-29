@@ -2,14 +2,17 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CreateReservationCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationQuote;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantRef;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantDirectory;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Companion;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.HighRiskData;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingReservationDataException;
@@ -21,11 +24,13 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 // The core of the creation (plan D-06): every check runs before the only write, so a refusal stores nothing.
-// Still out of this class: the group (T-05 with HU-COM-005), the tenant status (DP-13), the transaction and the outbox (T-08).
+// The tenant must be active (RN-16) and the group is checked as one (RN-08). Still out: the transaction and the outbox (T-08).
 public class CreateReservationUseCase implements CreateReservation {
 
+    private final TenantDirectory tenants;
     private final CustomerRepository customers;
     private final CatalogServiceRepository catalog;
     private final ReservableDeparture departures;
@@ -35,9 +40,10 @@ public class CreateReservationUseCase implements CreateReservation {
     private final IdGenerator ids;
     private final Clock clock;
 
-    public CreateReservationUseCase(CustomerRepository customers, CatalogServiceRepository catalog, ReservableDeparture departures,
+    public CreateReservationUseCase(TenantDirectory tenants, CustomerRepository customers, CatalogServiceRepository catalog, ReservableDeparture departures,
             ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
             Clock clock) {
+        this.tenants = tenants;
         this.customers = customers;
         this.catalog = catalog;
         this.departures = departures;
@@ -51,6 +57,7 @@ public class CreateReservationUseCase implements CreateReservation {
     @Override
     public Reservation create(CreateReservationCommand command) {
         requireMandatoryData(command);
+        requireActiveTenant(command.tenantId());
         PaymentType type = PaymentType.fromCode(command.paymentType());
         PaymentMethod method = PaymentMethod.fromCode(command.paymentMethod());
         Customer lead = customers.findByTenantAndId(command.tenantId(), command.customerId())
@@ -58,6 +65,7 @@ public class CreateReservationUseCase implements CreateReservation {
                 .orElseThrow(() -> new CustomerNotFoundException(command.customerId()));
         CatalogService tour = CatalogLookup.require(catalog, command.tenantId(), command.serviceId());
         requireDataTheTourNeeds(lead, tour);
+        requireValidGroup(lead, tour, command.companions());
         departures.require(command.tenantId(), command.departureId(), command.serviceId(), command.people());
         if (!options.isEnabled(command.tenantId(), command.serviceId(), type, method)) {
             throw new BusinessRuleViolation("the payment type or medium is not enabled");
@@ -66,7 +74,7 @@ public class CreateReservationUseCase implements CreateReservation {
                 LocalDate.now(clock));
         Reservation reservation = Reservation.create(ids.newId(), command.tenantId(), lead.customerId(), command.departureId(),
                 command.actorId(), command.people(), quote.service(), quote.projectedValue(), quote.finalValue(),
-                quote.discounts(), type, method, Instant.now(clock));
+                quote.discounts(), type, method, Instant.now(clock), command.companions());
         reservations.save(reservation);
         return reservation;
     }
@@ -89,5 +97,27 @@ public class CreateReservationUseCase implements CreateReservation {
         List<String> missing = lead.highRiskData() == null ? new HighRiskData(null, null, null, false).missingFields()
                 : lead.highRiskData().missingFields();
         if (!missing.isEmpty()) throw new IncompleteLeadCustomerException(missing);
+    }
+
+    // AC-07.20 (RN-16): an inactive or unknown tenant creates nothing; an unknown one is refused too, never assumed active.
+    private void requireActiveTenant(UUID tenantId) {
+        boolean active = tenantId != null && tenants.resolve(tenantId.toString())
+                .filter(found -> tenantId.equals(found.tenantId())).map(TenantRef::active).orElse(false);
+        if (!active) throw new BusinessRuleViolation("the tenant is not active");
+    }
+
+    // AC-07.11 (RN-08): no document twice, the lead's included and compared normalized; the extra data of a high-risk tour.
+    private static void requireValidGroup(Customer lead, CatalogService tour, List<Companion> companions) {
+        for (int i = 0; i < companions.size(); i++) {
+            Companion companion = companions.get(i);
+            if (companion.documentNumber().equals(lead.documentNumber())) {
+                throw new BusinessRuleViolation("a document is already in the group");
+            }
+            if (tour.terms().highRisk()) {
+                List<String> missing = companion.highRiskData() == null
+                        ? new HighRiskData(null, null, null, false).missingFields() : companion.highRiskData().missingFields();
+                if (!missing.isEmpty()) throw new IncompleteCompanionException(i + 1, missing);
+            }
+        }
     }
 }
