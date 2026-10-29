@@ -2,6 +2,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AssociatedEstablishmentNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DiscountRuleAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.EstablishmentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
@@ -64,12 +66,13 @@ public class ErrorHandler {
             message = "the request has invalid fields";
             details = List.of(new ApiError.Detail(mismatch.getName(), "has an invalid format"));
         } else if (ex instanceof CatalogServiceNotFoundException || ex instanceof AssociatedEstablishmentNotFoundException
+                || ex instanceof DiscountRuleNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.
             code = ApiError.Code.NOT_FOUND;
             message = "resource not found";
-        } else if (ex instanceof EstablishmentAccessDeniedException
+        } else if (ex instanceof EstablishmentAccessDeniedException || ex instanceof DiscountRuleAccessDeniedException
                 || ex instanceof ResponseStatusException status && status.getStatusCode().value() == 403) {
             code = ApiError.Code.FORBIDDEN;
             message = "access is forbidden";
