@@ -37,11 +37,17 @@ class PublicToursTest extends PublicOfferFixture {
     }
 
     @Test
-    void anIdentifierThatIsNotKebabCaseOrUuidIsRefusedBeforeAnyLookup() {
-        assertThatThrownBy(() -> page("Not Valid!")).isInstanceOf(PublicOfferNotFoundException.class);
-        assertThatThrownBy(() -> page("a".repeat(65))).isInstanceOf(PublicOfferNotFoundException.class);
-        assertThatThrownBy(() -> page(null)).isInstanceOf(PublicOfferNotFoundException.class);
+    void anIdentifierThatIsNotKebabCaseOrUuidIsAValidationErrorBeforeAnyLookup() {
+        for (String malformed : new String[] {"Not Valid!", "a".repeat(65), null}) {
+            assertThatThrownBy(() -> page(malformed)).isInstanceOf(DomainException.class)
+                    .extracting(error -> ((DomainException) error).field()).isEqualTo("identifier");
+        }
         assertThat(directory.lookups).isZero();
+    }
+
+    @Test
+    void aWellFormedIdentifierOfTheMaximumLengthStaysNotFound() {
+        assertThatThrownBy(() -> page("a".repeat(64))).isInstanceOf(PublicOfferNotFoundException.class);
     }
 
     @Test

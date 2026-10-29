@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PublicEstablishment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PublicOfferNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AssociatedEstablishment;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentType;
 import java.time.Instant;
 import java.util.Optional;
@@ -61,6 +62,15 @@ class PublicEstablishmentsTest extends PublicOfferFixture {
                 .isInstanceOf(PublicOfferNotFoundException.class);
         assertThatThrownBy(() -> get.get(INACTIVE_IDENTIFIER, new UUID(5, 1)))
                 .isInstanceOf(PublicOfferNotFoundException.class);
+    }
+
+    @Test
+    void aMalformedIdentifierIsAValidationErrorOnTheListAndOnTheRead() {
+        assertThatThrownBy(() -> list.list("Not Valid!", Optional.empty(), 1, 20)).isInstanceOf(DomainException.class)
+                .extracting(error -> ((DomainException) error).field()).isEqualTo("identifier");
+        assertThatThrownBy(() -> get.get("a".repeat(65), new UUID(5, 1))).isInstanceOf(DomainException.class)
+                .extracting(error -> ((DomainException) error).field()).isEqualTo("identifier");
+        assertThat(directory.lookups).isZero();
     }
 
     @Test
