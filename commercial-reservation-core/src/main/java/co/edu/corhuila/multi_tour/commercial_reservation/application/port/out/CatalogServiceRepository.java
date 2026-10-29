@@ -21,4 +21,15 @@ public interface CatalogServiceRepository {
 
     CatalogPage pageByTenant(UUID tenantId, Optional<CatalogStatus> status,
             Optional<CatalogServiceType> type, int page, int limit);
+
+    // Same page with an optional case-insensitive "contains" on the commercial name (HU-COM-006 plan D-05, PROPOSED).
+    // The search must run in the query: filtering after the page would break the counts. Until the JDBC adapter
+    // overrides this, a search is refused instead of silently ignored.
+    default CatalogPage pageByTenant(UUID tenantId, Optional<CatalogStatus> status,
+            Optional<CatalogServiceType> type, Optional<String> search, int page, int limit) {
+        if (search.isPresent()) {
+            throw new UnsupportedOperationException("name search needs the adapter override");
+        }
+        return pageByTenant(tenantId, status, type, page, limit);
+    }
 }
