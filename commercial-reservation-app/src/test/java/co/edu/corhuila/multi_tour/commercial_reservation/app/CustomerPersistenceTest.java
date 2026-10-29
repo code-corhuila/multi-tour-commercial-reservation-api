@@ -107,6 +107,20 @@ class CustomerPersistenceTest {
     }
 
     @Test
+    void theOrdinaryReadNeverLoadsNorDecryptsTheRiskData() {
+        var saved = register.register(actor(tenant), command(highRiskService, true));
+        jdbc.update("UPDATE commercial_reservation.customer_sensitive_data SET emergency_info = "
+                + "'{\"envelope\":\"v1:test1:not-a-real-envelope\"}'::jsonb WHERE customer_id = ?", saved.customerId());
+        var found = repository.findOrdinary(tenant, saved.customerId()).orElseThrow();
+        assertThat(found.highRiskData()).isNull();
+        assertThat(found.documentNumber().value()).isEqualTo(DOCUMENT);
+        assertThat(found.contact().email()).isEqualTo(EMAIL);
+        assertThat(repository.findOrdinary(otherTenant, saved.customerId())).isEmpty();
+        assertThatThrownBy(() -> repository.findByTenantAndId(tenant, saved.customerId()))
+                .isInstanceOf(FieldCipherException.class);
+    }
+
+    @Test
     void anAgeAndAnOrdinaryActivityStoreNoSensitiveRow() {
         var saved = register.register(actor(tenant), new RegisterLeadCustomer.Command(plainService, DOCUMENT,
                 "Persona Ficticia Uno", null, 34, null, PHONE, true, null));
