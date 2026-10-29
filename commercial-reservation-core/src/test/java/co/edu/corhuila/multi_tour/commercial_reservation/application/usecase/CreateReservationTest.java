@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CreateReservationCommand;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantRef;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureNotFoundException;
@@ -14,6 +15,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogSer
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CommercialTerms;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Companion;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DocumentNumber;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
@@ -42,7 +45,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 // T-05 of HU-COM-007, the core part: RN-01, RN-05 to RN-07, RN-14, RN-17; AC-07.1, AC-07.2, AC-07.8, AC-07.9, AC-07.21.
-// The group, the tenant status, the transaction and the outbox wait for their own tasks.
+// Also the tenant status (RN-16, AC-07.20) and the group (RN-08, AC-07.11). The transaction and the outbox wait for T-08.
 class CreateReservationTest {
 
     private static final UUID TENANT = new UUID(7, 0xe1), OTHER_TENANT = new UUID(7, 0xe2), ACTOR = new UUID(7, 0xe3),
@@ -57,6 +60,7 @@ class CreateReservationTest {
     private final DiscountRuleFakes rules = new DiscountRuleFakes();
     private final DepartureFakes departures = new DepartureFakes();
     private boolean optionsEnabled = true;
+    private final Map<String, TenantRef> tenants = new HashMap<>(Map.of(TENANT.toString(), new TenantRef(TENANT, true)));
 
     private final CustomerRepository customerRepository = new CustomerRepository() {
         @Override public void save(Customer customer) { customers.put(customer.customerId(), customer); }
@@ -67,7 +71,7 @@ class CreateReservationTest {
     private final ReservationRepository reservations = stored::add;
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     private final EvaluateApplicableDiscountRulesUseCase evaluation = new EvaluateApplicableDiscountRulesUseCase(rules);
-    private final CreateReservationUseCase create = new CreateReservationUseCase(customerRepository, catalog,
+    private final CreateReservationUseCase create = new CreateReservationUseCase(identifier -> Optional.ofNullable(tenants.get(identifier)), customerRepository, catalog,
             new ReservableDeparture(departures, clock),
             new ReservationPricing(new QuoteDiscountBreakdownUseCase(evaluation), evaluation, (t, s, d) -> Optional.of(new Cents(20_000))),
             (tenant, service, type, method) -> optionsEnabled, reservations, () -> RESERVATION, clock);
@@ -176,5 +180,110 @@ class CreateReservationTest {
         assertThat(create.create(command(CUSTOMER, RISKY_TOUR, RISKY_DEPARTURE, 1, "FULL_PAYMENT", "CASH")).finalValue())
                 .isEqualTo(new Cents(135_000));
         assertThat(stored).hasSize(1);
+    }
+
+    private static Companion companion(String name, String document, HighRiskData data) {
+        return new Companion(name, DocumentNumber.of(document), BirthDateOrAge.ofAge(25), data);
+    }
+
+    private static CreateReservationCommand withGroup(UUID tour, UUID departure, int people, Companion... group) {
+        return new CreateReservationCommand(TENANT, ACTOR, CUSTOMER, tour, departure, people, "DEPOSIT", "CASH", List.of(group));
+    }
+
+    private void leadWithTheExtraData() {
+        HighRiskData data = new HighRiskData("O+", "Ana 3001112233", "Ninguna", true);
+        customers.put(CUSTOMER, Customer.restore(CUSTOMER, TENANT, customers.get(CUSTOMER).documentNumber(), "Lead Person",
+                BirthDateOrAge.ofAge(30), new ContactInfo("lead@example.com", "3000000000"), CREATED, CREATED, data));
+    }
+
+    @Test
+    void anInactiveTenantCannotCreateAReservationAndNothingIsStored() {
+        tenants.put(TENANT.toString(), new TenantRef(TENANT, false));
+
+        assertThatThrownBy(() -> create.create(valid())).isInstanceOf(BusinessRuleViolation.class).hasMessageContaining("tenant");
+        assertThat(stored).isEmpty();
+        assertThat(departures.journal).isEmpty();
+    }
+
+    @Test
+    void aTenantTheDirectoryDoesNotKnowIsRefusedLikeAnInactiveOne() {
+        tenants.clear();
+
+        assertThatThrownBy(() -> create.create(valid())).isInstanceOf(BusinessRuleViolation.class);
+        assertThat(stored).isEmpty();
+    }
+
+    @Test
+    void theTenantIsCheckedBeforeTheCustomerIsLooked() {
+        tenants.put(TENANT.toString(), new TenantRef(TENANT, false));
+
+        assertThatThrownBy(() -> create.create(command(new UUID(7, 0xf4), TOUR, DEPARTURE, 1, "DEPOSIT", "CASH")))
+                .isInstanceOf(BusinessRuleViolation.class);
+    }
+
+    @Test
+    void theCompanionsAreStoredAsBelongingToTheReservation() {
+        Companion first = companion("Ana Gomez", "cc 111", null), second = companion("Luis Perez", "CC222", null);
+
+        Reservation reservation = create.create(withGroup(TOUR, DEPARTURE, 3, first, second));
+
+        assertThat(reservation.companions()).containsExactly(first, second);
+        assertThat(stored).containsExactly(reservation);
+    }
+
+    @Test
+    void aReservationWithOnlyTheLeadHasNoCompanions() {
+        assertThat(create.create(valid()).companions()).isEmpty();
+    }
+
+    @Test
+    void aCompanionWithTheDocumentOfTheLeadTypedDifferentlyRejectsTheCreation() {
+        assertThatThrownBy(() -> create.create(withGroup(TOUR, DEPARTURE, 2, companion("Ana Gomez", "  cc12345 ", null))))
+                .isInstanceOf(BusinessRuleViolation.class).hasMessageContaining("document");
+        assertThat(stored).isEmpty();
+    }
+
+    @Test
+    void twoCompanionsWithTheSameDocumentRejectTheCreation() {
+        assertThatThrownBy(() -> create.create(withGroup(TOUR, DEPARTURE, 3, companion("Ana Gomez", "CC9", null),
+                companion("Luis Perez", " cc9", null)))).isInstanceOf(BusinessRuleViolation.class);
+        assertThat(stored).isEmpty();
+    }
+
+    @Test
+    void moreCompanionsThanThePeopleLeftAfterTheLeadRejectTheCreation() {
+        assertThatThrownBy(() -> create.create(withGroup(TOUR, DEPARTURE, 2, companion("Ana Gomez", "CC1", null),
+                companion("Luis Perez", "CC2", null)))).isInstanceOf(DomainException.class);
+        assertThat(stored).isEmpty();
+    }
+
+    @Test
+    void aGroupLargerThanTheSeatsLeftIsRefusedAndNothingIsStored() {
+        assertThatThrownBy(() -> create.create(withGroup(TOUR, DEPARTURE, 4, companion("Ana Gomez", "CC1", null),
+                companion("Luis Perez", "CC2", null), companion("Eva Ruiz", "CC3", null))))
+                .isInstanceOf(BusinessRuleViolation.class).hasMessageContaining("3 seats");
+        assertThat(stored).isEmpty();
+    }
+
+    @Test
+    void aHighRiskTourRefusesACompanionWithoutTheExtraDataNamingItsPositionAndFields() {
+        leadWithTheExtraData();
+
+        assertThatThrownBy(() -> create.create(withGroup(RISKY_TOUR, RISKY_DEPARTURE, 2,
+                companion("Ana Gomez", "CC1", new HighRiskData("A+", null, "Ninguna", false)))))
+                .isInstanceOfSatisfying(IncompleteCompanionException.class, e -> {
+                    assertThat(e.position()).isEqualTo(1);
+                    assertThat(e.fields()).containsExactly("emergencyContact", "informedConsentSigned");
+                });
+        assertThat(stored).isEmpty();
+    }
+
+    @Test
+    void aHighRiskTourAcceptsACompanionWithTheExtraData() {
+        leadWithTheExtraData();
+        HighRiskData data = new HighRiskData("O+", "Ana 3001112233", "Ninguna", true);
+
+        assertThat(create.create(withGroup(RISKY_TOUR, RISKY_DEPARTURE, 2, companion("Ana Gomez", "CC1", data))).companions())
+                .hasSize(1);
     }
 }
