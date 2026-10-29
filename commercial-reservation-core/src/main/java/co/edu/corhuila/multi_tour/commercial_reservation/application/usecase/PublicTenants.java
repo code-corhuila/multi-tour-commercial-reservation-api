@@ -7,8 +7,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainExce
 import java.util.UUID;
 import java.util.regex.Pattern;
 
-// The rules every public read shares: the identifier is checked before any query (plan D-03) and an unknown or
-// inactive tenant is the same not found as a missing item (RN-07, DP-02).
+// The rules every public read shares: a malformed identifier is a validation error checked before any query (plan D-03,
+// ADR-004 D5); a well-formed but unknown or inactive tenant is the same not found as a missing item (RN-07, DP-02).
 final class PublicTenants {
 
     // Lowercase kebab-case (ADR-004 D5) or the interim UUID; 64 characters is PROPOSED, no document gives a maximum.
@@ -20,7 +20,7 @@ final class PublicTenants {
 
     static UUID require(TenantDirectory directory, String identifier) {
         if (identifier == null || identifier.length() > MAX_IDENTIFIER_LENGTH || !IDENTIFIER.matcher(identifier).matches()) {
-            throw new PublicOfferNotFoundException();
+            throw new DomainException("identifier", "identifier must be lowercase kebab-case or a UUID, up to 64 characters");
         }
         return directory.resolve(identifier).filter(TenantRef::active).map(TenantRef::tenantId)
                 .orElseThrow(PublicOfferNotFoundException::new);
