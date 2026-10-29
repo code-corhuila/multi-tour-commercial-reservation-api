@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FieldCipher;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge;
@@ -24,7 +25,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 // Sensitive values are encrypted here, before they reach the SQL, and decrypted only when a row is read. The
 // associated data binds each envelope to its tenant, customer and column, so it cannot be moved to another row.
 // It writes inside the transaction of the caller (JdbcCustomerTransaction) and holds no value in any message.
-public final class JdbcCustomerRepository implements CustomerRepository {
+public final class JdbcCustomerRepository implements CustomerRepository, CustomerProfileReader {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String STATUS = "ACTIVE"; // DP-D5-6 placeholder: the status catalogue is not decided
     private final JdbcTemplate jdbc;
@@ -69,6 +70,20 @@ public final class JdbcCustomerRepository implements CustomerRepository {
                             row.getObject("created_at", OffsetDateTime.class).toInstant(),
                             emergency == null ? null : risk(open(emergency, tenantId, customerId, "emergency_info")));
                 }, tenantId, customerId).stream().findFirst();
+    }
+
+    // The general read: the sensitive table is neither joined nor decrypted, so no risk data can leave through it.
+    @Override
+    public Optional<Customer> findOrdinary(UUID tenantId, UUID customerId) {
+        return jdbc.query("SELECT full_name, created_at, document_number, birth_date_or_age, "
+                + "contact_info ->> 'envelope' AS contact_envelope FROM commercial_reservation.customer "
+                + "WHERE tenant_id = ? AND customer_id = ?", (row, index) -> Customer.restore(customerId, tenantId,
+                        DocumentNumber.of(open(row.getString("document_number"), tenantId, customerId, "document_number")),
+                        row.getString("full_name"),
+                        birth(open(row.getString("birth_date_or_age"), tenantId, customerId, "birth_date_or_age")),
+                        contact(open(row.getString("contact_envelope"), tenantId, customerId, "contact_info")),
+                        row.getObject("created_at", OffsetDateTime.class).toInstant(), null),
+                tenantId, customerId).stream().findFirst();
     }
 
     private String seal(String plain, UUID tenant, UUID customer, String column) {
