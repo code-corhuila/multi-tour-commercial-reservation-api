@@ -176,15 +176,54 @@ class MirrorSalidaStateTest extends PublicOfferFixture {
     }
 
     @Test
-    void aVehicleEventDoesNotChangeTheStatusAndAFinalDepartureKeepsItsCapacity() {
+    void aVehicleEventDoesNotChangeTheStatus() {
         CatalogService tour = plantTourWith(TENANT, "Canyon", 100_000, 18, true);
         scheduled(tour);
-        mirror.apply(new SalidaEvent.Finalized(event(), TENANT, DEPARTURE));
+        mirror.apply(new SalidaEvent.ExecutionStarted(event(), TENANT, DEPARTURE));
 
         vehicles(12);
 
-        assertThat(row().status()).isEqualTo(DepartureStatus.FINALIZED);
+        assertThat(row().status()).isEqualTo(DepartureStatus.IN_EXECUTION);
         assertThat(row().seats().effectiveCapacity()).isEqualTo(12);
+    }
+
+    @Test
+    void aVehicleEventForAFinalizedOrCancelledDepartureIsIgnoredButMarkedProcessed() {
+        CatalogService tour = plantTourWith(TENANT, "Canyon", 100_000, 18, true);
+        scheduled(tour);
+        vehicles(12);
+        mirror.apply(new SalidaEvent.Finalized(event(), TENANT, DEPARTURE));
+        assertVehiclesAreIgnored(12);
+
+        store.rows.clear();
+        scheduled(tour);
+        vehicles(10);
+        mirror.apply(new SalidaEvent.Cancelled(event(), TENANT, DEPARTURE));
+        assertVehiclesAreIgnored(10);
+    }
+
+    private void assertVehiclesAreIgnored(int keptCapacity) {
+        UUID late = event();
+        store.journal.clear();
+
+        var outcome = mirror.apply(new SalidaEvent.VehiclesChanged(late, TENANT, DEPARTURE, 5));
+
+        assertThat(outcome).isEqualTo(MirrorOutcome.IGNORED_OUT_OF_ORDER);
+        assertThat(row().seats().effectiveCapacity()).isEqualTo(keptCapacity);
+        assertThat(store.journal).noneMatch(entry -> entry.startsWith("save"));
+        assertThat(store.processed).contains(late);
+        assertThat(mirror.apply(new SalidaEvent.VehiclesChanged(late, TENANT, DEPARTURE, 5)))
+                .isEqualTo(MirrorOutcome.DUPLICATE);
+    }
+
+    @Test
+    void aVehicleEventForADepartureWithNoRowYetIsUnknownAndStaysUnmarked() {
+        UUID early = event();
+
+        var outcome = mirror.apply(new SalidaEvent.VehiclesChanged(early, TENANT, DEPARTURE, 5));
+
+        assertThat(outcome).isEqualTo(MirrorOutcome.IGNORED_UNKNOWN);
+        assertThat(store.processed).doesNotContain(early);
     }
 
     private void vehicles(int total) {
