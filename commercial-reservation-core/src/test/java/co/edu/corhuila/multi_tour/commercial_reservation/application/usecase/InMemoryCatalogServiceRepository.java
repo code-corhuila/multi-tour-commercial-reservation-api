@@ -52,6 +52,15 @@ class InMemoryCatalogServiceRepository implements CatalogServiceRepository {
         return new CatalogPage(matching.stream().skip((page - 1L) * limit).limit(limit).toList(), matching.size());
     }
 
+    @Override
+    public CatalogPage pageByTenant(UUID tenantId, Optional<CatalogStatus> status,
+            Optional<CatalogServiceType> type, Optional<String> search, int page, int limit) {
+        var matching = pageByTenant(tenantId, status, type, 1, Integer.MAX_VALUE).items().stream()
+                .filter(service -> search.isEmpty()
+                        || service.commercialName().toLowerCase().contains(search.get().toLowerCase())).toList();
+        return new CatalogPage(matching.stream().skip((page - 1L) * limit).limit(limit).toList(), matching.size());
+    }
+
     List<CatalogServiceEvent> outbox() {
         return List.copyOf(outbox);
     }
