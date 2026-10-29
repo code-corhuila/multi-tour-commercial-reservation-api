@@ -56,7 +56,7 @@ final class CustomerFakes implements CustomerRepository, CustomerProfileReader, 
         profileReads++;
         return Optional.ofNullable(customers.get(tenantId + "/" + customerId)).map(found -> Customer.restore(
                 found.customerId(), found.tenantId(), found.documentNumber(), found.fullName(),
-                found.birthDateOrAge(), found.contact(), found.createdAt(), null));
+                found.birthDateOrAge(), found.contact(), found.createdAt(), found.termsAcceptedAt(), null));
     }
     @Override public void append(CustomerRegistered event) {
         if (failOnAppend != null) throw failOnAppend;
