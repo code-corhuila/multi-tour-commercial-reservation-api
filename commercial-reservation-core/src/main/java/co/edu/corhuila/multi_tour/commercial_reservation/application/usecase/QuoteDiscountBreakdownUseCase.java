@@ -35,7 +35,7 @@ public class QuoteDiscountBreakdownUseCase implements QuoteDiscountBreakdown {
             // Never above the rule's own cap and never below zero for the running subtotal.
             long amount = Math.min(Math.min(rawAmount(rule, base), capOf(rule)), subtotal);
             subtotal -= amount;
-            lines.add(new BreakdownLine(lines.size() + 1, rule.name(), rule.calculationBase(), base, new Cents(amount), new Cents(subtotal)));
+            lines.add(new BreakdownLine(lines.size() + 1, rule.ruleId(), rule.name(), rule.calculationBase(), base, new Cents(amount), new Cents(subtotal)));
         }
         return new DiscountBreakdown(baseValue, lines, new Cents(subtotal), new Cents(baseValue.amount() - subtotal),
                 applicable.tiedPriorities());
