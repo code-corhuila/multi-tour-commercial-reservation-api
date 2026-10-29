@@ -94,7 +94,8 @@ public class ErrorHandler {
             LoggerFactory.getLogger(ErrorHandler.class).error("Unexpected request failure, traceId={}",
                     request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE), ex);
         }
-        int status = ex instanceof EstablishmentImageContent.Rejected image ? image.status : code.status();
+        int status = ex instanceof EstablishmentImageContent.Rejected image ? image.status
+                : ex instanceof RejectedRequest rejected ? rejected.status() : code.status();
         if (ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException) status = 413;
         return ResponseEntity.status(status).body(errors.body(request, code, message, details));
     }
