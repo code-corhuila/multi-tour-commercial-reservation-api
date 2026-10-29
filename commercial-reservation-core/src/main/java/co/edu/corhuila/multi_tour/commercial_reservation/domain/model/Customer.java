@@ -12,13 +12,14 @@ public final class Customer {
     private final BirthDateOrAge birthDateOrAge;
     private final ContactInfo contact;
     private final boolean termsAccepted;
-    private final Instant createdAt;
+    private final Instant createdAt, termsAcceptedAt;
     private final HighRiskData highRiskData;
 
     private Customer(UUID id, UUID tenant, DocumentNumber document, String name, BirthDateOrAge birth,
-            ContactInfo contact, boolean terms, Instant created, HighRiskData highRisk) {
+            ContactInfo contact, boolean terms, Instant created, Instant termsAt, HighRiskData highRisk) {
         customerId = id; tenantId = tenant; documentNumber = document; fullName = name;
-        birthDateOrAge = birth; this.contact = contact; termsAccepted = terms; createdAt = created; highRiskData = highRisk;
+        birthDateOrAge = birth; this.contact = contact; termsAccepted = terms; createdAt = created; termsAcceptedAt = termsAt;
+        highRiskData = highRisk;
     }
 
     public static Customer registerLead(UUID id, UUID tenant, String document, String fullName,
@@ -42,13 +43,15 @@ public final class Customer {
                     ? new HighRiskData(null, null, null, false).missingFields() : highRiskData.missingFields();
             if (!missing.isEmpty()) throw new MissingHighRiskDataException(missing);
         }
-        return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now, highRiskData);
+        return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now, now, highRiskData);
     }
 
-    // Rebuilds a stored customer: its rules were checked when it was registered, so none is repeated here.
+    // Rebuilds a stored customer: its rules were checked when it was registered, so none is repeated here. The
+    // terms are always accepted (the engine refuses a customer that did not); the moment is the stored one.
     public static Customer restore(UUID id, UUID tenant, DocumentNumber document, String fullName,
-            BirthDateOrAge birth, ContactInfo contact, Instant createdAt, HighRiskData highRiskData) {
-        return new Customer(id, tenant, document, fullName, birth, contact, true, createdAt, highRiskData);
+            BirthDateOrAge birth, ContactInfo contact, Instant createdAt, Instant termsAcceptedAt, HighRiskData highRiskData) {
+        return new Customer(id, tenant, document, fullName, birth, contact, true, createdAt, termsAcceptedAt,
+                highRiskData);
     }
 
     private static <T> T required(T value, String field) {
@@ -64,5 +67,6 @@ public final class Customer {
     public ContactInfo contact() { return contact; }
     public boolean termsAccepted() { return termsAccepted; }
     public Instant createdAt() { return createdAt; }
+    public Instant termsAcceptedAt() { return termsAcceptedAt; }
     public HighRiskData highRiskData() { return highRiskData; }
 }

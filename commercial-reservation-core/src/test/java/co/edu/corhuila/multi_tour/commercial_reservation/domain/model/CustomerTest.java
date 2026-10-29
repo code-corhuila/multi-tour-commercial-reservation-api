@@ -33,6 +33,18 @@ class CustomerTest {
         assertThat(lead.contact()).isEqualTo(CONTACT);
         assertThat(lead.termsAccepted()).isTrue();
         assertThat(lead.createdAt()).isEqualTo(NOW);
+        assertThat(lead.termsAcceptedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void aRestoredCustomerKeepsTheMomentItAcceptedTheTerms() {
+        var accepted = NOW.minusSeconds(3600);
+        var restored = Customer.restore(ID, TENANT, DocumentNumber.of("CC-123AB"), "Ana Perez", BIRTH, CONTACT,
+                NOW, accepted, null);
+
+        assertThat(restored.termsAccepted()).isTrue();
+        assertThat(restored.termsAcceptedAt()).isEqualTo(accepted);
+        assertThat(restored.createdAt()).isEqualTo(NOW);
     }
 
     @Test

@@ -115,9 +115,32 @@ class CustomerPersistenceTest {
         assertThat(found.highRiskData()).isNull();
         assertThat(found.documentNumber().value()).isEqualTo(DOCUMENT);
         assertThat(found.contact().email()).isEqualTo(EMAIL);
+        assertThat(found.termsAcceptedAt()).isEqualTo(NOW);
         assertThat(repository.findOrdinary(otherTenant, saved.customerId())).isEmpty();
         assertThatThrownBy(() -> repository.findByTenantAndId(tenant, saved.customerId()))
                 .isInstanceOf(FieldCipherException.class);
+    }
+
+    @Test
+    void theAcceptanceOfTheTermsIsStoredOnTheCustomerAndReadBack() {
+        var saved = register.register(actor(tenant), command(plainService, true));
+        assertThat(jdbc.queryForObject("SELECT terms_accepted FROM commercial_reservation.customer "
+                + "WHERE customer_id = ?", Boolean.class, saved.customerId())).isTrue();
+        assertThat(jdbc.queryForObject("SELECT terms_accepted_at FROM commercial_reservation.customer "
+                + "WHERE customer_id = ?", OffsetDateTime.class, saved.customerId()).toInstant()).isEqualTo(NOW);
+        var found = repository.findByTenantAndId(tenant, saved.customerId()).orElseThrow();
+        assertThat(found.termsAccepted()).isTrue();
+        assertThat(found.termsAcceptedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void theStoredMomentOfTheAcceptanceWinsOverTheRegistrationMoment() {
+        var saved = register.register(actor(tenant), command(plainService, true));
+        var earlier = NOW.minusSeconds(86_400);
+        jdbc.update("UPDATE commercial_reservation.customer SET terms_accepted_at = ? WHERE customer_id = ?",
+                OffsetDateTime.ofInstant(earlier, ZoneOffset.UTC), saved.customerId());
+        assertThat(repository.findByTenantAndId(tenant, saved.customerId()).orElseThrow().termsAcceptedAt())
+                .isEqualTo(earlier);
     }
 
     @Test

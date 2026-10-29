@@ -42,11 +42,13 @@ public final class JdbcCustomerRepository implements CustomerRepository, Custome
         UUID tenant = customer.tenantId();
         UUID id = customer.customerId();
         jdbc.update("INSERT INTO commercial_reservation.customer (customer_id, tenant_id, full_name, created_at, "
-                + "document_number, birth_date_or_age, contact_info, status) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?)",
+                + "document_number, birth_date_or_age, contact_info, status, terms_accepted, terms_accepted_at) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)",
                 id, tenant, customer.fullName(), timestamp(customer.createdAt()),
                 seal(customer.documentNumber().value(), tenant, id, "document_number"),
                 seal(birth(customer.birthDateOrAge()), tenant, id, "birth_date_or_age"),
-                envelopeJson(seal(contact(customer.contact()), tenant, id, "contact_info")), STATUS);
+                envelopeJson(seal(contact(customer.contact()), tenant, id, "contact_info")), STATUS,
+                customer.termsAccepted(), timestamp(customer.termsAcceptedAt()));
         if (customer.highRiskData() != null) {
             jdbc.update("INSERT INTO commercial_reservation.customer_sensitive_data (customer_id, tenant_id, "
                     + "emergency_info) VALUES (?, ?, ?::jsonb)", id, tenant,
@@ -56,7 +58,7 @@ public final class JdbcCustomerRepository implements CustomerRepository, Custome
 
     @Override
     public Optional<Customer> findByTenantAndId(UUID tenantId, UUID customerId) {
-        return jdbc.query("SELECT c.full_name, c.created_at, c.document_number, c.birth_date_or_age, "
+        return jdbc.query("SELECT c.full_name, c.created_at, c.terms_accepted_at, c.document_number, c.birth_date_or_age, "
                 + "c.contact_info ->> 'envelope' AS contact_envelope, s.emergency_info ->> 'envelope' AS emergency_envelope "
                 + "FROM commercial_reservation.customer c LEFT JOIN commercial_reservation.customer_sensitive_data s "
                 + "ON s.tenant_id = c.tenant_id AND s.customer_id = c.customer_id "
@@ -68,6 +70,7 @@ public final class JdbcCustomerRepository implements CustomerRepository, Custome
                             birth(open(row.getString("birth_date_or_age"), tenantId, customerId, "birth_date_or_age")),
                             contact(open(row.getString("contact_envelope"), tenantId, customerId, "contact_info")),
                             row.getObject("created_at", OffsetDateTime.class).toInstant(),
+                            row.getObject("terms_accepted_at", OffsetDateTime.class).toInstant(),
                             emergency == null ? null : risk(open(emergency, tenantId, customerId, "emergency_info")));
                 }, tenantId, customerId).stream().findFirst();
     }
@@ -75,14 +78,15 @@ public final class JdbcCustomerRepository implements CustomerRepository, Custome
     // The general read: the sensitive table is neither joined nor decrypted, so no risk data can leave through it.
     @Override
     public Optional<Customer> findOrdinary(UUID tenantId, UUID customerId) {
-        return jdbc.query("SELECT full_name, created_at, document_number, birth_date_or_age, "
+        return jdbc.query("SELECT full_name, created_at, terms_accepted_at, document_number, birth_date_or_age, "
                 + "contact_info ->> 'envelope' AS contact_envelope FROM commercial_reservation.customer "
                 + "WHERE tenant_id = ? AND customer_id = ?", (row, index) -> Customer.restore(customerId, tenantId,
                         DocumentNumber.of(open(row.getString("document_number"), tenantId, customerId, "document_number")),
                         row.getString("full_name"),
                         birth(open(row.getString("birth_date_or_age"), tenantId, customerId, "birth_date_or_age")),
                         contact(open(row.getString("contact_envelope"), tenantId, customerId, "contact_info")),
-                        row.getObject("created_at", OffsetDateTime.class).toInstant(), null),
+                        row.getObject("created_at", OffsetDateTime.class).toInstant(),
+                        row.getObject("terms_accepted_at", OffsetDateTime.class).toInstant(), null),
                 tenantId, customerId).stream().findFirst();
     }
 
