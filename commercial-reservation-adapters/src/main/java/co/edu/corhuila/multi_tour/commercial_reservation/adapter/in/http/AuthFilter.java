@@ -17,7 +17,6 @@ public class AuthFilter extends OncePerRequestFilter {
     private static final Logger LOG = LoggerFactory.getLogger(AuthFilter.class);
     private final Rs256Verifier verifier;
     private final ApiErrorWriter errors;
-    // Null until an adapter of the tenant copy is wired: then no status is checked (interim, plan D-05).
     private final TenantStatusReader statuses;
 
     public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses) {
@@ -61,7 +60,7 @@ public class AuthFilter extends OncePerRequestFilter {
     // The receiving route is checked by its SERVICE role alone, because it must work for an inactive tenant.
     private boolean inactive(HttpServletRequest request, AuthenticatedPrincipal principal) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        if (statuses == null || principal.tenantId() == null || principal.restricted()
+        if (principal.tenantId() == null || principal.restricted()
                 || path.matches("/api/v1/commercial-reservation/internal/tenants/[^/]+/events")) {
             return false;
         }

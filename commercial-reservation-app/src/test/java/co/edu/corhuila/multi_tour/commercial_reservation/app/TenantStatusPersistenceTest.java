@@ -48,7 +48,7 @@ class TenantStatusPersistenceTest {
                 System.getenv("TEST_DATABASE_USER"), System.getenv("TEST_DATABASE_PASSWORD"));
         jdbc = new JdbcTemplate(source);
         store = new JdbcTenantStatusStore(jdbc);
-        processed = new JdbcProcessedEvents(jdbc, Clock.fixed(T0, ZoneOffset.UTC));
+        processed = new JdbcProcessedEvents(jdbc);
         transaction = new JdbcTenantEventTransaction(new TransactionTemplate(new DataSourceTransactionManager(source)));
         apply = new ApplyTenantEventUseCase(store, processed, transaction);
     }
