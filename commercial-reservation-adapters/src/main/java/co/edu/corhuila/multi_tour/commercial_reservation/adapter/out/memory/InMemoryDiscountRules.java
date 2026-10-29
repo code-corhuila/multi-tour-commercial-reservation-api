@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 
-// TEMPORARY and volatile: stands in until the JDBC adapter of HU-COM-003 replaces it. Nothing survives a restart,
+// Volatile stand-in kept for unit tests; production wires JdbcDiscountRules. Nothing survives a restart,
 // and events are only kept in memory, so no environment may rely on it. One monitor is the transaction boundary.
 public final class InMemoryDiscountRules implements DiscountRuleRepository, DiscountRuleChangeOutbox, DiscountRuleTransaction {
     private final Map<UUID, DiscountRule> rows = new HashMap<>();

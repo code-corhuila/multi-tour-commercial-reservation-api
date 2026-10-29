@@ -3,7 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentDiscountRuleCreation;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.memory.InMemoryDiscountRules;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDiscountRules;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetDiscountRule;
@@ -18,6 +18,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Ina
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -25,8 +26,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 class DiscountRuleConfiguration {
-    // TEMPORARY: volatile stand-in for the three ports until the JDBC adapter PR replaces this one bean.
-    @Bean InMemoryDiscountRules temporaryDiscountRules() { return new InMemoryDiscountRules(); }
+    @Bean JdbcDiscountRules discountRules(JdbcTemplate jdbc, PlatformTransactionManager manager) {
+        return new JdbcDiscountRules(jdbc, new TransactionTemplate(manager));
+    }
 
     @Bean CreateDiscountRule createDiscountRule(DiscountRuleRepository repository, DiscountRuleChangeOutbox outbox,
             DiscountRuleTransaction transaction, IdGenerator ids, Clock clock) {
