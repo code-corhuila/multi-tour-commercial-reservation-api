@@ -5,8 +5,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.UUID;
 
 // Ordinary data only: never the risk data, and tenantId is never exposed. Declared limits: the contract required
-// highRisk is not answered because the registered serviceId is not stored, and termsAccepted reads true because a
-// customer cannot be registered without accepting (the table has no column for it).
+// highRisk is not answered because the registered serviceId is not stored. termsAccepted is the stored acceptance;
+// its moment (terms_accepted_at) is persisted but not exposed: the contract has no acceptedAt (open decision).
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record CustomerResponse(UUID customerId, String fullName, String documentNumber, String birthDate, Integer age,
         Contact contact, boolean termsAccepted, String createdAt) {

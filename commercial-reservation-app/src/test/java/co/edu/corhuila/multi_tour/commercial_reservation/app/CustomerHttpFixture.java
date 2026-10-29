@@ -48,7 +48,7 @@ class CustomerHttpFixture {
             profileReads++;
             return Optional.ofNullable(customers.get(id)).filter(found -> found.tenantId().equals(tenant))
                     .map(found -> Customer.restore(found.customerId(), found.tenantId(), found.documentNumber(),
-                            found.fullName(), found.birthDateOrAge(), found.contact(), found.createdAt(), null));
+                            found.fullName(), found.birthDateOrAge(), found.contact(), found.createdAt(), found.termsAcceptedAt(), null));
         }
         public Optional<Boolean> isHighRisk(UUID tenant, UUID service) {
             return Optional.ofNullable(services.get(service)).filter(found -> found.tenant().equals(tenant))
