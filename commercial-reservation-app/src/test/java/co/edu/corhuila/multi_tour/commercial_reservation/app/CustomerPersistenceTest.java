@@ -115,6 +115,7 @@ class CustomerPersistenceTest {
         assertThat(found.highRiskData()).isNull();
         assertThat(found.documentNumber().value()).isEqualTo(DOCUMENT);
         assertThat(found.contact().email()).isEqualTo(EMAIL);
+        assertThat(found.termsAcceptedAt()).isEqualTo(NOW);
         assertThat(repository.findOrdinary(otherTenant, saved.customerId())).isEmpty();
         assertThatThrownBy(() -> repository.findByTenantAndId(tenant, saved.customerId()))
                 .isInstanceOf(FieldCipherException.class);
@@ -123,10 +124,10 @@ class CustomerPersistenceTest {
     @Test
     void theAcceptanceOfTheTermsIsStoredOnTheCustomerAndReadBack() {
         var saved = register.register(actor(tenant), command(plainService, true));
-        var raw = jdbc.queryForMap("SELECT terms_accepted, terms_accepted_at FROM commercial_reservation.customer "
-                + "WHERE customer_id = ?", saved.customerId());
-        assertThat(raw.get("terms_accepted")).isEqualTo(true);
-        assertThat(((OffsetDateTime) raw.get("terms_accepted_at")).toInstant()).isEqualTo(NOW);
+        assertThat(jdbc.queryForObject("SELECT terms_accepted FROM commercial_reservation.customer "
+                + "WHERE customer_id = ?", Boolean.class, saved.customerId())).isTrue();
+        assertThat(jdbc.queryForObject("SELECT terms_accepted_at FROM commercial_reservation.customer "
+                + "WHERE customer_id = ?", OffsetDateTime.class, saved.customerId()).toInstant()).isEqualTo(NOW);
         var found = repository.findByTenantAndId(tenant, saved.customerId()).orElseThrow();
         assertThat(found.termsAccepted()).isTrue();
         assertThat(found.termsAcceptedAt()).isEqualTo(NOW);
