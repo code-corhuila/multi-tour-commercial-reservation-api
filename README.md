@@ -48,6 +48,22 @@ Export `TEST_DATABASE_URL` (a JDBC URL), `TEST_DATABASE_USER` (`commercial_reser
 When using Docker, pass all three variables with `-e` and use a URL reachable from its network.
 The application user cannot delete catalog items; the schema separately allows technical-table cleanup.
 
+## Development tokens
+
+`scripts/dev-token.sh` prints an RS256 JWT with the claims the API verifies (`sub`, `tenantId`, `roles`,
+optional `permissions`). **Development only**: never use it outside a local machine. The repository holds no key.
+
+```bash
+openssl genrsa -out dev-private.pem 2048                       # *.pem is git-ignored
+openssl rsa -in dev-private.pem -pubout -out dev-public.pem
+export JWT_PUBLIC_KEY_FILE=$PWD/dev-public.pem                 # then start the API
+TOKEN=$(scripts/dev-token.sh --key dev-private.pem --tenant 00000000-0000-0000-0000-000000000123 \
+  --sub 00000000-0000-0000-0000-000000000456 --roles TENANT_ADMINISTRATOR --permissions catalog:read --ttl 3600)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/commercial-reservation/catalog/services
+```
+
+Requires bash and openssl. `DevTokenScriptTest` runs it against the repository verifier.
+
 ## What is missing
 
 The HTTP foundation provides token validation, correlation and a common error envelope.

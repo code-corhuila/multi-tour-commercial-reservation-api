@@ -21,6 +21,9 @@ public final class CatalogAuthorization implements HandlerInterceptor {
         if (principal.roles().contains("TENANT_ADMINISTRATOR")) return true;
         boolean collaborator = principal.roles().contains("OPERATIONAL_COLLABORATOR");
         boolean read = "GET".equals(request.getMethod());
+        // Manager and Analyst only consult the catalog; the Accountant is denied (AC-01.11, RN-07).
+        boolean readOnlyRole = principal.roles().contains("MANAGER") || principal.roles().contains("ANALYST");
+        if (read && readOnlyRole) return true;
         // The enabled Collaborator may update an item (RF-004); which fields is checked once the body is bound (RN-04).
         boolean enabledUpdate = "PATCH".equals(request.getMethod())
                 && collaboratorEditing.allowsDescriptiveUpdates(principal.tenantId());
