@@ -1,12 +1,18 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CustomerController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CustomerHttpAccess;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCustomerRegistration;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.crypto.AesGcmFieldCipher;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcServiceRiskReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCustomer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadSensitiveCustomerData;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterLeadCustomer;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerTransaction;
@@ -15,6 +21,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Fi
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SensitiveDataAccessOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ServiceRiskReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCustomerUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReadSensitiveCustomerDataUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RegisterLeadCustomerUseCase;
 import java.time.Clock;
@@ -24,6 +31,8 @@ import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 // HU-COM-005: the customer ports. Only this class knows which adapter backs each of them.
 @Configuration
@@ -42,7 +51,7 @@ class CustomerConfiguration {
     }
 
     @Bean
-    CustomerRepository customerRepository(JdbcTemplate jdbc, FieldCipher cipher) {
+    JdbcCustomerRepository customerRepository(JdbcTemplate jdbc, FieldCipher cipher) {
         return new JdbcCustomerRepository(jdbc, cipher);
     }
 
@@ -71,5 +80,32 @@ class CustomerConfiguration {
     ReadSensitiveCustomerData readSensitiveCustomerData(CustomerRepository repository,
             SensitiveDataAccessOutbox outbox, CustomerTransaction transaction, Clock clock) {
         return new ReadSensitiveCustomerDataUseCase(repository, outbox, transaction, clock);
+    }
+
+    @Bean
+    GetCustomer getCustomer(CustomerProfileReader reader) {
+        return new GetCustomerUseCase(reader);
+    }
+
+    @Bean
+    IdempotentCustomerRegistration idempotentCustomerRegistration(RegisterLeadCustomer register, GetCustomer get,
+            IdempotencyKeys keys, PlatformTransactionManager manager) {
+        return new IdempotentCustomerRegistration(register, get, keys, new TransactionTemplate(manager));
+    }
+
+    @Bean
+    CustomerController customerController(IdempotentCustomerRegistration registration, GetCustomer get,
+            ReadSensitiveCustomerData sensitive) {
+        return new CustomerController(registration, get, sensitive);
+    }
+
+    @Bean
+    WebMvcConfigurer customerAccess() {
+        return new WebMvcConfigurer() {
+            @Override public void addInterceptors(InterceptorRegistry registry) {
+                registry.addInterceptor(new CustomerHttpAccess())
+                        .addPathPatterns("/api/v1/commercial-reservation/customers/**");
+            }
+        };
     }
 }

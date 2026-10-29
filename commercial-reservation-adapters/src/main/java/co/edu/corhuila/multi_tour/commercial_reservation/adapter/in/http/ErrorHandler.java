@@ -3,6 +3,9 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AssociatedEstablishmentNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerAccessDeniedException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingHighRiskDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DiscountRuleAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.EstablishmentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
@@ -43,6 +46,11 @@ public class ErrorHandler {
         } else if (ex instanceof InvalidTokenException) {
             code = ApiError.Code.UNAUTHORIZED;
             message = "authentication is required";
+        } else if (ex instanceof MissingHighRiskDataException missing) {
+            // AC-05.2: one entry per missing field, so the screen can point at each.
+            code = ApiError.Code.VALIDATION_ERROR;
+            message = "the request has invalid fields";
+            details = missing.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
         } else if (ex instanceof DomainException domain) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
@@ -66,13 +74,14 @@ public class ErrorHandler {
             message = "the request has invalid fields";
             details = List.of(new ApiError.Detail(mismatch.getName(), "has an invalid format"));
         } else if (ex instanceof CatalogServiceNotFoundException || ex instanceof AssociatedEstablishmentNotFoundException
-                || ex instanceof DiscountRuleNotFoundException
+                || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.
             code = ApiError.Code.NOT_FOUND;
             message = "resource not found";
         } else if (ex instanceof EstablishmentAccessDeniedException || ex instanceof DiscountRuleAccessDeniedException
+                || ex instanceof CustomerAccessDeniedException
                 || ex instanceof ResponseStatusException status && status.getStatusCode().value() == 403) {
             code = ApiError.Code.FORBIDDEN;
             message = "access is forbidden";
