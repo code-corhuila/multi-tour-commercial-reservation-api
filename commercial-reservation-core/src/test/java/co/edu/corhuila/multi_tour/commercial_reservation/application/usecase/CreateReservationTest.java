@@ -60,7 +60,8 @@ class CreateReservationTest {
     private final DiscountRuleFakes rules = new DiscountRuleFakes();
     private final DepartureFakes departures = new DepartureFakes();
     private boolean optionsEnabled = true;
-    private final Map<String, TenantRef> tenants = new HashMap<>(Map.of(TENANT.toString(), new TenantRef(TENANT, true)));
+    private final Map<String, TenantRef> tenants = new HashMap<>(Map.of(TENANT.toString(), new TenantRef(TENANT, true),
+            OTHER_TENANT.toString(), new TenantRef(OTHER_TENANT, true)));
 
     private final CustomerRepository customerRepository = new CustomerRepository() {
         @Override public void save(Customer customer) { customers.put(customer.customerId(), customer); }
