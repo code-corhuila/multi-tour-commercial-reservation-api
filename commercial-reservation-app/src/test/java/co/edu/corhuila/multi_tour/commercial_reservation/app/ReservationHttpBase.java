@@ -44,13 +44,14 @@ abstract class ReservationHttpBase {
             fullDeparture = new UUID(1, 5);
     @Autowired MockMvc mvc;
     @Autowired ReservationHttpFixture.MemoryReservations store;
+    @Autowired TenantDirectoryHttpFixture.MemoryDirectory directory;
     @Autowired CatalogHttpFixture.MemoryCatalog catalog;
     @Autowired CatalogHttpFixture.MemoryKeys keys;
     @Autowired CustomerHttpFixture.MemoryCustomers customers;
 
     @BeforeEach void seed() {
-        store.clear(); keys.keys.clear(); catalog.items.clear(); customers.clear();
-        store.tenants.put(tenant, new TenantRef(tenant, true));
+        store.clear(); directory.tenants.clear(); keys.keys.clear(); catalog.items.clear(); customers.clear();
+        directory.tenants.put(tenant.toString(), new TenantRef(tenant, true));
         catalog.save(CatalogService.register(tour, tenant, CatalogServiceType.TOUR, "Tour Ficticio",
                 CommercialTerms.of(100_000L, 40_000L, 20, false, false), NOW));
         catalog.save(CatalogService.register(otherTour, otherTenant, CatalogServiceType.TOUR, "Tour Ajeno",

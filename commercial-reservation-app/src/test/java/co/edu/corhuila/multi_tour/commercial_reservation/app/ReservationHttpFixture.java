@@ -7,7 +7,6 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.De
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantDirectory;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TransportRateReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
@@ -32,16 +31,15 @@ class ReservationHttpFixture {
     @Bean @Primary MemoryReservations memoryReservations() { return new MemoryReservations(); }
 
     static final class MemoryReservations implements ReservationRepository, ReservationQueries, DepartureReader,
-            TenantDirectory, EnabledPaymentOptions, TransportRateReader {
+            EnabledPaymentOptions, TransportRateReader {
         final Map<UUID, Reservation> reservations = new HashMap<>();
         final Map<UUID, DepartureState> departures = new HashMap<>();
-        final Map<UUID, TenantRef> tenants = new HashMap<>();
         Optional<Cents> transportRate = Optional.empty();
         boolean lastIncludeArchived;
         int saves;
 
         void clear() {
-            reservations.clear(); departures.clear(); tenants.clear(); transportRate = Optional.empty();
+            reservations.clear(); departures.clear(); transportRate = Optional.empty();
             lastIncludeArchived = false; saves = 0;
         }
         public void save(Reservation reservation) { saves++; reservations.put(reservation.reservationId(), reservation); }
@@ -62,9 +60,6 @@ class ReservationHttpFixture {
         }
         @Override public Optional<DepartureState> find(UUID tenant, UUID id) {
             return Optional.ofNullable(departures.get(id)).filter(row -> row.tenantId().equals(tenant));
-        }
-        public Optional<TenantRef> resolve(String identifier) {
-            return tenants.values().stream().filter(found -> found.tenantId().toString().equals(identifier)).findFirst();
         }
         public boolean isEnabled(UUID tenant, UUID service, PaymentType type, PaymentMethod method) { return true; }
         public Optional<Cents> perPersonCents(UUID tenant, UUID tour, UUID departure) { return transportRate; }
