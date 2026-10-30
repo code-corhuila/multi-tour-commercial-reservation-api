@@ -3,7 +3,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.memory.InMemoryEstablishments;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CollaboratorEditingPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CatalogSettings;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogSettingsRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogStatus;
@@ -16,7 +17,6 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogSer
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -33,7 +33,8 @@ class CatalogHttpFixture {
     @Bean @Primary InMemoryEstablishments memoryEstablishments() { return new InMemoryEstablishments(); }
     @Bean @Primary MemoryCatalog memoryCatalog() { return new MemoryCatalog(); }
     @Bean @Primary MemoryKeys memoryKeys() { return new MemoryKeys(); }
-    @Bean @Primary MemoryCollaboratorPolicy memoryCollaboratorPolicy() { return new MemoryCollaboratorPolicy(); }
+    @Bean @Primary MemoryCatalogSettings memoryCatalogSettings() { return new MemoryCatalogSettings(); }
+    @Bean MemoryCollaboratorPolicy memoryCollaboratorPolicy(MemoryCatalogSettings settings) { return new MemoryCollaboratorPolicy(settings); }
     @Bean @Primary SalidaCapacityReader memoryCapacity(MemoryCatalog catalog) {
         return (tenant, service) -> catalog.findByTenantAndId(tenant, service)
                 .map(item -> catalog.held.getOrDefault(service, List.of()).stream()
@@ -77,11 +78,18 @@ class CatalogHttpFixture {
         }
     }
 
-    // The tenant that enabled the Operational Collaborator is a test input: no source for it exists yet (DD-19).
-    static final class MemoryCollaboratorPolicy implements CollaboratorEditingPolicy {
-        private final Set<UUID> enabled = ConcurrentHashMap.newKeySet();
-        void enable(UUID tenant) { enabled.add(tenant); }
-        public boolean allowsDescriptiveUpdates(UUID tenantId) { return enabled.contains(tenantId); }
+    // The settings of the tenants live in memory; the real policy of the application reads them (HU-COM-001 T-05).
+    static final class MemoryCatalogSettings implements CatalogSettingsRepository {
+        private final Map<UUID, CatalogSettings> rows = new ConcurrentHashMap<>();
+        public Optional<CatalogSettings> find(UUID tenantId) { return Optional.ofNullable(rows.get(tenantId)); }
+        public void save(UUID tenantId, CatalogSettings settings) { rows.put(tenantId, settings); }
+    }
+
+    // A test that needs an enabling tenant states it here, in the same place the Administrator would write it.
+    static final class MemoryCollaboratorPolicy {
+        private final CatalogSettingsRepository settings;
+        MemoryCollaboratorPolicy(CatalogSettingsRepository settings) { this.settings = settings; }
+        void enable(UUID tenant) { settings.save(tenant, new CatalogSettings(true, TestJwtKeys.NOW, UUID.randomUUID())); }
     }
 
     static final class MemoryKeys implements IdempotencyKeys {
