@@ -8,6 +8,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateDiscountRule;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDiscountRules;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleChangeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleTransaction;
@@ -15,6 +16,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Id
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CreateDiscountRuleUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetDiscountRuleUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.InactivateDiscountRuleUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListDiscountRulesUseCase;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -44,14 +46,18 @@ class DiscountRuleConfiguration {
         return new InactivateDiscountRuleUseCase(repository, outbox, transaction, clock);
     }
 
+    @Bean ListDiscountRules listDiscountRules(DiscountRuleRepository repository) {
+        return new ListDiscountRulesUseCase(repository);
+    }
+
     @Bean IdempotentDiscountRuleCreation idempotentDiscountRuleCreation(CreateDiscountRule create, GetDiscountRule get,
             IdempotencyKeys keys, PlatformTransactionManager manager) {
         return new IdempotentDiscountRuleCreation(create, get, keys, new TransactionTemplate(manager));
     }
 
     @Bean DiscountRuleController discountRuleController(IdempotentDiscountRuleCreation creation, GetDiscountRule get,
-            InactivateDiscountRule inactivate) {
-        return new DiscountRuleController(creation, get, inactivate);
+            InactivateDiscountRule inactivate, ListDiscountRules list) {
+        return new DiscountRuleController(creation, get, inactivate, list);
     }
 
     @Bean WebMvcConfigurer discountRuleAccess() {
