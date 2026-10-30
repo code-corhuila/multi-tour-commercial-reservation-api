@@ -32,12 +32,21 @@ public final class IdempotentAdditionalDiscountRegistration {
         UUID tenant = actor.tenantId();
         var known = keys.findResourceId(tenant, key);
         if (known.isPresent()) return new Result(original(tenant, command.reservationId(), known.get()), false);
-        Result result = transactions.execute(status -> {
-            AdditionalDiscount discount = register.register(actor, command);
-            if (keys.tryRegister(tenant, key, RESOURCE, command.reservationId())) return new Result(discount, true);
-            status.setRollbackOnly(); // lost a race with the same key: discard this discount and its event
-            return new Result(discount, false);
-        });
+        Result result;
+        try {
+            result = transactions.execute(status -> {
+                AdditionalDiscount discount = register.register(actor, command);
+                if (keys.tryRegister(tenant, key, RESOURCE, command.reservationId())) return new Result(discount, true);
+                status.setRollbackOnly(); // lost a race with the same key: discard this discount and its event
+                return new Result(discount, false);
+            });
+        } catch (BusinessRuleViolation refused) {
+            // The winner of a race with the same key may have committed between the first look and the write, so the
+            // reservation already has its discount: if the key exists now, the answer is the stored one, not a refusal.
+            var winner = keys.findResourceId(tenant, key);
+            if (winner.isEmpty()) throw refused;
+            return new Result(original(tenant, command.reservationId(), winner.get()), false);
+        }
         if (result.created()) return result;
         var id = keys.findResourceId(tenant, key).orElseThrow(() -> new IllegalStateException("registered key has no resource"));
         return new Result(original(tenant, command.reservationId(), id), false);
