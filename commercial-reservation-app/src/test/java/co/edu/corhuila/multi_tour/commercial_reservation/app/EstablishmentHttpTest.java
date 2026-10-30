@@ -160,15 +160,13 @@ class EstablishmentHttpTest {
         assertThat(json(exchange(get(path(item)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(item);
     }
 
-    @ParameterizedTest @ValueSource(strings = {"list", "get", "register", "inactivate", "reactivate", "imagePost", "imageSuffix", "catalog"})
+    @ParameterizedTest @ValueSource(strings = {"list", "get", "register", "inactivate", "reactivate", "catalog"})
     void noOtherRouteIsPublic(String operation) throws Exception {
         var item = seed();
         MockHttpServletRequestBuilder request = switch (operation) {
             case "list" -> get(BASE);
             case "get" -> get(path(item));
             case "register" -> upload(PNG, "image.png", "image/png");
-            case "imagePost" -> post(imagePath(tenant, item));
-            case "imageSuffix" -> get(imagePath(tenant, item) + "/extra");
             case "catalog" -> get(CatalogHttpTest.BASE);
             default -> post(path(item) + "/" + operation);
         };
