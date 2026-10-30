@@ -78,6 +78,19 @@ class ReservationCompanionsHttpTest extends ReservationHttpBase {
         assertThat(store.reservations).isEmpty();
     }
 
+    // An element of the list with nothing in it is a companion with every datum missing (AC-05.4), not a technical failure.
+    @Test @SuppressWarnings("unchecked")
+    void anEmptyElementInTheCompanionsIsNamedWithItsPositionInsteadOfFailing() throws Exception {
+        var body = createBody();
+        var items = new ArrayList<Map<String, Object>>();
+        items.add(companion("Acompanante Uno", "CC1", 25));
+        items.add(null);
+        body.put("companions", items);
+        assertThat(fieldsOf(400, body, "companion-key-8")).containsExactlyInAnyOrder("companions[1].fullName",
+                "companions[1].documentNumber", "companions[1].birthDateOrAge");
+        assertThat(store.reservations).isEmpty();
+    }
+
     @ParameterizedTest @ValueSource(strings = {"CC12345", " cc12345 ", "cC12345"})
     @SuppressWarnings("unchecked")
     void theDocumentOfTheLeadTypedInAnotherWayIsRejected(String document) throws Exception {
