@@ -25,7 +25,12 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Upd
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.UpdateDescriptiveInformation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.policy.NoCollaboratorEditing;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogSettingsController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCatalogSettingsRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.policy.RepositoryCollaboratorEditing;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCatalogSettings;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogSettingsRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManageCatalogSettingsUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CollaboratorEditingPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
@@ -80,8 +85,23 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    CollaboratorEditingPolicy collaboratorEditingPolicy() {
-        return new NoCollaboratorEditing();
+    CatalogSettingsRepository catalogSettingsRepository(JdbcTemplate jdbc) {
+        return new JdbcCatalogSettingsRepository(jdbc);
+    }
+
+    @Bean
+    ManageCatalogSettingsUseCase manageCatalogSettings(CatalogSettingsRepository repository, Clock clock) {
+        return new ManageCatalogSettingsUseCase(repository, clock);
+    }
+
+    @Bean
+    CatalogSettingsController catalogSettingsController(ManageCatalogSettings settings) {
+        return new CatalogSettingsController(settings);
+    }
+
+    @Bean
+    CollaboratorEditingPolicy collaboratorEditingPolicy(CatalogSettingsRepository settings) {
+        return new RepositoryCollaboratorEditing(settings);
     }
 
     @Bean
