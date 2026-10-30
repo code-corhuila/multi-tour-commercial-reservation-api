@@ -20,6 +20,16 @@ public record DiscountBreakdownResponse(long baseCents, List<Line> lines, long f
         return new DiscountBreakdownResponse(breakdown.baseValue().amount(), lines, breakdown.finalValue().amount());
     }
 
+    // The reservation as it was fixed at creation: its RULE lines and its final value, with no additional discount.
+    static DiscountBreakdownResponse forFixed(Reservation reservation) {
+        var lines = new ArrayList<Line>();
+        for (var fixed : reservation.fixedDiscounts()) {
+            lines.add(new Line(fixed.order(), "RULE", fixed.ruleName(), fixed.calculationBase().name(), fixed.base().amount(),
+                    fixed.amount().amount(), fixed.subtotal().amount(), fixed.ruleId().toString()));
+        }
+        return new DiscountBreakdownResponse(reservation.projectedValue().amount(), lines, reservation.finalValue().amount());
+    }
+
     // The lines fixed at creation as they were kept, then the additional discount on the last subtotal (RN-04, RN-11).
     // DEFAULT, not in the spec: the additional line is calculated on the PREVIOUS_SUBTOTAL, the only base that fits "a
     // percentage of the last subtotal"; its order follows the fixed lines shown.
