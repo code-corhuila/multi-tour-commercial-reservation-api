@@ -12,4 +12,9 @@ public interface ReservationRepository {
     default java.util.Optional<Reservation> findByTenantAndId(java.util.UUID tenantId, java.util.UUID reservationId) {
         throw new UnsupportedOperationException("the reservation lookup needs the adapter override");
     }
+
+    // The reservation that holds a payment attempt, for the review routes that name only the attempt; empty for another tenant.
+    default java.util.Optional<Reservation> findByTenantAndAttempt(java.util.UUID tenantId, java.util.UUID attemptId) {
+        throw new UnsupportedOperationException("the attempt lookup needs the adapter override");
+    }
 }
