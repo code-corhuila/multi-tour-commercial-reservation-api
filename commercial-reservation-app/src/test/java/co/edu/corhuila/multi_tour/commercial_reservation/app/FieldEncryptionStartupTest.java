@@ -24,7 +24,7 @@ class FieldEncryptionStartupTest {
                     DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class,
                     DataSourceTransactionManagerAutoConfiguration.class))
             .withUserConfiguration(CommercialReservationConfiguration.class, CustomerConfiguration.class,
-                    TenantStatusConfiguration.class)
+                    TenantStatusConfiguration.class, DepartureMirrorConfiguration.class)
             .withInitializer(context -> {
                 // Host credentials must not mask missing-configuration failures.
                 context.getEnvironment().getPropertySources().remove("systemEnvironment");
