@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AdditionalDiscountController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthorizableReasonController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentAdditionalDiscountRegistration;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReservationDiscountBreakdownController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalAuthorizableReasons;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredExcessTreatment;
@@ -11,7 +12,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.AuthorizableReasonTimes;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAuthorizableReasonRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationModifiedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetOwnReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservationDiscountBreakdown;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageAuthorizableReasons;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterAdditionalDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AdditionalDiscountRepository;
@@ -21,6 +24,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Ex
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationModifiedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetReservationDiscountBreakdownUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManageAuthorizableReasonsUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RegisterAdditionalDiscountUseCase;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -81,6 +85,16 @@ class AdditionalDiscountConfiguration {
     @Bean AdditionalDiscountController additionalDiscountController(RegisterAdditionalDiscount discounts,
             GetReservation reservations, IdempotentAdditionalDiscountRegistration registration) {
         return new AdditionalDiscountController(discounts, reservations, registration);
+    }
+
+    // HU-COM-004: the read of the current breakdown; the same two reservation reads decide who may see the reservation.
+    @Bean GetReservationDiscountBreakdown getReservationDiscountBreakdown(GetReservation reservations,
+            GetOwnReservation ownReservations, AdditionalDiscountRepository discounts) {
+        return new GetReservationDiscountBreakdownUseCase(reservations, ownReservations, discounts);
+    }
+
+    @Bean ReservationDiscountBreakdownController reservationDiscountBreakdownController(GetReservationDiscountBreakdown breakdown) {
+        return new ReservationDiscountBreakdownController(breakdown);
     }
 
     // The role is checked before the query is read; the paths of the reservation are not the ones of ReservationHttpAccess.
