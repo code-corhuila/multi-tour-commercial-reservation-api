@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AdditionalDiscountController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthorizableReasonController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentAdditionalDiscountRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalAuthorizableReasons;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredExcessTreatment;
@@ -71,9 +72,15 @@ class AdditionalDiscountConfiguration {
         return new AuthorizableReasonController(reasons);
     }
 
+    @Bean IdempotentAdditionalDiscountRegistration idempotentAdditionalDiscountRegistration(
+            RegisterAdditionalDiscount discounts, AdditionalDiscountRepository stored, IdempotencyKeys keys,
+            PlatformTransactionManager manager) {
+        return new IdempotentAdditionalDiscountRegistration(discounts, stored, keys, new TransactionTemplate(manager));
+    }
+
     @Bean AdditionalDiscountController additionalDiscountController(RegisterAdditionalDiscount discounts,
-            GetReservation reservations) {
-        return new AdditionalDiscountController(discounts, reservations);
+            GetReservation reservations, IdempotentAdditionalDiscountRegistration registration) {
+        return new AdditionalDiscountController(discounts, reservations, registration);
     }
 
     // The role is checked before the query is read; the paths of the reservation are not the ones of ReservationHttpAccess.
