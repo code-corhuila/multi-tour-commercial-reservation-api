@@ -4,9 +4,11 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CreateReservationCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import java.util.UUID;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -17,14 +19,16 @@ public final class IdempotentReservationCreation {
     private final CreateReservation create;
     private final ReservationQueries queries;
     private final CustomerByAccount accounts;
+    private final CustomerRepository customers;
     private final IdempotencyKeys keys;
     private final TransactionTemplate transactions;
 
-    public IdempotentReservationCreation(CreateReservation create, ReservationQueries queries, CustomerByAccount accounts, IdempotencyKeys keys,
-            TransactionTemplate transactions) {
+    public IdempotentReservationCreation(CreateReservation create, ReservationQueries queries, CustomerByAccount accounts,
+            CustomerRepository customers, IdempotencyKeys keys, TransactionTemplate transactions) {
         this.create = create;
         this.queries = queries;
         this.accounts = accounts;
+        this.customers = customers;
         this.keys = keys;
         this.transactions = transactions;
     }
@@ -54,9 +58,19 @@ public final class IdempotentReservationCreation {
     private Reservation original(CreateReservationCommand command, UUID reservationId) {
         Reservation original = queries.findByTenantAndId(command.tenantId(), reservationId)
                 .orElseThrow(() -> new ReservationNotFoundException(reservationId));
+        if (command.holder() != null) return requireSameHolder(command, original);
         if (!original.customerId().equals(owner(command))) {
             throw new BusinessRuleViolation("the Idempotency-Key was already used by another customer");
         }
+        return original;
+    }
+
+    // A holder has no id yet, so the key belongs to the holder whose normalized e-mail the stored customer carries.
+    private Reservation requireSameHolder(CreateReservationCommand command, Reservation original) {
+        String email = new ContactInfo(command.holder().email(), null).email();
+        boolean same = customers.findByTenantAndId(command.tenantId(), original.customerId())
+                .map(found -> found.contact().email() != null && found.contact().email().equals(email)).orElse(false);
+        if (!same) throw new BusinessRuleViolation("the Idempotency-Key was already used by another customer");
         return original;
     }
 }
