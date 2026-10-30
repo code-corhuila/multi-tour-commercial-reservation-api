@@ -15,6 +15,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Quo
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.QuoteReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
@@ -68,8 +70,10 @@ class ReservationConfiguration {
     @Bean
     CreateReservation createReservation(@Lazy TenantDirectory tenants, CustomerRepository customers, @Lazy CustomerByAccount accounts,
             CatalogServiceRepository catalog, ReservableDeparture departures, ReservationPricing pricing,
-            @Lazy EnabledPaymentOptions options, @Lazy ReservationRepository reservations, IdGenerator ids, Clock clock) {
-        return new CreateReservationUseCase(tenants, customers, accounts, catalog, departures, pricing, options, reservations, ids, clock);
+            @Lazy EnabledPaymentOptions options, @Lazy ReservationRepository reservations, IdGenerator ids, Clock clock,
+            CustomerRegisteredOutbox customerEvents, CustomerByEmail emails) {
+        return new CreateReservationUseCase(tenants, customers, accounts, catalog, departures, pricing, options, reservations, ids, clock,
+                customerEvents, emails);
     }
 
     @Bean
@@ -100,9 +104,9 @@ class ReservationConfiguration {
 
     @Bean
     IdempotentReservationCreation idempotentReservationCreation(CreateReservation create, @Lazy ReservationQueries queries,
-            @Lazy CustomerByAccount accounts,
+            @Lazy CustomerByAccount accounts, CustomerRepository customers,
             IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentReservationCreation(create, queries, accounts, keys, new TransactionTemplate(manager));
+        return new IdempotentReservationCreation(create, queries, accounts, customers, keys, new TransactionTemplate(manager));
     }
 
     @Bean
