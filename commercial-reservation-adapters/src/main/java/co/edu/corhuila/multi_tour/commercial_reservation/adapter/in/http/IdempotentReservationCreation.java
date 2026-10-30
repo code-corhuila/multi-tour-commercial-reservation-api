@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CreateReservationCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
@@ -15,13 +16,15 @@ public final class IdempotentReservationCreation {
     public record Result(Reservation reservation, boolean created) {}
     private final CreateReservation create;
     private final ReservationQueries queries;
+    private final CustomerByAccount accounts;
     private final IdempotencyKeys keys;
     private final TransactionTemplate transactions;
 
-    public IdempotentReservationCreation(CreateReservation create, ReservationQueries queries, IdempotencyKeys keys,
+    public IdempotentReservationCreation(CreateReservation create, ReservationQueries queries, CustomerByAccount accounts, IdempotencyKeys keys,
             TransactionTemplate transactions) {
         this.create = create;
         this.queries = queries;
+        this.accounts = accounts;
         this.keys = keys;
         this.transactions = transactions;
     }
@@ -41,11 +44,17 @@ public final class IdempotentReservationCreation {
         return new Result(original(command, id), false);
     }
 
+    // The customer of the command: the named one, or for a Final Customer the one linked to their account (AC-08.17).
+    private UUID owner(CreateReservationCommand command) {
+        if (command.ownerAccountId() == null) return command.customerId();
+        return accounts.findByTenantAndAccount(command.tenantId(), command.ownerAccountId()).map(found -> found.customerId()).orElse(null);
+    }
+
     // A key belongs to one customer: the same key for another customer is a rule violation, not a replay.
     private Reservation original(CreateReservationCommand command, UUID reservationId) {
         Reservation original = queries.findByTenantAndId(command.tenantId(), reservationId)
                 .orElseThrow(() -> new ReservationNotFoundException(reservationId));
-        if (!original.customerId().equals(command.customerId())) {
+        if (!original.customerId().equals(owner(command))) {
             throw new BusinessRuleViolation("the Idempotency-Key was already used by another customer");
         }
         return original;
