@@ -17,6 +17,11 @@ public record AdditionalDiscount(UUID tenantId, UUID reservationId, BasisPoints 
         if (rate.value() < MIN_BASIS_POINTS) {
             throw new DomainException("percentage", "the additional discount must be at least 1 %");
         }
-        return DiscountLine.percentage(subtotalAfterCurrentDiscounts, rate);
+        DiscountLine line = DiscountLine.percentage(subtotalAfterCurrentDiscounts, rate);
+        // The stored amount must be above zero (db amount_cents > 0): a discount that takes nothing is a rule, not a failure.
+        if (line.amount().amount() == 0) {
+            throw new BusinessRuleViolation("the additional discount must take at least one cent off the subtotal");
+        }
+        return line;
     }
 }
