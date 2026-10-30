@@ -18,7 +18,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 // HU-COM-001 T-05 (RF-004): the tenant_catalog_settings table read and written as the application user. A tenant without a row has the flag off.
 @EnabledIfEnvironmentVariable(named = "TEST_DATABASE_URL", matches = ".+")
 class CatalogSettingsPersistenceTest {
-    private static final Instant FIRST = Instant.parse("2026-10-30T12:00:00.123456789Z");
+    private static final Instant FIRST = Instant.parse("2026-10-30T12:00:00.123456Z");
     private final UUID tenant = UUID.randomUUID();
     private final UUID actor = UUID.randomUUID();
     private JdbcTemplate jdbc;
