@@ -54,8 +54,9 @@ class ReservationConfiguration {
     }
 
     @Bean
-    QuoteReservation quoteReservation(CatalogServiceRepository catalog, ReservationPricing pricing, Clock clock) {
-        return new QuoteReservationUseCase(catalog, pricing, clock);
+    QuoteReservation quoteReservation(CatalogServiceRepository catalog, ReservationPricing pricing, ReservableDeparture departures,
+            Clock clock) {
+        return new QuoteReservationUseCase(catalog, pricing, departures, clock);
     }
 
     @Bean
