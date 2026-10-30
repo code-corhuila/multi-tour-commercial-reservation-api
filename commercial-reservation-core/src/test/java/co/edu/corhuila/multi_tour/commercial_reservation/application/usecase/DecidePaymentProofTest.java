@@ -161,6 +161,7 @@ class DecidePaymentProofTest {
     void rejectingWhileAnotherProofIsUnderReviewKeepsTheSeats() {
         Reservation reservation = planted(PaymentType.FULL_PAYMENT, 100_000);
         reservation.registerTransfer(SECOND, new Cents(50_000), null, ADMIN, REGISTERED);
+        reservation.pullEvents();
 
         decide.reject(new RejectProofCommand(admin(), FIRST, "illegible"));
 
@@ -200,7 +201,8 @@ class DecidePaymentProofTest {
     void rejectingAfterTheBalanceDeadlineCancelsToo() {
         Reservation reservation = planted(PaymentType.DEPOSIT, 100_000);
         approve(100_000, null);
-        reservation.registerTransfer(SECOND, new Cents(50_000), null, ADMIN, REGISTERED);
+        reservation.registerTransfer(SECOND, new Cents(50_000), new Cents(100_000), ADMIN, REGISTERED);
+        reservation.pullEvents();
         fakes.deadlines.put(RESERVATION, new PaymentDeadline(DeadlineKind.BALANCE, NOW.minusSeconds(1)));
         fakes.events.clear();
 
