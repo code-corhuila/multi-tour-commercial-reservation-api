@@ -48,7 +48,11 @@ public record CreateReservationRequest(UUID customerId, UUID serviceId, UUID sal
 
     public CreateReservationCommand toCommand(UUID tenantId, UUID actorId, LocalDate today) {
         List<Companion> group = new ArrayList<>();
-        if (companions != null) for (int i = 0; i < companions.size(); i++) group.add(companions.get(i).toCompanion(i, today));
+        // An empty element is a companion with every datum missing, so it is named with its position (AC-05.4), never a 500.
+        if (companions != null) for (int i = 0; i < companions.size(); i++) {
+            var item = companions.get(i) == null ? new CompanionRequest(null, null, null, null, null, null) : companions.get(i);
+            group.add(item.toCompanion(i, today));
+        }
         return new CreateReservationCommand(tenantId, actorId, customerId, serviceId, salidaId, people == null ? 0 : people,
                 paymentType, paymentMethod, group);
     }
