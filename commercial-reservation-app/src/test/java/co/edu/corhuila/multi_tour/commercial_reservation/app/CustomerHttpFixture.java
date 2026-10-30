@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
@@ -26,7 +27,7 @@ class CustomerHttpFixture {
     @Bean @Primary MemoryCustomers memoryCustomers() { return new MemoryCustomers(); }
 
     static final class MemoryCustomers implements CustomerRepository, CustomerProfileReader, CustomerRegisteredOutbox,
-            SensitiveDataAccessOutbox, CustomerTransaction, ServiceRiskReader {
+            SensitiveDataAccessOutbox, CustomerTransaction, ServiceRiskReader, CustomerByAccount {
         record Service(UUID tenant, boolean highRisk) {}
         final Map<UUID, Customer> customers = new HashMap<>();
         final Map<UUID, Service> services = new HashMap<>();
@@ -38,6 +39,9 @@ class CustomerHttpFixture {
         void clear() {
             customers.clear(); services.clear(); registered.clear(); accessed.clear();
             fullReads = 0; profileReads = 0; failOnAudit = null;
+        }
+        public Optional<Customer> findByTenantAndAccount(UUID tenant, UUID account) {
+            return customers.values().stream().filter(found -> found.tenantId().equals(tenant) && account.equals(found.accountId())).findFirst();
         }
         public void save(Customer customer) { customers.put(customer.customerId(), customer); }
         public Optional<Customer> findByTenantAndId(UUID tenant, UUID id) {
