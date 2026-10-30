@@ -8,6 +8,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountRu
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountRuleChanged;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountRuleState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ServiceCoverage;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -83,7 +84,7 @@ public final class JdbcDiscountRules implements DiscountRuleRepository, Discount
                 (row, index) -> row.getObject("service_id", UUID.class),
                 java.util.stream.Stream.concat(java.util.stream.Stream.of((Object) rule.tenantId()), selected.stream())
                         .toArray());
-        if (owned.size() != selected.size()) throw new IllegalStateException("Service belongs to another tenant");
+        if (owned.size() != selected.size()) throw new DomainException("serviceIds", "every selected service must belong to the tenant catalog");
     }
 
     @Override
