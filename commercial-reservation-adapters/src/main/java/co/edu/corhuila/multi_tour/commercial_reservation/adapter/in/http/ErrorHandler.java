@@ -6,6 +6,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.As
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteCompanionException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteLeadCustomerException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservationAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingReservationDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingHighRiskDataException;
@@ -48,8 +52,18 @@ public class ErrorHandler {
             message = "PATCH".equals(request.getMethod())
                     ? "The capacity cannot be lower than the seats already held in a scheduled departure"
                     : "The item cannot be reactivated while a restriction applies";
-            // The quote says which rule refused it (the missing transport fare, the inactive tenant), never a value.
-            if (request.getRequestURI().endsWith("/reservation-quotes")) message = ex.getMessage();
+            // The quote and the creation say which rule refused them (the seats left, the group, the tenant), never a value.
+            if (reservationRule(request)) message = ex.getMessage();
+        } else if (ex instanceof IncompleteLeadCustomerException lead) {
+            // AC-07.21: the fields the lead customer lacks, never their values.
+            code = ApiError.Code.BUSINESS_RULE_VIOLATION;
+            message = "the lead customer is incomplete";
+            details = lead.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
+        } else if (ex instanceof IncompleteCompanionException companion) {
+            code = ApiError.Code.BUSINESS_RULE_VIOLATION;
+            message = "a companion is incomplete";
+            details = companion.fields().stream()
+                    .map(field -> new ApiError.Detail("companions[" + (companion.position() - 1) + "]." + field, field + " is required")).toList();
         } else if (ex instanceof MissingReservationDataException missing) {
             // AC-07.2: every missing datum named at once.
             code = ApiError.Code.VALIDATION_ERROR;
@@ -91,6 +105,7 @@ public class ErrorHandler {
         } else if (ex instanceof CatalogServiceNotFoundException || ex instanceof AssociatedEstablishmentNotFoundException
                 || ex instanceof PublicOfferNotFoundException
                 || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException || ex instanceof AuthorizableReasonNotFoundException
+                || ex instanceof DepartureNotFoundException || ex instanceof ReservationNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.
@@ -111,6 +126,10 @@ public class ErrorHandler {
         return ResponseEntity.status(status).body(errors.body(request, code, message, details));
     }
 
+    private static boolean reservationRule(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && path.endsWith("/reservations");
+    }
 
     private static String jsonField(Throwable error) {
         for (Throwable cause = error.getCause(); cause != null; cause = cause.getCause()) {
