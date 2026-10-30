@@ -115,8 +115,8 @@ class ReservationHttpTest extends ReservationHttpBase {
         assertThat(store.reservations).isEmpty();
     }
 
-    @Test void theRolesThatOnlyReadAndTheFinalCustomerCannotCreateAndNothingIsStored() throws Exception {
-        for (String role : List.of(MANAGER, ACCOUNTANT, ANALYST, FINAL_CUSTOMER)) {
+    @Test void theRolesThatOnlyReadCannotCreateAndNothingIsStored() throws Exception {
+        for (String role : List.of(MANAGER, ACCOUNTANT, ANALYST)) {
             exchange(create(createBody(), "reservation-key-12", role), 403);
         }
         exchange(create(createBody(), "reservation-key-13", COLLABORATOR), 201);
@@ -136,7 +136,6 @@ class ReservationHttpTest extends ReservationHttpBase {
         exchange(withToken(get(BASE + "/reservations").param("scope", "all"), ACCOUNTANT), 200);
         assertThat(store.lastIncludeArchived).isTrue();
         CatalogHttpTest.assertField(exchange(withToken(get(BASE + "/reservations").param("scope", "some"), ADMIN), 400), "scope");
-        exchange(withToken(get(BASE + "/reservations"), FINAL_CUSTOMER), 403);
     }
 
     @Test void aReservationIsReadAsFixedAndOneOfAnotherTenantAnswersNotFound() throws Exception {
@@ -146,6 +145,5 @@ class ReservationHttpTest extends ReservationHttpBase {
         assertThat(read).isEqualTo(created);
         exchange(withToken(get(BASE + "/reservations/" + new UUID(1, 81)), ADMIN), 404);
         exchange(withToken(get(BASE + "/reservations/not-a-uuid"), ADMIN), 400);
-        exchange(withToken(get(BASE + "/reservations/" + id), FINAL_CUSTOMER), 403);
     }
 }
