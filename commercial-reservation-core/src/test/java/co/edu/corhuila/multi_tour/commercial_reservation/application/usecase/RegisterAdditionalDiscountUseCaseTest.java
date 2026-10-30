@@ -17,6 +17,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AdditionalDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BasisPoints;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import java.lang.reflect.Method;
@@ -84,14 +85,14 @@ class RegisterAdditionalDiscountUseCaseTest {
         useCase.register(actor(Role.TENANT_ADMINISTRATOR), command);
         fakes.events.clear();
         assertThatThrownBy(() -> useCase.register(actor(Role.TENANT_ADMINISTRATOR), command))
-                .isInstanceOf(DomainException.class);
+                .isInstanceOf(BusinessRuleViolation.class);
         assertThat(fakes.events).isEmpty();
     }
 
     @Test void aReservationInAnIneligibleStateIsRefused() { // AC-04.7
         fakes.withReservation(reservation(State.CANCELLED, 1_000_000, 0));
         assertThatThrownBy(() -> useCase.register(actor(Role.TENANT_ADMINISTRATOR), command))
-                .isInstanceOf(DomainException.class);
+                .isInstanceOf(BusinessRuleViolation.class);
         assertThat(fakes.discounts).isEmpty();
     }
 
@@ -107,12 +108,37 @@ class RegisterAdditionalDiscountUseCaseTest {
                 .isInstanceOf(ReservationNotFoundException.class);
     }
 
-    @Test void aDisabledMissingOrNullReasonIsRefused() { // AC-04.8, RN-07
-        for (UUID reason : new UUID[] {OTHER_REASON, new UUID(0, 0xe9), null}) {
+    @Test void aDisabledOrUnknownReasonIsABusinessRuleViolation() { // AC-04.8, RN-07: the contract answers 422
+        for (UUID reason : new UUID[] {OTHER_REASON, new UUID(0, 0xe9)}) {
             assertThatThrownBy(() -> useCase.register(actor(Role.TENANT_ADMINISTRATOR),
-                    new Command(RESERVATION, reason, 500))).isInstanceOf(DomainException.class);
+                    new Command(RESERVATION, reason, 500))).isInstanceOf(BusinessRuleViolation.class);
         }
         assertThat(fakes.discounts).isEmpty();
+    }
+
+    @Test void aMissingReasonIsAValidationError() { // the field is required: the contract answers 400
+        assertThatThrownBy(() -> useCase.register(actor(Role.TENANT_ADMINISTRATOR),
+                new Command(RESERVATION, null, 500))).isInstanceOf(DomainException.class);
+        assertThat(fakes.discounts).isEmpty();
+    }
+
+    @Test void thePreviewReportsWhatWasPaidAboveTheNewValueAsTheExcess() { // AC-04.13, RN-13
+        fakes.withReservation(reservation(State.CONFIRMED, 1_000_000, 980_000));
+        var preview = useCase.previewWithExcess(actor(Role.TENANT_ADMINISTRATOR), RESERVATION, 500);
+        assertThat(preview.line().subtotal()).isEqualTo(new Cents(950_000));
+        assertThat(preview.excess()).isEqualTo(new Cents(30_000));
+        assertThat(fakes.excesses).isEmpty(); // a preview never opens the treatment
+    }
+
+    @Test void noExcessIsZeroInThePreview() {
+        assertThat(useCase.previewWithExcess(actor(Role.TENANT_ADMINISTRATOR), RESERVATION, 500).excess())
+                .isEqualTo(new Cents(0));
+    }
+
+    @Test void thePreviewIsRefusedForAnIneligibleStateAsABusinessRule() { // contract: 422
+        fakes.withReservation(reservation(State.CANCELLED, 1_000_000, 0));
+        assertThatThrownBy(() -> useCase.previewWithExcess(actor(Role.TENANT_ADMINISTRATOR), RESERVATION, 500))
+                .isInstanceOf(BusinessRuleViolation.class);
     }
 
     @Test void thePreviewEqualsWhatTheRegistrationRecalculates() { // AC-04.13
@@ -143,7 +169,7 @@ class RegisterAdditionalDiscountUseCaseTest {
     @Test void noPortRewritesTheFixedGeneralDiscounts() { // AC-04.12, RN-11
         assertThat(methodNames(ReservationReader.class)).containsExactly("findByTenantAndId");
         assertThat(methodNames(AdditionalDiscountRepository.class))
-                .containsExactlyInAnyOrder("save", "existsByReservation");
+                .containsExactlyInAnyOrder("save", "existsByReservation", "findByReservation");
     }
 
     @Test void theRegisteredDiscountIsAnImmutableRecordOfBasisPoints() {

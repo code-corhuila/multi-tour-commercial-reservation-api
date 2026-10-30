@@ -13,6 +13,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AdditionalDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AuthorizableReason;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BasisPoints;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountLine;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
@@ -50,6 +51,14 @@ public class RegisterAdditionalDiscountUseCase implements RegisterAdditionalDisc
     }
 
     @Override
+    public Preview previewWithExcess(DiscountRuleActor actor, UUID reservationId, Integer percentageBasisPoints) {
+        DiscountRuleAuthorization.requireWrite(actor);
+        ReservationSnapshot reservation = load(actor, reservationId);
+        DiscountLine line = AdditionalDiscount.preview(reservation.subtotal(), rate(percentageBasisPoints));
+        return new Preview(line, excess(reservation, line));
+    }
+
+    @Override
     public AdditionalDiscount register(DiscountRuleActor actor, Command command) {
         DiscountRuleAuthorization.requireWrite(actor);
         ReservationSnapshot reservation = load(actor, command.reservationId());
@@ -57,7 +66,9 @@ public class RegisterAdditionalDiscountUseCase implements RegisterAdditionalDisc
                 : reasons.findByTenantAndId(actor.tenantId(), command.reasonId()).filter(AuthorizableReason::enabled)
                         .orElse(null);
         if (reason == null) {
-            throw new DomainException("reason", "the reason must be one of the enabled reasons");
+            // Required is a validation matter (400); a reason that is not an enabled one is a business rule (422).
+            if (command.reasonId() == null) throw new DomainException("reason", "reason is required");
+            throw new BusinessRuleViolation("the reason must be one of the enabled reasons");
         }
         // The same function as the preview, so both always agree (AC-04.13).
         DiscountLine line = AdditionalDiscount.preview(reservation.subtotal(), rate(command.percentageBasisPoints()));
@@ -70,9 +81,9 @@ public class RegisterAdditionalDiscountUseCase implements RegisterAdditionalDisc
             discounts.save(discount);
             outbox.append(new ReservationModified(actor.tenantId(), reservation.reservationId(),
                     reservation.subtotal(), line.subtotal(), reason.text(), actor.actorId(), order, now));
-            if (reservation.paid().amount() > line.subtotal().amount()) {
-                excess.open(actor.tenantId(), reservation.reservationId(),
-                        new Cents(reservation.paid().amount() - line.subtotal().amount()));
+            Cents above = excess(reservation, line);
+            if (above.amount() > 0) {
+                excess.open(actor.tenantId(), reservation.reservationId(), above);
             }
             return discount;
         });
@@ -82,12 +93,17 @@ public class RegisterAdditionalDiscountUseCase implements RegisterAdditionalDisc
         ReservationSnapshot reservation = reservations.findByTenantAndId(actor.tenantId(), reservationId)
                 .orElseThrow(() -> new ReservationNotFoundException(reservationId));
         if (!reservation.eligible()) {
-            throw new DomainException("state", "only a pending or confirmed reservation takes an additional discount");
+            throw new BusinessRuleViolation("only a pending or confirmed reservation takes an additional discount");
         }
         if (discounts.existsByReservation(actor.tenantId(), reservationId)) {
-            throw new DomainException("reservation", "the reservation already has an additional discount");
+            throw new BusinessRuleViolation("the reservation already has an additional discount");
         }
         return reservation;
+    }
+
+    // What was paid above the new value; zero when nothing was paid above it.
+    private static Cents excess(ReservationSnapshot reservation, DiscountLine line) {
+        return new Cents(Math.max(0, reservation.paid().amount() - line.subtotal().amount()));
     }
 
     private static BasisPoints rate(Integer basisPoints) {
