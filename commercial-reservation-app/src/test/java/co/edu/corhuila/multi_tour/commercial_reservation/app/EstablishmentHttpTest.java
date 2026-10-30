@@ -98,10 +98,18 @@ class EstablishmentHttpTest {
 
     @Test void publicImageRouteServesWithoutTokenAndWithCacheHeader() throws Exception {
         var item = seed();
-        exchange(post(path(item) + "/inactivate"), 200, "TENANT_ADMINISTRATOR");
         var image = exchange(get(imagePath(tenant, item)), 200, null);
         assertThat(image.getResponse().getHeader("Cache-Control")).contains("public", "max-age=").doesNotContain("no-store");
         assertThat(image.getResponse().getContentAsByteArray()).isEqualTo(PNG);
+    }
+
+    // AC-06.17: an inactive association has no public image; the same not found as a missing one.
+    @Test void publicImageOfAnInactiveAssociationIsNotFound() throws Exception {
+        var item = seed();
+        exchange(post(path(item) + "/inactivate"), 200, "TENANT_ADMINISTRATOR");
+        var inactive = exchange(get(imagePath(tenant, item)), 404, null);
+        var missing = exchange(operation("image", UUID.randomUUID().toString()), 404, null);
+        assertThat(json(inactive)).isEqualTo(json(missing));
     }
 
     @ParameterizedTest @ValueSource(strings = {"GET", "inactivate", "reactivate", "image"})
