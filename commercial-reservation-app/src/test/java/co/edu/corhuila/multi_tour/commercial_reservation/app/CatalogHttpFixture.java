@@ -70,6 +70,12 @@ class CatalogHttpFixture {
                             .thenComparing(service -> service.serviceId().toString()).reversed()).toList();
             return new CatalogPage(matching.stream().skip((page - 1L) * limit).limit(limit).toList(), matching.size());
         }
+        @Override public CatalogPage pageByTenant(UUID tenant, Optional<CatalogStatus> status,
+                Optional<CatalogServiceType> type, Optional<String> search, int page, int limit) {
+            var all = pageByTenant(tenant, status, type, 1, Integer.MAX_VALUE).items().stream().filter(service -> search.isEmpty()
+                    || service.commercialName().toLowerCase().contains(search.get().toLowerCase())).toList();
+            return new CatalogPage(all.stream().skip((page - 1L) * limit).limit(limit).toList(), all.size());
+        }
     }
 
     // The settings of the tenants live in memory; the real policy of the application reads them (HU-COM-001 T-05).
