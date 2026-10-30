@@ -79,6 +79,7 @@ public final class EstablishmentController {
     public ResponseEntity<byte[]> image(@PathVariable("identifier") String identifier, @PathVariable("associationId") UUID id) {
         UUID tenant = tenants.resolve(identifier);
         var item = repository.findByTenantAndId(tenant, id).filter(value -> value.tenantId().equals(tenant))
+                .filter(value -> value.associationStatus() == AssociationStatus.ACTIVE)
                 .orElseThrow(AssociatedEstablishmentNotFoundException::new);
         var image = images.read(tenant, item.imageReference());
         return ResponseEntity.ok().header("Cache-Control", "public, max-age=86400")

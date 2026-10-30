@@ -1,10 +1,14 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PublicEstablishment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PublicTour;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PublicTourDetail;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetPublicEstablishment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetPublicTour;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListPublicEstablishments;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListPublicTours;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentType;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -25,10 +29,15 @@ public final class PublicOfferController {
 
     private final ListPublicTours tours;
     private final GetPublicTour tour;
+    private final ListPublicEstablishments establishments;
+    private final GetPublicEstablishment establishment;
 
-    public PublicOfferController(ListPublicTours tours, GetPublicTour tour) {
+    public PublicOfferController(ListPublicTours tours, GetPublicTour tour, ListPublicEstablishments establishments,
+            GetPublicEstablishment establishment) {
         this.tours = tours;
         this.tour = tour;
+        this.establishments = establishments;
+        this.establishment = establishment;
     }
 
     @GetMapping(BASE + "/tours")
@@ -44,6 +53,29 @@ public final class PublicOfferController {
     public ResponseEntity<PublicTourDetail> getTour(@PathVariable("identifier") String identifier,
             @PathVariable("serviceId") UUID serviceId) {
         return cached(DETAIL_CACHE, tour.get(identifier, serviceId));
+    }
+
+    @GetMapping(BASE + "/associated-establishments")
+    public ResponseEntity<PublicPageResponse<PublicEstablishment>> listEstablishments(
+            @PathVariable("identifier") String identifier, @RequestParam Map<String, String> query) {
+        allow(query, "page", "limit", "establishmentType");
+        int page = integer(query, "page", 1, Integer.MAX_VALUE), limit = integer(query, "limit", 20, 100);
+        var result = establishments.list(identifier, type(query.get("establishmentType")), page, limit);
+        return cached(LIST_CACHE, PublicPageResponse.of(result.items(), result.total(), page, limit));
+    }
+
+    @GetMapping(BASE + "/associated-establishments/{associationId}")
+    public ResponseEntity<PublicEstablishment> getEstablishment(@PathVariable("identifier") String identifier,
+            @PathVariable("associationId") UUID associationId) {
+        return cached(LIST_CACHE, establishment.get(identifier, associationId));
+    }
+
+    private static Optional<EstablishmentType> type(String value) {
+        try {
+            return Optional.ofNullable(value).map(EstablishmentType::valueOf);
+        } catch (IllegalArgumentException invalid) {
+            throw new DomainException("establishmentType", "must be one of the establishment types");
+        }
     }
 
     static <T> ResponseEntity<T> cached(String policy, T body) {
