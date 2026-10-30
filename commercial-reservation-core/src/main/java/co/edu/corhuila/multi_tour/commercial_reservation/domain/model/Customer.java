@@ -16,12 +16,13 @@ public final class Customer {
     private final HighRiskData highRiskData;
     // Known only at registration (read from the catalog); a restored customer keeps no service, so it is null.
     private final Boolean highRisk;
+    private final UUID accountId; // the account of the digital channel, null until linked (HU-COM-008, one customer per account)
 
     private Customer(UUID id, UUID tenant, DocumentNumber document, String name, BirthDateOrAge birth,
-            ContactInfo contact, boolean terms, Instant created, Instant termsAt, HighRiskData highRiskData, Boolean highRisk) {
+            ContactInfo contact, boolean terms, Instant created, Instant termsAt, HighRiskData highRiskData, Boolean highRisk, UUID account) {
         customerId = id; tenantId = tenant; documentNumber = document; fullName = name;
         birthDateOrAge = birth; this.contact = contact; termsAccepted = terms; createdAt = created; termsAcceptedAt = termsAt;
-        this.highRiskData = highRiskData; this.highRisk = highRisk;
+        this.highRiskData = highRiskData; this.highRisk = highRisk; accountId = account;
     }
 
     public static Customer registerLead(UUID id, UUID tenant, String document, String fullName,
@@ -45,7 +46,7 @@ public final class Customer {
                     ? new HighRiskData(null, null, null, false).missingFields() : highRiskData.missingFields();
             if (!missing.isEmpty()) throw new MissingHighRiskDataException(missing);
         }
-        return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now, now, highRiskData, highRisk);
+        return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now, now, highRiskData, highRisk, null);
     }
 
     // Rebuilds a stored customer: its rules were checked when it was registered, so none is repeated here. The
@@ -53,7 +54,13 @@ public final class Customer {
     public static Customer restore(UUID id, UUID tenant, DocumentNumber document, String fullName,
             BirthDateOrAge birth, ContactInfo contact, Instant createdAt, Instant termsAcceptedAt, HighRiskData highRiskData) {
         return new Customer(id, tenant, document, fullName, birth, contact, true, createdAt, termsAcceptedAt,
-                highRiskData, null);
+                highRiskData, null, null);
+    }
+
+    // Same, for a record that already has its account.
+    public static Customer restore(UUID id, UUID tenant, DocumentNumber document, String fullName,
+            BirthDateOrAge birth, ContactInfo contact, Instant createdAt, Instant termsAcceptedAt, HighRiskData highRiskData, UUID accountId) {
+        return new Customer(id, tenant, document, fullName, birth, contact, true, createdAt, termsAcceptedAt, highRiskData, null, accountId);
     }
 
     private static <T> T required(T value, String field) {
@@ -72,4 +79,12 @@ public final class Customer {
     public Instant termsAcceptedAt() { return termsAcceptedAt; }
     public HighRiskData highRiskData() { return highRiskData; }
     public Boolean highRisk() { return highRisk; }
+    public UUID accountId() { return accountId; }
+
+    // Links the account of the token to this record, keeping every other datum and its history (AC-08.13, AC-08.14).
+    public Customer linkedTo(UUID account) {
+        required(account, "accountId");
+        return new Customer(customerId, tenantId, documentNumber, fullName, birthDateOrAge, contact, termsAccepted, createdAt,
+                termsAcceptedAt, highRiskData, highRisk, account);
+    }
 }

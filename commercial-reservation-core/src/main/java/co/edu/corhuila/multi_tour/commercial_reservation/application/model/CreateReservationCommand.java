@@ -7,15 +7,22 @@ import java.util.UUID;
 // What the caller chooses (RN-13): who, which tour and departure, how many people (the lead included), the companions
 // that travel in the same command (DP-02) and the expected payment. It carries no value; the service quotes its own.
 // The codes are the wire codes of DP-08 and may be missing: the creation names each one.
+// ownerAccountId is set only for a Final Customer (HU-COM-008): the customer is then the one linked to that account, and
+// customerId must be absent (RN-01).
 public record CreateReservationCommand(UUID tenantId, UUID actorId, UUID customerId, UUID serviceId, UUID departureId,
-        int people, String paymentType, String paymentMethod, List<Companion> companions) {
+        int people, String paymentType, String paymentMethod, List<Companion> companions, UUID ownerAccountId) {
 
     public CreateReservationCommand {
         companions = companions == null ? List.of() : List.copyOf(companions);
     }
 
     public CreateReservationCommand(UUID tenantId, UUID actorId, UUID customerId, UUID serviceId, UUID departureId,
+            int people, String paymentType, String paymentMethod, List<Companion> companions) {
+        this(tenantId, actorId, customerId, serviceId, departureId, people, paymentType, paymentMethod, companions, null);
+    }
+
+    public CreateReservationCommand(UUID tenantId, UUID actorId, UUID customerId, UUID serviceId, UUID departureId,
             int people, String paymentType, String paymentMethod) {
-        this(tenantId, actorId, customerId, serviceId, departureId, people, paymentType, paymentMethod, List.of());
+        this(tenantId, actorId, customerId, serviceId, departureId, people, paymentType, paymentMethod, List.of(), null);
     }
 }
