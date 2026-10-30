@@ -53,6 +53,9 @@ final class AdditionalDiscountFakes implements ReservationReader, AdditionalDisc
     @Override public boolean existsByReservation(UUID tenantId, UUID reservationId) {
         return discounts.containsKey(reservationId);
     }
+    @Override public Optional<AdditionalDiscount> findByReservation(UUID tenantId, UUID reservationId) {
+        return Optional.ofNullable(discounts.get(reservationId)).filter(d -> d.tenantId().equals(tenantId));
+    }
     @Override public void append(ReservationModified event) {
         if (failOnAppend != null) throw failOnAppend;
         events.add(event);
