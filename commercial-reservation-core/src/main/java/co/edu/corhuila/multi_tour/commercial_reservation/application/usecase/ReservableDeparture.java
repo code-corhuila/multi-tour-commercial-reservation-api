@@ -22,6 +22,16 @@ public class ReservableDeparture {
     }
 
     public DepartureState require(UUID tenantId, UUID departureId, UUID serviceId, int people) {
+        DepartureState departure = requireOpen(tenantId, departureId, serviceId);
+        int available = departure.seats().available();
+        if (available < people) {
+            throw new BusinessRuleViolation("not enough seats: " + available + " seats available");
+        }
+        return departure;
+    }
+
+    // What a quote needs: the departure exists for the tenant, is of the tour, is scheduled and has not started (no seat count).
+    public DepartureState requireOpen(UUID tenantId, UUID departureId, UUID serviceId) {
         DepartureState departure = departures.find(tenantId, departureId)
                 .filter(found -> found.tenantId().equals(tenantId))
                 .orElseThrow(() -> new DepartureNotFoundException(departureId));
@@ -33,10 +43,6 @@ public class ReservableDeparture {
         }
         if (!Instant.now(clock).isBefore(departure.startsAt())) {
             throw new BusinessRuleViolation("the departure has already started");
-        }
-        int available = departure.seats().available();
-        if (available < people) {
-            throw new BusinessRuleViolation("not enough seats: " + available + " seats available");
         }
         return departure;
     }
