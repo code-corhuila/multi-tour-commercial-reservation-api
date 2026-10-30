@@ -29,6 +29,7 @@ public final class DiscountRule {
         required(id, "ruleId"); required(tenant, "tenantId"); required(now, "occurredAt");
         if (name == null || name.isBlank()) throw new DomainException("name", "name is required");
         required(priority, "priority"); required(base, "calculationBase");
+        if (priority < 1) throw new DomainException("priority", "priority must be at least 1");
         required(from, "validFrom"); required(to, "validTo");
         if (from.isAfter(to)) throw new DomainException("validFrom", "validFrom cannot be after validTo");
         validateValue(basisPoints, cents);
