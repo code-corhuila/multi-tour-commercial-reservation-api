@@ -1,6 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 
-// The financial situation of a reservation; only the birth value exists until HU-COM-009 (plan D-02).
+// The financial situation, derived from validated values only (RN-RES-006A, models.md). English codes of the db (X-2).
 public enum PaymentStatus {
-    NO_PAYMENT
+    NO_PAYMENT, PARTIAL, DEPOSIT_RECEIVED, BALANCE_PENDING, FULLY_PAID
 }
