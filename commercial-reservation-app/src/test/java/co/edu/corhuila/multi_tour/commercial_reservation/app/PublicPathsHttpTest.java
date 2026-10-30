@@ -52,6 +52,7 @@ class PublicPathsHttpTest {
     @Test void aPathUnderPublicThatIsNotListedAnswersNotFoundNotUnauthorized() throws Exception {
         assertThat(status(get(PUBLIC + "/other"))).isEqualTo(404);
         assertThat(status(get(PUBLIC + "/tours/" + UUID.randomUUID() + "/departures"))).isEqualTo(404);
+        assertThat(status(get(PUBLIC + "/associated-establishments/" + UUID.randomUUID() + "/image/extra"))).isEqualTo(404);
         assertThat(status(get("/api/v1/commercial-reservation/public/tenants"))).isEqualTo(404);
     }
 
