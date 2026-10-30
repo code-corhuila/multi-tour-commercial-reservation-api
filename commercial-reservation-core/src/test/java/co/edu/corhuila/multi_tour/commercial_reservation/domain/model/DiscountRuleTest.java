@@ -62,6 +62,11 @@ class DiscountRuleTest {
         assertRejectedOn(() -> DiscountRule.create(ID, TENANT, "n", FROM, TO, 1, DiscountBase.ORIGINAL_VALUE, 100, null, ALL, null, null), "occurredAt");
     }
 
+    @ParameterizedTest @ValueSource(ints = {-1, 0})
+    void rejectsAPriorityBelowOne(int priority) {
+        assertRejectedOn(() -> DiscountRule.create(ID, TENANT, "n", FROM, TO, priority, DiscountBase.ORIGINAL_VALUE, 100, null, ALL, null, NOW), "priority");
+    }
+
     // RN-06, AC-03.2
     @Test void theCalculationBaseIsOriginalValueOrPreviousSubtotal() {
         assertThat(DiscountBase.values()).containsExactly(DiscountBase.ORIGINAL_VALUE, DiscountBase.PREVIOUS_SUBTOTAL);
