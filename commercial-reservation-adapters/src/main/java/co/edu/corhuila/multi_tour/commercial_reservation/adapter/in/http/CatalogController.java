@@ -113,7 +113,7 @@ public final class CatalogController {
         return CatalogServiceResponse.from(reactivate.reactivate(principal.tenantId(), serviceId, actor(principal)));
     }
 
-    private static UUID actor(AuthenticatedPrincipal principal) {
+    static UUID actor(AuthenticatedPrincipal principal) {
         try {
             UUID actor = UUID.fromString(principal.sub());
             // UUID.fromString accepts abbreviated groups; account claims must use the full UUID form.
