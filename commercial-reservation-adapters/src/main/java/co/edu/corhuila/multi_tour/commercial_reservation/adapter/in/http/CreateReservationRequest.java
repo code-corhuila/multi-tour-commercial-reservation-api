@@ -13,7 +13,8 @@ import java.util.List;
 import java.util.UUID;
 
 // Closed request: the body carries no value, tenant, state or creator (RN-13), and the strict mapper refuses them.
-// Boxed values keep absence, so the core names every missing field at once (AC-07.2). The holder of a Final Customer waits for HU-COM-008.
+// Boxed values keep absence, so the core names every missing field at once (AC-07.2). The holder block of a Final Customer
+// whose account has no record is the next slice of HU-COM-008 (AC-08.13); until then the core names "holder".
 public record CreateReservationRequest(UUID customerId, UUID serviceId, UUID salidaId, Integer people, String paymentType,
         String paymentMethod, List<CompanionRequest> companions) {
 
@@ -50,5 +51,12 @@ public record CreateReservationRequest(UUID customerId, UUID serviceId, UUID sal
         if (companions != null) for (int i = 0; i < companions.size(); i++) group.add(companions.get(i).toCompanion(i, today));
         return new CreateReservationCommand(tenantId, actorId, customerId, serviceId, salidaId, people == null ? 0 : people,
                 paymentType, paymentMethod, group);
+    }
+
+    // The door of a Final Customer: the customer is the one of the account, so a customerId in the body is refused (AC-08.9).
+    public CreateReservationCommand toOwnCommand(UUID tenantId, UUID accountId, LocalDate today) {
+        var command = toCommand(tenantId, accountId, today);
+        return new CreateReservationCommand(command.tenantId(), command.actorId(), command.customerId(), command.serviceId(),
+                command.departureId(), command.people(), command.paymentType(), command.paymentMethod(), command.companions(), accountId);
     }
 }
