@@ -181,4 +181,15 @@ class AdditionalDiscountRegistrationHttpTest extends AdditionalDiscountHttpBase 
         assertThat(extras.discounts).isEmpty();
         assertThat(extras.events).isEmpty();
     }
+
+    @Test void aSubtotalSoSmallThatThePercentageTakesZeroCentsIsABusinessRuleViolationAndWritesNothing() throws Exception {
+        UUID reservation = reservationWithSubtotal(49);
+        var error = CatalogHttpTest.json(exchange(register(reservation, body(100, loyalty), "additional-key-18", ADMIN), 422));
+        assertThat(error.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(error.get("message").asText()).contains("at least one cent");
+        assertThat(error.get("traceId").asText()).isEqualTo(TRACE);
+        assertThat(extras.discounts).isEmpty();
+        assertThat(extras.events).isEmpty();
+        exchange(register(reservationWithSubtotal(50), body(100, loyalty), "additional-key-19", ADMIN), 201);
+    }
 }
