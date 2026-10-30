@@ -118,4 +118,11 @@ class AdditionalDiscountPreviewHttpTest extends AdditionalDiscountHttpBase {
         assertThat(error.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
         assertThat(error.get("message").asText()).contains("already has an additional discount");
     }
+
+    @Test void aSubtotalSoSmallThatThePercentageTakesZeroCentsAnswersTheSameBusinessRuleViolationAsTheRegistration() throws Exception {
+        var error = CatalogHttpTest.json(exchange(preview(reservationWithSubtotal(49), "100", ADMIN), 422));
+        assertThat(error.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(error.get("message").asText()).contains("at least one cent");
+        exchange(preview(reservationWithSubtotal(50), "100", ADMIN), 200);
+    }
 }

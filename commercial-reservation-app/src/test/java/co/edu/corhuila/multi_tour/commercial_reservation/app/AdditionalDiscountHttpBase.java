@@ -38,6 +38,13 @@ abstract class AdditionalDiscountHttpBase extends ReservationHttpBase {
 
     UUID reservationWithTenPercentOff() { return reservationWithTenPercentOff(tenant); }
 
+    // A reservation whose subtotal is so small that 1 % of it rounds to zero cents.
+    UUID reservationWithSubtotal(long cents) {
+        var line = new FixedDiscount(1, TEN_PERCENT_RULE, "Almost free", DiscountType.FIXED_AMOUNT, null, 300_000L - cents,
+                DiscountBase.ORIGINAL_VALUE, new Cents(300_000), new Cents(300_000 - cents), new Cents(cents), null);
+        return plant(tenant, new Cents(cents), List.of(line));
+    }
+
     UUID reservationWithoutDiscounts() { return plant(tenant, new Cents(300_000), List.of()); }
 
     private UUID plant(UUID owner, Cents finalValue, List<FixedDiscount> lines) {
