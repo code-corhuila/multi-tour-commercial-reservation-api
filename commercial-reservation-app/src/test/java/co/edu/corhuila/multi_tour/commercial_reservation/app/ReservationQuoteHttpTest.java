@@ -7,8 +7,11 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogSer
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CommercialTerms;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -78,6 +81,18 @@ class ReservationQuoteHttpTest extends ReservationHttpBase {
         var body = quoteBody(2); body.remove("people");
         CatalogHttpTest.assertField(exchange(quote(body, ADMIN), 400), "people");
         for (String role : List.of(MANAGER, ACCOUNTANT, ANALYST, FINAL_CUSTOMER)) exchange(quote(quoteBody(2), role), 403);
+    }
+
+    @Test void aDepartureOfAnotherTourOrOneThatIsNotOpenIsRefusedWith422() throws Exception {
+        var elsewhere = new UUID(1, 6); var cancelled = new UUID(1, 7);
+        store.departures.put(elsewhere, new DepartureState(elsewhere, tenant, otherTour, NOW.plusSeconds(86_400),
+                DepartureStatus.SCHEDULED, 10, 0));
+        store.departures.put(cancelled, new DepartureState(cancelled, tenant, tour, NOW.plusSeconds(86_400),
+                DepartureStatus.CANCELLED, 10, 0));
+        for (UUID refused : List.of(elsewhere, cancelled)) {
+            var body = quoteBody(2); body.put("salidaId", refused.toString());
+            assertThat(CatalogHttpTest.json(exchange(quote(body, ADMIN), 422)).get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        }
     }
 
     @Test void aTourOfAnotherTenantInAQuoteAnswersNotFound() throws Exception {
