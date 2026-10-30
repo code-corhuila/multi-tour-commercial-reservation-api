@@ -89,7 +89,9 @@ class CommercialReservationConfiguration {
         return new WebMvcConfigurer() {
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                registry.addInterceptor(new CatalogAuthorization(collaboratorEditing)).addPathPatterns("/api/v1/commercial-reservation/catalog/**");
+                // The departures of a tour are a Reservations route with its own roles (ReservationHttpAccess).
+                registry.addInterceptor(new CatalogAuthorization(collaboratorEditing)).addPathPatterns("/api/v1/commercial-reservation/catalog/**")
+                        .excludePathPatterns("/api/v1/commercial-reservation/catalog/services/*/departures");
             }
         };
     }

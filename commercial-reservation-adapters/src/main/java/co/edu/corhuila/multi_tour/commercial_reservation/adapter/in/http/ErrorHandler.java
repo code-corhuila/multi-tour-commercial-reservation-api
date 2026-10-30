@@ -6,6 +6,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.As
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservationAccessDeniedException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingReservationDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingHighRiskDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReasonRuleViolation;
@@ -46,6 +48,13 @@ public class ErrorHandler {
             message = "PATCH".equals(request.getMethod())
                     ? "The capacity cannot be lower than the seats already held in a scheduled departure"
                     : "The item cannot be reactivated while a restriction applies";
+            // The quote says which rule refused it (the missing transport fare, the inactive tenant), never a value.
+            if (request.getRequestURI().endsWith("/reservation-quotes")) message = ex.getMessage();
+        } else if (ex instanceof MissingReservationDataException missing) {
+            // AC-07.2: every missing datum named at once.
+            code = ApiError.Code.VALIDATION_ERROR;
+            message = "the request has invalid fields";
+            details = missing.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
         } else if (ex instanceof InvalidTokenException) {
             code = ApiError.Code.UNAUTHORIZED;
             message = "authentication is required";
@@ -88,7 +97,7 @@ public class ErrorHandler {
             code = ApiError.Code.NOT_FOUND;
             message = "resource not found";
         } else if (ex instanceof EstablishmentAccessDeniedException || ex instanceof DiscountRuleAccessDeniedException
-                || ex instanceof CustomerAccessDeniedException
+                || ex instanceof CustomerAccessDeniedException || ex instanceof ReservationAccessDeniedException
                 || ex instanceof ResponseStatusException status && status.getStatusCode().value() == 403) {
             code = ApiError.Code.FORBIDDEN;
             message = "access is forbidden";
@@ -101,6 +110,7 @@ public class ErrorHandler {
         if (ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException) status = 413;
         return ResponseEntity.status(status).body(errors.body(request, code, message, details));
     }
+
 
     private static String jsonField(Throwable error) {
         for (Throwable cause = error.getCause(); cause != null; cause = cause.getCause()) {
