@@ -99,7 +99,8 @@ class CustomerHttpTest {
     @Test void repeatingTheSameKeyAnswers200WithTheSameCustomerAndNoSecondOne() throws Exception {
         var first = CatalogHttpTest.json(exchange(create(body(plainService), "customer-key-3", TestJwtKeys.TENANT, ADMIN), 201));
         var second = CatalogHttpTest.json(exchange(create(body(plainService), "customer-key-3", TestJwtKeys.TENANT, ADMIN), 200));
-        assertThat(second).isEqualTo(first);
+        // The replay is a read: it answers the same customer without the registration-only highRisk.
+        assertThat(second).isEqualTo(((com.fasterxml.jackson.databind.node.ObjectNode) first.deepCopy()).without("highRisk"));
         assertThat(store.customers).hasSize(1);
         assertThat(store.registered).hasSize(1);
     }
