@@ -6,6 +6,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Tenan
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
@@ -43,6 +45,7 @@ public class CreateReservationUseCase implements CreateReservation {
     private final ReservationRepository reservations;
     private final IdGenerator ids;
     private final Clock clock;
+    private final ReservationHolder holders; // null when the inline holder is not wired: a holder is then refused
 
     public CreateReservationUseCase(TenantDirectory tenants, CustomerRepository customers, CatalogServiceRepository catalog, ReservableDeparture departures,
             ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
@@ -54,6 +57,15 @@ public class CreateReservationUseCase implements CreateReservation {
             CatalogServiceRepository catalog, ReservableDeparture departures,
             ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
             Clock clock) {
+        this(tenants, customers, accounts, catalog, departures, pricing, options, reservations, ids, clock, null, null);
+    }
+
+    // With the outbox and the e-mail lookup the inline holder is registered with the reservation (HU-COM-005, contract holder).
+    public CreateReservationUseCase(TenantDirectory tenants, CustomerRepository customers, CustomerByAccount accounts,
+            CatalogServiceRepository catalog, ReservableDeparture departures,
+            ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
+            Clock clock, CustomerRegisteredOutbox customerEvents, CustomerByEmail emails) {
+        this.holders = customerEvents == null ? null : new ReservationHolder(customers, customerEvents, emails, clock);
         this.tenants = tenants;
         this.customers = customers;
         this.accounts = accounts;
@@ -72,7 +84,8 @@ public class CreateReservationUseCase implements CreateReservation {
         requireActiveTenant(command.tenantId());
         PaymentType type = PaymentType.fromCode(command.paymentType());
         PaymentMethod method = PaymentMethod.fromCode(command.paymentMethod());
-        Customer lead = resolveLead(command);
+        ReservationHolder.Lead registration = command.holder() == null ? null : prepareHolder(command);
+        Customer lead = registration != null ? registration.customer() : resolveLead(command);
         CatalogService tour = CatalogLookup.require(catalog, command.tenantId(), command.serviceId());
         requireDataTheTourNeeds(lead, tour);
         requireValidGroup(lead, tour, command.companions());
@@ -85,8 +98,24 @@ public class CreateReservationUseCase implements CreateReservation {
         Reservation reservation = Reservation.create(ids.newId(), command.tenantId(), lead.customerId(), command.departureId(),
                 command.actorId(), command.people(), quote.service(), quote.projectedValue(), quote.finalValue(),
                 quote.discounts(), type, method, Instant.now(clock), command.companions());
+        if (registration != null) holders.write(registration, command.actorId());
         reservations.save(reservation);
         return reservation;
+    }
+
+    // Exactly one of customerId and holder (contract oneOf); a Final Customer whose account has a record sends neither (AC-08.13).
+    private ReservationHolder.Lead prepareHolder(CreateReservationCommand command) {
+        if (holders == null) throw new DomainException("holder", "an inline holder is not supported");
+        if (command.customerId() != null) {
+            throw new DomainException(command.ownerAccountId() == null ? "holder" : "customerId",
+                    command.ownerAccountId() == null ? "send exactly one of customerId and holder"
+                            : "a customer cannot be named; it is the one of the account");
+        }
+        if (command.ownerAccountId() != null && accounts.findByTenantAndAccount(command.tenantId(), command.ownerAccountId()).isPresent()) {
+            throw new DomainException("holder", "the account already has a customer record; send neither customerId nor holder");
+        }
+        CatalogService tour = CatalogLookup.require(catalog, command.tenantId(), command.serviceId());
+        return holders.prepare(command, tour, ids.newId());
     }
 
     // RN-01 (AC-08.1, AC-08.9): a Final Customer reserves for the customer linked to their account, never for one they name.
@@ -106,7 +135,7 @@ public class CreateReservationUseCase implements CreateReservation {
     // AC-07.2: each missing field is named at once.
     private static void requireMandatoryData(CreateReservationCommand command) {
         List<String> missing = new ArrayList<>();
-        if (command.customerId() == null && command.ownerAccountId() == null) missing.add("customerId");
+        if (command.customerId() == null && command.ownerAccountId() == null && command.holder() == null) missing.add("customerId");
         if (command.departureId() == null) missing.add("salidaId");
         if (command.serviceId() == null) missing.add("serviceId");
         if (command.people() < 1) missing.add("people");
