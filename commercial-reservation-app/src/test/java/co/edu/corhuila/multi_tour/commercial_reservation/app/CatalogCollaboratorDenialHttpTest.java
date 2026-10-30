@@ -34,7 +34,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @ContextConfiguration(initializers = TestJwtKeys.class)
 @Import(CatalogHttpFixture.class)
 class CatalogCollaboratorDenialHttpTest {
-    // The tenant enabling flag is not implemented (DD-19): the Collaborator is refused on every change; these tests pin that behavior and the nothing-changes guarantee
+    // A tenant that never set the flag has it off: the Collaborator is refused on every change; these tests pin that behavior and the nothing-changes guarantee
     @Autowired MockMvc mvc;
     @Autowired CatalogHttpFixture.MemoryCatalog catalog;
 
