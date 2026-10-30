@@ -192,4 +192,25 @@ class AdditionalDiscountRegistrationHttpTest extends AdditionalDiscountHttpBase 
         assertThat(extras.events).isEmpty();
         exchange(register(reservationWithSubtotal(50), body(100, loyalty), "additional-key-19", ADMIN), 201);
     }
+
+    // Two simultaneous requests with the same new key: the one that lost the race finds the winner committed (its discount and
+    // its key), and must answer what the winner answered instead of a business rule violation (AC-04.11).
+    @Test void theLoserOfARaceWithTheSameKeyAnswers200WithTheStoredResultAndWritesNothingMore() throws Exception {
+        UUID reservation = reservationWithTenPercentOff();
+        var winner = CatalogHttpTest.json(exchange(register(reservation, body(1_000, loyalty), "additional-key-20", ADMIN), 201));
+        keys.keys.clear();
+        extras.beforeTheExistenceCheck = () -> keys.tryRegister(tenant, "additional-key-20", "additional_discount", reservation);
+        var loser = CatalogHttpTest.json(exchange(register(reservation, body(1_000, loyalty), "additional-key-20", ADMIN), 200));
+        assertThat(loser).isEqualTo(winner);
+        assertThat(extras.discounts).hasSize(1);
+        assertThat(extras.events).hasSize(1);
+    }
+
+    @Test void aRefusalWithoutAKeyOfTheWinnerStillAnswersTheBusinessRuleViolation() throws Exception {
+        UUID reservation = reservationWithTenPercentOff();
+        exchange(register(reservation, body(1_000, loyalty), "additional-key-21", ADMIN), 201);
+        keys.keys.clear();
+        exchange(register(reservation, body(500, loyalty), "additional-key-22", ADMIN), 422);
+        assertThat(extras.discounts.get(reservation).rate().value()).isEqualTo(1_000);
+    }
 }

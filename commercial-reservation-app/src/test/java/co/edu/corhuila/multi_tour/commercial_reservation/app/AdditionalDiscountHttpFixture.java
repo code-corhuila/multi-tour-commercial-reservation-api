@@ -50,12 +50,14 @@ class AdditionalDiscountHttpFixture {
         final Map<UUID, Cents> paid = new HashMap<>();
         final List<ReservationModified> events = new ArrayList<>();
         final List<Cents> excesses = new ArrayList<>();
+        // Runs when the use case asks whether the reservation already has a discount: lets a test commit a concurrent winner first.
+        Runnable beforeTheExistenceCheck = () -> { };
 
         MemoryAdditionalDiscounts(ReservationHttpFixture.MemoryReservations reservations) {
             this.reservations = reservations;
         }
 
-        void clear() { discounts.clear(); states.clear(); paid.clear(); events.clear(); excesses.clear(); }
+        void clear() { discounts.clear(); states.clear(); paid.clear(); events.clear(); excesses.clear(); beforeTheExistenceCheck = () -> { }; }
 
         @Override public Optional<ReservationSnapshot> findByTenantAndId(UUID tenant, UUID id) {
             return reservations.findByTenantAndId(tenant, id).map(found -> new ReservationSnapshot(tenant, id,
@@ -64,7 +66,10 @@ class AdditionalDiscountHttpFixture {
                             .filter(line -> line.amount().amount() > 0).count() + (discounts.containsKey(id) ? 1 : 0)));
         }
         @Override public void save(AdditionalDiscount discount) { discounts.put(discount.reservationId(), discount); }
-        @Override public boolean existsByReservation(UUID tenant, UUID reservation) { return discounts.containsKey(reservation); }
+        @Override public boolean existsByReservation(UUID tenant, UUID reservation) {
+            beforeTheExistenceCheck.run();
+            return discounts.containsKey(reservation);
+        }
         @Override public Optional<AdditionalDiscount> findByReservation(UUID tenant, UUID reservation) {
             return Optional.ofNullable(discounts.get(reservation)).filter(found -> found.tenantId().equals(tenant));
         }
