@@ -79,6 +79,7 @@ class CustomerHttpTest {
         assertThat(customer.get("birthDate").asText()).isEqualTo("1990-05-17");
         assertThat(customer.get("termsAccepted").asBoolean()).isTrue();
         assertThat(customer.get("createdAt").asText()).endsWith("Z");
+        assertThat(customer.get("highRisk").asBoolean()).isTrue();
         assertThat(customer.has("tenantId")).isFalse();
         assertThat(result.getResponse().getContentAsString()).doesNotContain(BLOOD, EMERGENCY, RESTRICTION)
                 .doesNotContain("emergencyInfo", "informedConsentSigned");
@@ -92,6 +93,7 @@ class CustomerHttpTest {
         var customer = CatalogHttpTest.json(exchange(create(request, "customer-key-2", TestJwtKeys.TENANT, COLLABORATOR), 201));
         assertThat(customer.get("age").asInt()).isEqualTo(34);
         assertThat(customer.has("birthDate")).isFalse();
+        assertThat(customer.get("highRisk").asBoolean()).isFalse();
     }
 
     @Test void repeatingTheSameKeyAnswers200WithTheSameCustomerAndNoSecondOne() throws Exception {
