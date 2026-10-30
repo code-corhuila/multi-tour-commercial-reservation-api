@@ -3,17 +3,23 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthorizableReasonController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalAuthorizableReasons;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredExcessTreatment;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAdditionalDiscountRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.AuthorizableReasonTimes;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAuthorizableReasonRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationModifiedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageAuthorizableReasons;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterAdditionalDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AdditionalDiscountRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExcessTreatment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationModifiedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManageAuthorizableReasonsUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RegisterAdditionalDiscountUseCase;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -24,8 +30,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-// HU-COM-004: the JDBC adapters of the additional discount. RegisterAdditionalDiscount is not wired here yet:
-// it also needs the reservation reader (HU-COM-007), the excess treatment and the shared transaction port.
+// HU-COM-004: the JDBC adapters of the additional discount and its registration use case. The reservation reader is the
+// one of HU-COM-007, the transaction is the one shared with the discount rules and the excess treatment is deferred (D-06).
 @Configuration
 class AdditionalDiscountConfiguration {
     @Bean AdditionalDiscountRepository additionalDiscountRepository(JdbcTemplate jdbc) {
@@ -38,6 +44,16 @@ class AdditionalDiscountConfiguration {
 
     @Bean ReservationModifiedOutbox reservationModifiedOutbox(JdbcTemplate jdbc, ObjectMapper json) {
         return new JdbcReservationModifiedOutbox(jdbc, json);
+    }
+
+    @Bean ExcessTreatment excessTreatment() {
+        return new DeferredExcessTreatment();
+    }
+
+    @Bean RegisterAdditionalDiscount registerAdditionalDiscount(ReservationReader reservations,
+            AdditionalDiscountRepository discounts, AuthorizableReasonRepository reasons, ReservationModifiedOutbox outbox,
+            ExcessTreatment excess, DiscountRuleTransaction transaction, Clock clock) {
+        return new RegisterAdditionalDiscountUseCase(reservations, discounts, reasons, outbox, excess, transaction, clock);
     }
 
     @Bean ManageAuthorizableReasons manageAuthorizableReasons(AuthorizableReasonRepository reasons, IdGenerator ids) {
