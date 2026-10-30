@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AdditionalDiscountController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthorizableReasonController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalAuthorizableReasons;
@@ -9,6 +10,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.AuthorizableReasonTimes;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAuthorizableReasonRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationModifiedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageAuthorizableReasons;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterAdditionalDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AdditionalDiscountRepository;
@@ -67,6 +69,22 @@ class AdditionalDiscountConfiguration {
 
     @Bean AuthorizableReasonController authorizableReasonController(TransactionalAuthorizableReasons reasons) {
         return new AuthorizableReasonController(reasons);
+    }
+
+    @Bean AdditionalDiscountController additionalDiscountController(RegisterAdditionalDiscount discounts,
+            GetReservation reservations) {
+        return new AdditionalDiscountController(discounts, reservations);
+    }
+
+    // The role is checked before the query is read; the paths of the reservation are not the ones of ReservationHttpAccess.
+    @Bean WebMvcConfigurer additionalDiscountAccess() {
+        return new WebMvcConfigurer() {
+            @Override public void addInterceptors(InterceptorRegistry registry) {
+                registry.addInterceptor(new DiscountRuleHttpAccess()).addPathPatterns(
+                        "/api/v1/commercial-reservation/reservations/*/additional-discount",
+                        "/api/v1/commercial-reservation/reservations/*/additional-discount/**");
+            }
+        };
     }
 
     @Bean WebMvcConfigurer authorizableReasonAccess() {
