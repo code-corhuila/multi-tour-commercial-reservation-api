@@ -130,4 +130,51 @@ class ReservationJdbcHttpTest {
         unknown.put("salidaId", UUID.randomUUID().toString());
         exchange(quote(unknown), ADMIN, 404);
     }
+
+    MockHttpServletRequestBuilder create(String key) throws Exception {
+        var body = quoteBody(3);
+        body.put("customerId", customer.toString()); body.put("paymentType", "DEPOSIT"); body.put("paymentMethod", "TRANSFER");
+        return post(BASE + "/reservations").header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON)
+                .content(TestJwtKeys.JSON.writeValueAsBytes(body));
+    }
+
+    @Test void aReservationIsCreatedAndReadBackThroughTheListTheDetailAndTheBreakdown() throws Exception {
+        JsonNode created = CatalogHttpTest.json(exchange(create("jdbc-create-0001"), ADMIN, 201));
+        String id = created.get("reservationId").asText();
+        assertThat(created.get("reservationStatus").asText()).isEqualTo("PENDING_PAYMENT");
+        assertThat(created.get("finalValueCents").asLong()).isEqualTo(300_000L);
+
+        JsonNode list = CatalogHttpTest.json(exchange(get(BASE + "/reservations"), ADMIN, 200));
+        assertThat(list.at("/meta/total").asInt()).isEqualTo(1);
+        assertThat(list.at("/data/0/reservationId").asText()).isEqualTo(id);
+        assertThat(list.at("/data/0/customerName").asText()).isEqualTo("Persona Ficticia");
+        assertThat(list.at("/data/0/tourName").asText()).isEqualTo("Tour Ficticio");
+
+        JsonNode detail = CatalogHttpTest.json(exchange(get(BASE + "/reservations/" + id), ADMIN, 200));
+        assertThat(detail.get("projectedValueCents").asLong()).isEqualTo(300_000L);
+        assertThat(detail.get("pendingBalanceCents").asLong()).isEqualTo(300_000L);
+        assertThat(detail.get("seatHeld").asBoolean()).isFalse();
+
+        JsonNode breakdown = CatalogHttpTest.json(exchange(get(BASE + "/reservations/" + id + "/discount-breakdown"), ADMIN, 200));
+        assertThat(breakdown.at("/breakdown/finalValueCents").asLong()).isEqualTo(300_000L);
+    }
+
+    @Test void theSameKeyReplaysTheReservationInsteadOfCreatingASecondOne() throws Exception {
+        JsonNode first = CatalogHttpTest.json(exchange(create("jdbc-create-0002"), ADMIN, 201));
+        JsonNode replay = CatalogHttpTest.json(exchange(create("jdbc-create-0002"), ADMIN, 200));
+
+        assertThat(replay.get("reservationId").asText()).isEqualTo(first.get("reservationId").asText());
+        assertThat(CatalogHttpTest.json(exchange(get(BASE + "/reservations"), ADMIN, 200)).at("/meta/total").asInt()).isEqualTo(1);
+    }
+
+    @Test void aReservationOfAnotherTenantIsNotFoundAndNotListed() throws Exception {
+        String id = CatalogHttpTest.json(exchange(create("jdbc-create-0003"), ADMIN, 201)).get("reservationId").asText();
+        String stranger = CatalogHttpTest.token(UUID.randomUUID().toString(), ADMIN);
+
+        var detail = mvc.perform(get(BASE + "/reservations/" + id).header("Authorization", "Bearer " + stranger)).andReturn();
+        var list = mvc.perform(get(BASE + "/reservations").header("Authorization", "Bearer " + stranger)).andReturn();
+        assertThat(detail.getResponse().getStatus()).isEqualTo(404);
+        assertThat(list.getResponse().getStatus()).isEqualTo(200);
+        assertThat(CatalogHttpTest.json(list).at("/meta/total").asInt()).isZero();
+    }
 }
