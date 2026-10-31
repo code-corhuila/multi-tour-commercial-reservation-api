@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistenc
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationListItem;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationPage;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OwnReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentStatus;
@@ -19,7 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 // lead customer, the tour and the departure projection for the names and the start (portal screen 10); the detail is the
 // reservation as created (JdbcReservationReader) plus the stored status, situation, balance and whether a seat is held.
 // The payment attempts are not loaded: no screen of this story shows them and HU-COM-009 owns their adapter.
-public final class JdbcReservationQueries implements ReservationQueries {
+public final class JdbcReservationQueries implements ReservationQueries, OwnReservationQueries {
     private static final String FROM = " FROM commercial_reservation.reservation r "
             + "JOIN commercial_reservation.customer c ON c.tenant_id = r.tenant_id AND c.customer_id = r.customer_id "
             + "JOIN commercial_reservation.catalog_service s ON s.tenant_id = r.tenant_id AND s.service_id = r.service_id "
@@ -42,6 +43,18 @@ public final class JdbcReservationQueries implements ReservationQueries {
     @Override
     public Optional<Reservation> findByTenantAndId(UUID tenantId, UUID reservationId) {
         return detail(tenantId, null, reservationId);
+    }
+
+    // HU-COM-008 (AC-08.7, AC-08.15): the same statements with the customer of the account as one more condition, never a
+    // filter applied afterwards; a reservation of another customer is the same empty answer as a missing one.
+    @Override
+    public ReservationPage page(UUID tenantId, UUID customerId, boolean includeArchived, int page, int limit) {
+        return list(tenantId, customerId, includeArchived, page, limit);
+    }
+
+    @Override
+    public Optional<Reservation> findByTenantCustomerAndId(UUID tenantId, UUID customerId, UUID reservationId) {
+        return detail(tenantId, customerId, reservationId);
     }
 
     // The customer, when given, is one more condition of the same statements and never a filter applied afterwards.
