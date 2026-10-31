@@ -167,6 +167,41 @@ class ReservationJdbcHttpTest {
         assertThat(CatalogHttpTest.json(exchange(get(BASE + "/reservations"), ADMIN, 200)).at("/meta/total").asInt()).isEqualTo(1);
     }
 
+    // A second customer linked to the account of the token of the Final Customer; the seeded one has no account.
+    UUID linkedCustomer() {
+        UUID mine = UUID.randomUUID();
+        customers.save(Customer.registerLead(mine, tenant, "CC67890", "Cliente Ficticio", BirthDateOrAge.ofAge(28),
+                new ContactInfo("cliente@example.invalid", "3000000001"), true, TestJwtKeys.NOW)
+                .linkedTo(UUID.fromString(TestJwtKeys.ACCOUNT)));
+        return mine;
+    }
+
+    @Test void aFinalCustomerCreatesAndReadsOnlyTheReservationsOfTheirOwnCustomerRecord() throws Exception {
+        UUID mine = linkedCustomer();
+        String others = CatalogHttpTest.json(exchange(create("jdbc-own-0001"), ADMIN, 201)).get("reservationId").asText();
+        var body = quoteBody(2);
+        body.put("paymentType", "FULL_PAYMENT"); body.put("paymentMethod", "CASH");
+        JsonNode own = CatalogHttpTest.json(exchange(post(BASE + "/reservations").header("Idempotency-Key", "jdbc-own-0002")
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(body)), "FINAL_CUSTOMER", 201));
+        assertThat(own.get("customerId").asText()).isEqualTo(mine.toString());
+
+        JsonNode list = CatalogHttpTest.json(exchange(get(BASE + "/reservations"), "FINAL_CUSTOMER", 200));
+        assertThat(list.at("/meta/total").asInt()).isEqualTo(1);
+        assertThat(list.at("/data/0/reservationId").asText()).isEqualTo(own.get("reservationId").asText());
+        exchange(get(BASE + "/reservations/" + own.get("reservationId").asText()), "FINAL_CUSTOMER", 200);
+        exchange(get(BASE + "/reservations/" + others), "FINAL_CUSTOMER", 404);
+        assertThat(CatalogHttpTest.json(exchange(get(BASE + "/reservations"), ADMIN, 200)).at("/meta/total").asInt()).isEqualTo(2);
+    }
+
+    @Test void anAccountWithNoCustomerRecordHasAnEmptyListAndNoDetail() throws Exception {
+        String id = CatalogHttpTest.json(exchange(create("jdbc-own-0003"), ADMIN, 201)).get("reservationId").asText();
+
+        JsonNode list = CatalogHttpTest.json(exchange(get(BASE + "/reservations"), "FINAL_CUSTOMER", 200));
+        assertThat(list.at("/meta/total").asInt()).isZero();
+        assertThat(list.get("data")).isEmpty();
+        exchange(get(BASE + "/reservations/" + id), "FINAL_CUSTOMER", 404);
+    }
+
     @Test void aReservationOfAnotherTenantIsNotFoundAndNotListed() throws Exception {
         String id = CatalogHttpTest.json(exchange(create("jdbc-create-0003"), ADMIN, 201)).get("reservationId").asText();
         String stranger = CatalogHttpTest.token(UUID.randomUUID().toString(), ADMIN);
