@@ -2,12 +2,15 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcEnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OwnReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TransportRateReader;
@@ -38,6 +41,14 @@ class ReservationWiringTest {
     void theReadsOfTheListAndTheDetailExistOnce() {
         assertThat(context.getBeansOfType(ReservationQueries.class)).hasSize(1);
         assertThat(context.getBean(ReservationQueries.class)).isInstanceOf(JdbcReservationQueries.class);
+    }
+
+    @Test
+    void theOwnReadsOfTheFinalCustomerAndTheAccountLookupExistOnce() {
+        assertThat(context.getBeansOfType(OwnReservationQueries.class)).hasSize(1);
+        assertThat(context.getBean(OwnReservationQueries.class)).isInstanceOf(JdbcReservationQueries.class);
+        assertThat(context.getBeansOfType(CustomerByAccount.class)).hasSize(1);
+        assertThat(context.getBean(CustomerByAccount.class)).isInstanceOf(JdbcCustomerRepository.class);
     }
 
     @Test
