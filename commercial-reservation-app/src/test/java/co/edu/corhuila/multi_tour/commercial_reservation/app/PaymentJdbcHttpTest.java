@@ -65,7 +65,7 @@ class PaymentJdbcHttpTest {
 
     final UUID tenant = UUID.randomUUID(), tour = UUID.randomUUID(), departure = UUID.randomUUID(), customer = UUID.randomUUID();
 
-    @BeforeEach void seed() {
+    @BeforeEach void seed() throws Exception {
         OffsetDateTime now = OffsetDateTime.ofInstant(TestJwtKeys.NOW, ZoneOffset.UTC);
         jdbc.update("INSERT INTO commercial_reservation.tenant_status (tenant_id, identifier, status, time_zone, country, "
                 + "last_event_occurred_at, created_at, updated_at) VALUES (?, ?, 'ACTIVE', 'America/Bogota', 'CO', ?, ?, ?)",
@@ -77,6 +77,7 @@ class PaymentJdbcHttpTest {
                 UUID.randomUUID(), tenant, departure, tour, now.plusDays(1));
         customers.save(Customer.registerLead(customer, tenant, "CC12345", "Persona Ficticia", BirthDateOrAge.ofAge(30),
                 new ContactInfo("persona@example.invalid", "3000000000"), true, TestJwtKeys.NOW));
+        configure(); // DP-11: a tenant with no payment condition offers no type, so the reservation of every test needs the row
     }
 
     MvcResult exchange(MockHttpServletRequestBuilder request, String bearer, int code) throws Exception {
