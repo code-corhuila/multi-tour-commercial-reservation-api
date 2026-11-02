@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcEnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.rate.UnparametrizedTransportRates;
@@ -35,6 +36,12 @@ class ReservationPersistenceConfiguration {
     @Bean
     JdbcReservationReader jdbcReservationReader(JdbcTemplate jdbc, FieldCipher cipher) {
         return new JdbcReservationReader(jdbc, cipher);
+    }
+
+    // AC-07.16 and AC-07.17: the list and the detail of the reservations of a tenant, built over the reader of the creation.
+    @Bean
+    JdbcReservationQueries reservationQueries(JdbcTemplate jdbc, JdbcReservationReader reader) {
+        return new JdbcReservationQueries(jdbc, reader);
     }
 
     // RN-14: the enabled types and media come from payment_condition; DP-05 leaves the default (everything enabled) open.
