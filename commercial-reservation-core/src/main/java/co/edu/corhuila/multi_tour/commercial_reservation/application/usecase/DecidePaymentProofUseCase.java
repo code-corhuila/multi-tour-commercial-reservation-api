@@ -30,6 +30,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 // The decision of a proof (plan D-02, D-10): the aggregate decides, this class orders what surrounds it in one transaction.
 // The decision is saved before the cancellation of HU-COM-011 runs, so the status it writes is not overwritten.
@@ -64,28 +65,33 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
     @Override
     public DecidedProof approve(ApproveProofCommand command) {
         PaymentProofAuthorization.requireDecide(command.actor());
-        if (command.verifiedAmountCents() == null) throw new MissingPaymentDataException(List.of("verifiedAmountCents"));
-        Cents verified = Cents.of("verifiedAmountCents", command.verifiedAmountCents());
-        PaymentActor actor = command.actor();
-        Reservation reservation = load(actor, command.attemptId());
+        return recordApproval(command.actor().tenantId(), command.actor().actorId(), command.attemptId(), command.verifiedAmountCents(),
+                command.reason());
+    }
+
+    // The work of an approval, whoever opens the door: the human route checks the permission first, the saga step 2 is trusted.
+    DecidedProof recordApproval(UUID tenantId, UUID reviewer, UUID attemptId, Long verifiedAmountCents, String reason) {
+        if (verifiedAmountCents == null) throw new MissingPaymentDataException(List.of("verifiedAmountCents"));
+        Cents verified = Cents.of("verifiedAmountCents", verifiedAmountCents);
+        Reservation reservation = load(tenantId, attemptId);
         Instant now = Instant.now(clock);
-        Optional<PaymentDeadline> deadline = deadlines.openDeadline(actor.tenantId(), reservation.reservationId());
+        Optional<PaymentDeadline> deadline = deadlines.openDeadline(tenantId, reservation.reservationId());
         boolean expired = deadline.map(found -> !now.isBefore(found.dueAt())).orElse(false);
         Cents minimum = minimumFor(reservation);
         return transaction.inTransaction(() -> {
-            ProofDecision decision = reservation.approve(command.attemptId(), verified, command.reason(), minimum, actor.actorId(), now);
+            ProofDecision decision = reservation.approve(attemptId, verified, reason, minimum, reviewer, now);
             if (decision.treatment().amount() > 0) {
-                cancelledValues.record(actor.tenantId(), reservation.reservationId(), decision.treatment(), Origin.APPROVED_AFTER_CANCELLATION);
+                cancelledValues.record(tenantId, reservation.reservationId(), decision.treatment(), Origin.APPROVED_AFTER_CANCELLATION);
             } else if (decision.excess().amount() > 0) {
-                credit.recordExcess(actor.tenantId(), reservation.reservationId(), command.attemptId(), decision.excess());
+                credit.recordExcess(tenantId, reservation.reservationId(), attemptId, decision.excess());
             }
             boolean cancels = expired && decision.treatment().amount() == 0 && !conditionMet(deadline.get().kind(), reservation);
             Cents validated = new Cents(reservation.finalValue().amount() - reservation.pendingBalance().amount());
             if (cancels) releaseSeat(reservation, CapacityReleased.CANCELLED_FOR_NON_PAYMENT, now);
             persist(reservation);
             if (cancels) {
-                cancellation.cancelForNonPayment(actor.tenantId(), reservation.reservationId(), now);
-                cancelledValues.record(actor.tenantId(), reservation.reservationId(), validated, Origin.PENDING_TREATMENT_AFTER_EXPIRY);
+                cancellation.cancelForNonPayment(tenantId, reservation.reservationId(), now);
+                cancelledValues.record(tenantId, reservation.reservationId(), validated, Origin.PENDING_TREATMENT_AFTER_EXPIRY);
             }
             return new DecidedProof(reload(reservation), decision.attempt(), decision.applied(), decision.excess());
         });
@@ -110,9 +116,13 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
     }
 
     // Another tenant's proof looks missing (AC-10.17).
-    private Reservation load(PaymentActor actor, java.util.UUID attemptId) {
-        return reservations.findByTenantAndAttempt(actor.tenantId(), attemptId)
-                .filter(found -> found.tenantId().equals(actor.tenantId()))
+    private Reservation load(PaymentActor actor, UUID attemptId) {
+        return load(actor.tenantId(), attemptId);
+    }
+
+    private Reservation load(UUID tenantId, UUID attemptId) {
+        return reservations.findByTenantAndAttempt(tenantId, attemptId)
+                .filter(found -> found.tenantId().equals(tenantId))
                 .orElseThrow(() -> new PaymentProofNotFoundException(attemptId));
     }
 
