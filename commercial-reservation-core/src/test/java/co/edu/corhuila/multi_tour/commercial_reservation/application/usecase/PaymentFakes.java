@@ -34,6 +34,7 @@ final class PaymentFakes implements ReservationRepository, PaymentDeadlineReader
     final DepartureFakes departures;
     Cents minimumDeposit = new Cents(100_000);
     int holdCalls;
+    int releaseCalls;
     private int depth;
 
     PaymentFakes(DepartureFakes departures) {
@@ -67,6 +68,12 @@ final class PaymentFakes implements ReservationRepository, PaymentDeadlineReader
     }
 
     @Override
+    public Optional<Reservation> findByTenantAndAttempt(UUID tenantId, UUID attemptId) {
+        return reservations.values().stream().filter(found -> found.tenantId().equals(tenantId))
+                .filter(found -> found.attempts().stream().anyMatch(attempt -> attempt.attemptId().equals(attemptId))).findFirst();
+    }
+
+    @Override
     public Optional<PaymentDeadline> openDeadline(UUID tenantId, UUID reservationId) {
         return Optional.ofNullable(deadlines.get(reservationId));
     }
@@ -89,10 +96,28 @@ final class PaymentFakes implements ReservationRepository, PaymentDeadlineReader
         return true;
     }
 
+    // The open allocation of the reservation goes back to the departure; zero means nothing was held.
+    @Override
+    public int release(UUID tenantId, UUID reservationId) {
+        requireTransaction();
+        releaseCalls++;
+        Reservation reservation = reservations.get(reservationId);
+        if (reservation == null || !reservation.tenantId().equals(tenantId) || !reservation.seatHeld()) return 0;
+        DepartureState row = departures.rows.get(reservation.departureId());
+        departures.rows.put(row.departureId(), new DepartureState(row.departureId(), row.tenantId(), row.serviceId(), row.startsAt(),
+                row.status(), row.effectiveCapacity(), Math.max(row.heldSeats() - reservation.people(), 0)));
+        return reservation.people();
+    }
+
     @Override
     public void save(UUID tenantId, UUID attemptId, ProofFile proof) {
         requireTransaction();
         proofs.put(attemptId, proof);
+    }
+
+    @Override
+    public Optional<ProofFile> read(UUID tenantId, UUID attemptId) {
+        return Optional.ofNullable(proofs.get(attemptId));
     }
 
     @Override

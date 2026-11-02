@@ -7,4 +7,8 @@ import java.util.UUID;
 public interface SalidaCapacityHolder {
 
     boolean hold(UUID tenantId, UUID salidaId, int requested);
+
+    // The open allocation of the reservation goes back to the departure by conditional update; returns the seats released,
+    // zero when nothing was held (010 G-I, plan D-10).
+    int release(UUID tenantId, UUID reservationId);
 }
