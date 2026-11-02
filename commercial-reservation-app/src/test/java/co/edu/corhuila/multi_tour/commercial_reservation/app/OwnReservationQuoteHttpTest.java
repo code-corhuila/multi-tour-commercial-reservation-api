@@ -37,7 +37,7 @@ class OwnReservationQuoteHttpTest extends ReservationHttpBase {
     }
 
     @Test void theOwnQuoteWithoutATokenIsRefusedWith401() throws Exception {
-        exchange(post(BASE + "/own/reservation-quotes").contentType(MediaType.APPLICATION_JSON)
+        exchange(post(BASE + "/own/reservation-quotes").header("X-Correlation-Id", TRACE).contentType(MediaType.APPLICATION_JSON)
                 .content(TestJwtKeys.JSON.writeValueAsBytes(quoteBody(2))), 401);
     }
 }
