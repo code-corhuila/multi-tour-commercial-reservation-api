@@ -7,7 +7,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateO
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Companion;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FixedDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.HighRiskData;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationCreated;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservedService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -17,6 +20,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -31,6 +35,8 @@ public final class JdbcReservationRepository implements ReservationRepository {
     private final FieldCipher cipher;
     private final TransactionTemplate transactions;
     private final ReservationCreatedOutbox outbox;
+    private final JdbcReservationReader reader;
+    private final JdbcPaymentAttempts attempts;
 
     public JdbcReservationRepository(JdbcTemplate jdbc, FieldCipher cipher, TransactionTemplate transactions,
             ReservationCreatedOutbox outbox) {
@@ -38,17 +44,54 @@ public final class JdbcReservationRepository implements ReservationRepository {
         this.cipher = cipher;
         this.transactions = transactions;
         this.outbox = outbox;
+        this.reader = new JdbcReservationReader(jdbc, cipher);
+        this.attempts = new JdbcPaymentAttempts(jdbc);
     }
 
     @Override
     public void save(Reservation reservation) {
         transactions.executeWithoutResult(status -> {
-            insertReservation(reservation);
-            insertReservedService(reservation);
-            reservation.fixedDiscounts().forEach(line -> insertFixedDiscount(reservation, line));
-            reservation.companions().forEach(companion -> insertCompanion(reservation, companion));
-            outbox.append(ReservationCreated.of(reservation));
+            if (exists(reservation)) {
+                updatePayment(reservation); // a payment or a decision changed the reservation that was created before
+            } else {
+                insertReservation(reservation);
+                insertReservedService(reservation);
+                reservation.fixedDiscounts().forEach(line -> insertFixedDiscount(reservation, line));
+                reservation.companions().forEach(companion -> insertCompanion(reservation, companion));
+                outbox.append(ReservationCreated.of(reservation));
+            }
+            attempts.write(reservation);
+            attempts.keepSeat(reservation);
         });
+    }
+
+    // Scoped to the tenant: another tenant's reservation is the same empty answer as a missing one.
+    @Override
+    public Optional<Reservation> findByTenantAndId(UUID tenantId, UUID reservationId) {
+        return reader.findAsCreated(tenantId, reservationId).flatMap(created -> jdbc.query(
+                "SELECT reservation_status, payment_status, pending_balance_cents FROM commercial_reservation.reservation "
+                + "WHERE tenant_id = ? AND reservation_id = ?", (row, index) -> created.restoredAs(
+                        ReservationStatus.valueOf(row.getString("reservation_status")), PaymentStatus.valueOf(row.getString("payment_status")),
+                        new Cents(row.getLong("pending_balance_cents")), attempts.openSeat(tenantId, reservationId),
+                        attempts.read(tenantId, reservationId)), tenantId, reservationId).stream().findFirst());
+    }
+
+    @Override
+    public Optional<Reservation> findByTenantAndAttempt(UUID tenantId, UUID attemptId) {
+        return jdbc.query("SELECT reservation_id FROM commercial_reservation.payment_attempt WHERE tenant_id = ? AND payment_attempt_id = ?",
+                (row, index) -> row.getObject("reservation_id", UUID.class), tenantId, attemptId).stream().findFirst()
+                .flatMap(reservationId -> findByTenantAndId(tenantId, reservationId));
+    }
+
+    private boolean exists(Reservation r) {
+        return jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.reservation WHERE tenant_id = ? AND reservation_id = ?",
+                Integer.class, r.tenantId(), r.reservationId()) > 0;
+    }
+
+    private void updatePayment(Reservation r) {
+        jdbc.update("UPDATE commercial_reservation.reservation SET reservation_status = ?, payment_status = ?, pending_balance_cents = ? "
+                + "WHERE tenant_id = ? AND reservation_id = ?", r.reservationStatus().name(), r.paymentStatus().name(),
+                r.pendingBalance().amount(), r.tenantId(), r.reservationId());
     }
 
     private void insertReservation(Reservation r) {
