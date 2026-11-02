@@ -26,13 +26,6 @@ public final class PaymentProofAuthorization {
             throw new PaymentAccessDeniedException();
     }
 
-    // AC-10.19: the file is for whoever may decide, or for the customer who owns the reservation (the token subject is the
-    // customer, an open point with the customer account, G-USR); the other roles read the data and never the file.
-    public static void requireFile(PaymentActor actor, Reservation reservation) {
-        if (isOwner(actor, reservation)) return;
-        requireDecide(actor);
-    }
-
     public static boolean isOwner(PaymentActor actor, Reservation reservation) {
         return actor != null && actor.role() == Role.FINAL_CUSTOMER && actor.actorId() != null
                 && actor.actorId().equals(reservation.customerId());
