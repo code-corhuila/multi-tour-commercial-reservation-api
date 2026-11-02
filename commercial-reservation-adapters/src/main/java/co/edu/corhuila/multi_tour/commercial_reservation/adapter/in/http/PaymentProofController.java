@@ -75,8 +75,18 @@ public final class PaymentProofController {
     public ResponseEntity<byte[]> download(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("paymentId") UUID paymentId) {
         ProofFile proof = file.read(PaymentActors.of(principal), paymentId);
+        // DP-14-02 (PROPOSED): a download the browser must not sniff or render.
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.parseMediaType(proof.contentType()))
-                .body(proof.bytes());
+                .header("Content-Disposition", "attachment; filename=receipt-" + paymentId + "." + extension(proof.contentType()))
+                .header("X-Content-Type-Options", "nosniff").body(proof.bytes());
+    }
+
+    private static String extension(String contentType) {
+        return switch (contentType) {
+            case "application/pdf" -> "pdf";
+            case "image/jpeg" -> "jpg";
+            default -> "png";
+        };
     }
 
     @GetMapping("/internal/tenants/{tenantId}/payment-proofs")

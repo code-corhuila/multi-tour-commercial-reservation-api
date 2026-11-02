@@ -21,6 +21,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Rea
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterCashPayment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterTransfer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancelledValueRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashIncomeRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashSessionStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRecorder;
@@ -119,8 +120,9 @@ class PaymentConfiguration {
     }
 
     @Bean
-    ReadPaymentProofFile readPaymentProofFile(@Lazy ReservationRepository reservations, @Lazy PaymentProofStore proofs) {
-        return new ReadPaymentProofFileUseCase(reservations, proofs);
+    ReadPaymentProofFile readPaymentProofFile(@Lazy ReservationRepository reservations, @Lazy PaymentProofStore proofs,
+            @Lazy CustomerByAccount accounts) {
+        return new ReadPaymentProofFileUseCase(reservations, proofs, accounts);
     }
 
     @Bean
