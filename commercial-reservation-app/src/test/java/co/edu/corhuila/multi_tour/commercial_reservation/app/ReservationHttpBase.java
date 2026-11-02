@@ -32,7 +32,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @SpringBootTest
 @AutoConfigureMockMvc
 @ContextConfiguration(initializers = TestJwtKeys.class)
-@Import({CatalogHttpFixture.class, CustomerHttpFixture.class, DiscountRuleHttpFixture.class, ReservationHttpFixture.class, PaymentHttpFixture.class})
+@Import({CatalogHttpFixture.class, CustomerHttpFixture.class, DiscountRuleHttpFixture.class, ReservationHttpFixture.class, PaymentHttpFixture.class, PaymentProofHttpFixture.class})
 abstract class ReservationHttpBase {
     static final String BASE = "/api/v1/commercial-reservation";
     static final String TRACE = CatalogHttpTest.TRACE;
