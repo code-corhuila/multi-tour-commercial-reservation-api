@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantRef;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
@@ -93,6 +94,14 @@ class ReservationQuoteHttpTest extends ReservationHttpBase {
             var body = quoteBody(2); body.put("salidaId", refused.toString());
             assertThat(CatalogHttpTest.json(exchange(quote(body, ADMIN), 422)).get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
         }
+    }
+
+    @Test void aQuoteInAnInactiveTenantIsRefusedWith422AndStoresNothing() throws Exception {
+        directory.tenants.put(tenant.toString(), new TenantRef(tenant, false));
+        var error = CatalogHttpTest.json(exchange(quote(quoteBody(2), ADMIN), 422));
+        assertThat(error.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(error.get("message").asText()).contains("tenant");
+        assertThat(store.saves).isZero();
     }
 
     @Test void aTourOfAnotherTenantInAQuoteAnswersNotFound() throws Exception {
