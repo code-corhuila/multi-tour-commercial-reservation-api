@@ -118,6 +118,19 @@ class CreateReservationTest {
     }
 
     @Test
+    void aSecondRuleOnTheOriginalValueIsCreatedWithTheSubtotalLeftByTheChain() {
+        rules.save(DiscountRule.create(new UUID(7, 2), TENANT, "Loyal", LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), 2,
+                DiscountBase.ORIGINAL_VALUE, 500, null, ServiceCoverage.all(), null, CREATED));
+
+        Reservation reservation = create.create(valid());
+
+        assertThat(reservation.finalValue()).isEqualTo(new Cents(306_000));
+        assertThat(reservation.fixedDiscounts()).extracting(l -> l.base().amount(), l -> l.amount().amount(), l -> l.subtotal().amount())
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(360_000L, 36_000L, 324_000L),
+                        org.assertj.core.groups.Tuple.tuple(360_000L, 18_000L, 306_000L));
+    }
+
+    @Test
     void aMissingMandatoryDatumIsNamedAndNothingIsStored() {
         assertThatThrownBy(() -> create.create(command(null, null, null, 0, null, null)))
                 .isInstanceOfSatisfying(MissingReservationDataException.class, e -> assertThat(e.fields())
