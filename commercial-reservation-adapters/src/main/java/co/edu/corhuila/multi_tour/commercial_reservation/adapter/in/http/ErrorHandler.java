@@ -17,6 +17,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Au
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReasonRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DiscountRuleAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.EstablishmentAccessDeniedException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentAccessDeniedException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingPaymentDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,6 +33,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -69,6 +74,18 @@ public class ErrorHandler {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
             details = missing.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
+        } else if (ex instanceof MissingPaymentDataException missing) {
+            // AC-09.11: every missing datum of a payment named at once.
+            code = ApiError.Code.VALIDATION_ERROR;
+            message = "the request has invalid fields";
+            details = missing.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
+        } else if (ex instanceof InvalidStatusTransitionException) {
+            code = ApiError.Code.INVALID_STATUS_TRANSITION;
+            message = ex.getMessage();
+        } else if (ex instanceof MissingServletRequestPartException part) {
+            code = ApiError.Code.VALIDATION_ERROR;
+            message = "the request has invalid fields";
+            details = List.of(new ApiError.Detail(part.getRequestPartName(), part.getRequestPartName() + " is required"));
         } else if (ex instanceof InvalidTokenException) {
             code = ApiError.Code.UNAUTHORIZED;
             message = "authentication is required";
@@ -87,7 +104,9 @@ public class ErrorHandler {
         } else if (ex instanceof org.springframework.web.multipart.MultipartException) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
-            details = List.of(new ApiError.Detail("image", "must be a valid image within the multipart size limit"));
+            details = request.getRequestURI().contains("/payments")
+                    ? List.of(new ApiError.Detail("proof", "must be a valid file within the multipart size limit"))
+                    : List.of(new ApiError.Detail("image", "must be a valid image within the multipart size limit"));
         } else if (ex instanceof HttpMediaTypeNotSupportedException) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
@@ -105,7 +124,7 @@ public class ErrorHandler {
         } else if (ex instanceof CatalogServiceNotFoundException || ex instanceof AssociatedEstablishmentNotFoundException
                 || ex instanceof PublicOfferNotFoundException
                 || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException || ex instanceof AuthorizableReasonNotFoundException
-                || ex instanceof DepartureNotFoundException || ex instanceof ReservationNotFoundException
+                || ex instanceof DepartureNotFoundException || ex instanceof ReservationNotFoundException || ex instanceof PaymentProofNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.
@@ -113,6 +132,7 @@ public class ErrorHandler {
             message = "resource not found";
         } else if (ex instanceof EstablishmentAccessDeniedException || ex instanceof DiscountRuleAccessDeniedException
                 || ex instanceof CustomerAccessDeniedException || ex instanceof ReservationAccessDeniedException
+                || ex instanceof PaymentAccessDeniedException
                 || ex instanceof ResponseStatusException status && status.getStatusCode().value() == 403) {
             code = ApiError.Code.FORBIDDEN;
             message = "access is forbidden";
@@ -129,7 +149,7 @@ public class ErrorHandler {
     private static boolean reservationRule(HttpServletRequest request) {
         String path = request.getRequestURI();
         return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && path.endsWith("/reservations")
-                || path.contains("/additional-discount");
+                || path.contains("/additional-discount") || path.contains("/payments");
     }
 
     private static String jsonField(Throwable error) {
