@@ -58,8 +58,8 @@ public class RegisterTransferUseCase implements RegisterTransfer {
         return transaction.inTransaction(() -> {
             PaymentAttempt attempt = reservation.registerTransfer(ids.newId(), amount, minimum, command.actorId(), preconditions.now());
             preconditions.holdFirstSeat(reservation);
+            reservations.save(reservation); // the proof table has a foreign key to the attempt, so the attempt goes first
             proofs.save(command.tenantId(), attempt.attemptId(), proof);
-            reservations.save(reservation);
             reservation.pullEvents().forEach(outbox::append);
             return new RegisteredPayment(reservation, attempt);
         });
