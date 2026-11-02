@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentDeadline;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancelledValueRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashIncomeRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashSessionStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRecorder;
@@ -10,12 +11,14 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParameter;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProofFile;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,17 +37,19 @@ class PaymentHttpFixture {
     @Bean @Primary MemoryPayments memoryPayments() { return new MemoryPayments(); }
 
     static final class MemoryPayments implements PaymentDeadlineReader, PaymentConditionReader, SalidaCapacityHolder, PaymentProofStore,
-            PaymentEventOutbox, PaymentTransaction, CashSessionStatus, CashIncomeRecorder, CreditBalanceRecorder, PaymentParameterRepository {
+            PaymentEventOutbox, PaymentTransaction, CashSessionStatus, CashIncomeRecorder, CreditBalanceRecorder, PaymentParameterRepository,
+            CancelledValueRecorder, ReservationCancellation {
         final Map<UUID, ProofFile> proofs = new HashMap<>();
         final List<PaymentEvent> events = new ArrayList<>();
         final List<PaymentParameter> parameters = new ArrayList<>();
         final List<String> income = new ArrayList<>();
+        final List<UUID> cancelled = new ArrayList<>();
         Cents minimumDeposit = new Cents(90_000);
         boolean sessionOpen = true, availability = true;
         PaymentDeadline deadline;
 
         void clear() {
-            proofs.clear(); events.clear(); parameters.clear(); income.clear();
+            proofs.clear(); events.clear(); parameters.clear(); income.clear(); cancelled.clear();
             minimumDeposit = new Cents(90_000); sessionOpen = true; availability = true; deadline = null;
         }
         public Optional<PaymentDeadline> openDeadline(UUID tenant, UUID reservation) { return Optional.ofNullable(deadline); }
@@ -63,6 +68,8 @@ class PaymentHttpFixture {
         }
         public void reverse(UUID tenant, UUID movement) { income.removeIf(row -> row.startsWith(movement.toString())); }
         public void recordExcess(UUID tenant, UUID reservation, UUID attempt, Cents amount) { income.add("excess:" + amount.amount()); }
+        public void record(UUID tenant, UUID reservation, Cents value, Origin origin) { income.add(origin + ":" + value.amount()); }
+        public void cancelForNonPayment(UUID tenant, UUID reservation, Instant now) { cancelled.add(reservation); }
         public List<PaymentParameter> findByTenant(UUID tenant) { return List.copyOf(parameters); }
         public void save(UUID tenant, PaymentParameter parameter) { parameters.add(parameter); }
     }
