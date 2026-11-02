@@ -3,9 +3,12 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentHttpAccess;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentSettingsController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetOwnReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetPaymentQuote;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManagePaymentParameters;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterCashPayment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterTransfer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashIncomeRecorder;
@@ -17,10 +20,13 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Id
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentConditionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetPaymentQuoteUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManagePaymentParametersUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RegisterCashPaymentUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RegisterTransferUseCase;
 import java.time.Clock;
@@ -68,11 +74,29 @@ class PaymentConfiguration {
     }
 
     @Bean
+    GetPaymentQuote getPaymentQuote(@Lazy ReservationRepository reservations, @Lazy EnabledPaymentOptions options,
+            @Lazy PaymentConditionReader conditions, @Lazy PaymentDeadlineReader deadlines) {
+        return new GetPaymentQuoteUseCase(reservations, options, conditions, deadlines);
+    }
+
+    @Bean
+    ManagePaymentParameters managePaymentParameters(@Lazy PaymentParameterRepository parameters, @Lazy PaymentTransaction transaction,
+            Clock clock) {
+        return new ManagePaymentParametersUseCase(parameters, transaction, clock);
+    }
+
+    @Bean
+    PaymentSettingsController paymentSettingsController(GetPaymentQuote quote, GetOwnReservation getOwn, ManagePaymentParameters parameters) {
+        return new PaymentSettingsController(quote, getOwn, parameters);
+    }
+
+    @Bean
     WebMvcConfigurer paymentAccess() {
         return new WebMvcConfigurer() {
             @Override public void addInterceptors(InterceptorRegistry registry) {
                 registry.addInterceptor(new PaymentHttpAccess()).addPathPatterns(
-                        "/api/v1/commercial-reservation/reservations/*/payments", "/api/v1/commercial-reservation/reservations/*/payments/*");
+                        "/api/v1/commercial-reservation/reservations/*/payments", "/api/v1/commercial-reservation/reservations/*/payments/*",
+                        "/api/v1/commercial-reservation/reservations/*/payment-quote", "/api/v1/commercial-reservation/payment-parameters");
             }
         };
     }
