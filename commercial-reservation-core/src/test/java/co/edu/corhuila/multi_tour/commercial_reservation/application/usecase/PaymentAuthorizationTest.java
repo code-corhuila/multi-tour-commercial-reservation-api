@@ -35,4 +35,16 @@ class PaymentAuthorizationTest {
                 .isInstanceOf(PaymentAccessDeniedException.class);
         assertThatThrownBy(() -> PaymentAuthorization.requireRegister(null)).isInstanceOf(PaymentAccessDeniedException.class);
     }
+
+    @Test
+    void theParametersAreReadByTheOperatingRolesAndChangedByTheAdministratorOnly() {
+        for (Role role : Set.of(Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST)) {
+            assertThatCode(() -> PaymentAuthorization.requireReadParameters(as(role))).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> PaymentAuthorization.requireReadParameters(as(Role.FINAL_CUSTOMER))).isInstanceOf(PaymentAccessDeniedException.class);
+        assertThatCode(() -> PaymentAuthorization.requireChangeParameters(as(Role.TENANT_ADMINISTRATOR))).doesNotThrowAnyException();
+        for (Role role : Set.of(Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST, Role.FINAL_CUSTOMER)) {
+            assertThatThrownBy(() -> PaymentAuthorization.requireChangeParameters(as(role))).isInstanceOf(PaymentAccessDeniedException.class);
+        }
+    }
 }
