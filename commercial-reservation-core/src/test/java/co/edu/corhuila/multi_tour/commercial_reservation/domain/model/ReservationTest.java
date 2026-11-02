@@ -69,6 +69,43 @@ class ReservationTest {
                 .isInstanceOf(DomainException.class).extracting("field").isEqualTo("finalValue");
     }
 
+    private static FixedDiscount original(int order, long base, long amount, long subtotal) {
+        return new FixedDiscount(order, RULE, "Loyal", DiscountType.PERCENTAGE, 500, null, DiscountBase.ORIGINAL_VALUE,
+                new Cents(base), new Cents(amount), new Cents(subtotal), null);
+    }
+
+    @Test
+    void aLineOnTheOriginalValueLeavesThePreviousSubtotalMinusItsAmount() {
+        Reservation reservation = born(List.of(line(1, 360_000, 36_000), original(2, 360_000, 18_000, 306_000)), 306_000);
+
+        assertThat(reservation.fixedDiscounts().get(1).base()).isEqualTo(new Cents(360_000));
+        assertThat(reservation.finalValue()).isEqualTo(new Cents(306_000));
+    }
+
+    @Test
+    void aChainWhereALineTakesMoreThanThePreviousSubtotalIsRefused() {
+        // 324_000 is left after the first line; the second takes 350_000 off the original 360_000 and claims 10_000 left.
+        assertThatThrownBy(() -> born(List.of(line(1, 360_000, 36_000), original(2, 360_000, 350_000, 10_000)), 10_000))
+                .isInstanceOf(DomainException.class).extracting("field").isEqualTo("discounts");
+    }
+
+    @Test
+    void aSubtotalThatIsNotThePreviousSubtotalMinusTheAmountIsRefused() {
+        assertThatThrownBy(() -> born(List.of(line(1, 360_000, 36_000), original(2, 360_000, 18_000, 342_000)), 342_000))
+                .isInstanceOf(DomainException.class).extracting("field").isEqualTo("discounts");
+    }
+
+    @Test
+    void aLineOnThePreviousSubtotalMustStartFromTheSubtotalLeftByTheLineBefore() {
+        assertThatThrownBy(() -> born(List.of(line(1, 360_000, 36_000), line(2, 360_000, 18_000)), 342_000))
+                .isInstanceOf(DomainException.class).extracting("field").isEqualTo("discounts");
+    }
+
+    @Test
+    void aNegativeSubtotalCannotBeRepresented() {
+        assertThatThrownBy(() -> original(2, 360_000, 18_000, -1)).isInstanceOf(DomainException.class);
+    }
+
     @Test
     void theProjectedValueIsTheTourPlusTheTransportOfEveryPerson() {
         assertThat(TOUR.projectedFor(3)).isEqualTo(new Cents(360_000));

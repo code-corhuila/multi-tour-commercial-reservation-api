@@ -8,9 +8,13 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Companion;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.transaction.support.TransactionTemplate;
 
 // Same mechanism as the customer registration (AC-07.14): a known key answers the original and writes nothing.
@@ -58,11 +62,11 @@ public final class IdempotentReservationCreation {
     private Reservation original(CreateReservationCommand command, UUID reservationId) {
         Reservation original = queries.findByTenantAndId(command.tenantId(), reservationId)
                 .orElseThrow(() -> new ReservationNotFoundException(reservationId));
-        if (command.holder() != null) return requireSameHolder(command, original);
+        if (command.holder() != null) return requireSameRequest(command, requireSameHolder(command, original));
         if (!original.customerId().equals(owner(command))) {
             throw new BusinessRuleViolation("the Idempotency-Key was already used by another customer");
         }
-        return original;
+        return requireSameRequest(command, original);
     }
 
     // A holder has no id yet, so the key belongs to the holder whose normalized e-mail the stored customer carries.
@@ -72,5 +76,22 @@ public final class IdempotentReservationCreation {
                 .map(found -> found.contact().email() != null && found.contact().email().equals(email)).orElse(false);
         if (!same) throw new BusinessRuleViolation("the Idempotency-Key was already used by another customer");
         return original;
+    }
+
+    // The same key with another body is not a replay (AC-07.14): answering the first reservation would tell the caller it booked
+    // what it did not ask for. The request is the departure, the tour, the people, the expected payment and the group.
+    private static Reservation requireSameRequest(CreateReservationCommand command, Reservation original) {
+        boolean same = original.departureId().equals(command.departureId())
+                && original.service().serviceId().equals(command.serviceId())
+                && original.people() == command.people()
+                && original.expectedPaymentType().name().equals(command.paymentType())
+                && original.expectedPaymentMethod().name().equals(command.paymentMethod())
+                && documents(original.companions()).equals(documents(command.companions()));
+        if (!same) throw new BusinessRuleViolation("the Idempotency-Key was already used with another request");
+        return original;
+    }
+
+    private static Set<String> documents(List<Companion> companions) {
+        return companions.stream().map(companion -> companion.documentNumber().comparable()).collect(Collectors.toSet());
     }
 }

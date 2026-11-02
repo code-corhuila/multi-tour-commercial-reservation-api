@@ -32,7 +32,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @SpringBootTest
 @AutoConfigureMockMvc
 @ContextConfiguration(initializers = TestJwtKeys.class)
-@Import({CatalogHttpFixture.class, CustomerHttpFixture.class, DiscountRuleHttpFixture.class, ReservationHttpFixture.class})
+@Import({CatalogHttpFixture.class, CustomerHttpFixture.class, DiscountRuleHttpFixture.class, ReservationHttpFixture.class, PaymentHttpFixture.class, PaymentProofHttpFixture.class})
 abstract class ReservationHttpBase {
     static final String BASE = "/api/v1/commercial-reservation";
     static final String TRACE = CatalogHttpTest.TRACE;
@@ -48,9 +48,10 @@ abstract class ReservationHttpBase {
     @Autowired CatalogHttpFixture.MemoryCatalog catalog;
     @Autowired CatalogHttpFixture.MemoryKeys keys;
     @Autowired CustomerHttpFixture.MemoryCustomers customers;
+    @Autowired PaymentHttpFixture.MemoryPayments payments;
 
     @BeforeEach void seed() {
-        store.clear(); directory.tenants.clear(); keys.keys.clear(); catalog.items.clear(); customers.clear();
+        store.clear(); payments.clear(); directory.tenants.clear(); keys.keys.clear(); catalog.items.clear(); customers.clear();
         directory.tenants.put(tenant.toString(), new TenantRef(tenant, true));
         catalog.save(CatalogService.register(tour, tenant, CatalogServiceType.TOUR, "Tour Ficticio",
                 CommercialTerms.of(100_000L, 40_000L, 20, false, false), NOW));

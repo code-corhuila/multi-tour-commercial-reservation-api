@@ -58,12 +58,12 @@ public final class Reservation {
         List<Companion> group = companions == null ? List.of() : companions;
         if (group.size() > people - 1)
             throw new DomainException("companions", "the companions must fit in the people left by the lead customer");
-        if (group.stream().map(Companion::documentNumber).distinct().count() != group.size())
+        if (group.stream().map(companion -> companion.documentNumber().comparable()).distinct().count() != group.size())
             throw new BusinessRuleViolation("a document is already in the group");
         if (projected == null || !projected.equals(service.projectedFor(people)))
             throw new DomainException("projectedValue", "projectedValue must be the tour plus the transport of every person");
         List<FixedDiscount> lines = discounts == null ? List.of() : discounts;
-        Cents left = lines.isEmpty() ? projected : lines.get(lines.size() - 1).subtotal();
+        Cents left = DiscountChain.lastSubtotal(projected, lines);
         if (finalValue == null || !finalValue.equals(left))
             throw new DomainException("finalValue", "finalValue must be what the discounts leave of the projected value");
         return new Reservation(id, tenant, customer, departure, creator, people, service, projected, finalValue, lines, type, method, now, group);
@@ -151,6 +151,61 @@ public final class Reservation {
             throw new DomainException("minimumDeposit", "a deposit needs its minimum");
         if (firstPayment && expectedPaymentType == PaymentType.DEPOSIT && amount.amount() < minimumDeposit.amount())
             throw new DomainException("amountCents", "the first deposit cannot be below the minimum deposit");
+    }
+
+    // HU-COM-010 RN-01 to RN-04, RN-08, RN-10, RN-13: the reviewer sets the verified amount. Only the pending balance is applied
+    // and the excess is returned for the credit balance; on a cancelled reservation nothing is applied, the reservation is not
+    // reactivated and the whole amount is for treatment. The reason is mandatory when the amount differs from the declared one.
+    public ProofDecision approve(UUID attemptId, Cents verified, String reason, Cents minimumDeposit, UUID reviewer, Instant now) {
+        PaymentAttempt attempt = requireInValidation(attemptId);
+        if (verified == null || verified.amount() <= 0)
+            throw new DomainException("verifiedAmountCents", "verifiedAmountCents must be greater than zero");
+        String why = reason == null || reason.isBlank() ? null : reason.strip();
+        if (why == null && !verified.equals(attempt.amount()))
+            throw new DomainException("reason", "a reason is required when the verified amount differs from the declared one");
+        boolean cancelled = reservationStatus == ReservationStatus.CANCELLED;
+        long applied = cancelled ? 0 : Math.min(verified.amount(), pendingBalance.amount());
+        long excess = cancelled ? 0 : verified.amount() - applied;
+        long treatment = cancelled ? verified.amount() : 0;
+        PaymentAttempt decided = attempt.approvedWith(reviewer, now, why, verified, new Cents(applied), new Cents(excess), new Cents(treatment));
+        attempts.set(attempts.indexOf(attempt), decided);
+        if (cancelled) events.add(new PaymentValidated(tenantId, reservationId, verified, paymentStatus, pendingBalance, reviewer, now));
+        else recordValidatedPayment(new Cents(applied), minimumDeposit, reviewer, now);
+        return new ProofDecision(decided, new Cents(applied), new Cents(excess), new Cents(treatment));
+    }
+
+    // RN-RES-006D: a rejection keeps the history and moves nothing else; the reason is mandatory (RN-04).
+    public PaymentAttempt reject(UUID attemptId, String reason, UUID reviewer, Instant now) {
+        PaymentAttempt attempt = requireInValidation(attemptId);
+        if (reason == null || reason.isBlank()) throw new DomainException("reason", "a reason is required to reject a proof");
+        PaymentAttempt decided = attempt.rejectedWith(reviewer, now, reason.strip());
+        attempts.set(attempts.indexOf(attempt), decided);
+        events.add(new PaymentRejected(tenantId, reservationId, reason.strip(), pendingBalance, reviewer, now));
+        return decided;
+    }
+
+    private PaymentAttempt requireInValidation(UUID attemptId) {
+        PaymentAttempt attempt = attempts.stream().filter(found -> found.attemptId().equals(attemptId)).findFirst()
+                .orElseThrow(() -> new DomainException("attemptId", "the payment attempt does not belong to the reservation"));
+        if (attempt.validationStatus() != ValidationStatus.IN_VALIDATION)
+            throw new InvalidStatusTransitionException(attempt.validationStatus() == null
+                    ? "cash is not a proof to review" : "the proof has already been decided and the decision is final");
+        return attempt;
+    }
+
+    // RN-RES-007 (CONFIRMADO) with the extra condition PROPOSED in 010 AC-10.16: the first payment, before the confirmation, when
+    // no other attempt is under review or validated.
+    public boolean shouldReleaseSeatAfterRejection() {
+        return seatHeld && reservationStatus == ReservationStatus.PENDING_PAYMENT && attempts.stream()
+                .noneMatch(a -> a.method() == PaymentMethod.CASH || a.validationStatus() == ValidationStatus.IN_VALIDATION
+                        || a.validationStatus() == ValidationStatus.APPROVED);
+    }
+
+    // The use case asked the capacity row to release; zero seats released means this is not called and no event is written.
+    public void releaseSeat(String reason, Instant now) {
+        if (!seatHeld) throw new BusinessRuleViolation("the reservation holds no seats");
+        seatHeld = false;
+        events.add(new CapacityReleased(tenantId, reservationId, service.serviceId(), departureId, reason, now));
     }
 
     // RN-RES-007: the first payment holds the seats; the use case asked the capacity row before calling this.
