@@ -1,10 +1,14 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcEnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.rate.UnparametrizedTransportRates;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FieldCipher;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCreatedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TransportRateReader;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,5 +35,17 @@ class ReservationPersistenceConfiguration {
     @Bean
     JdbcReservationReader jdbcReservationReader(JdbcTemplate jdbc, FieldCipher cipher) {
         return new JdbcReservationReader(jdbc, cipher);
+    }
+
+    // RN-14: the enabled types and media come from payment_condition; DP-05 leaves the default (everything enabled) open.
+    @Bean
+    EnabledPaymentOptions enabledPaymentOptions(JdbcTemplate jdbc) {
+        return new JdbcEnabledPaymentOptions(jdbc);
+    }
+
+    // DP-03 (OPEN): the per-person transport fare has no storage yet, so the port answers empty for every tour.
+    @Bean
+    TransportRateReader transportRateReader() {
+        return new UnparametrizedTransportRates();
     }
 }
