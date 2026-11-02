@@ -22,6 +22,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Pay
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingPaymentDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SeatsUnavailableException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import jakarta.servlet.http.HttpServletRequest;
 import com.fasterxml.jackson.databind.JsonMappingException;
@@ -52,7 +53,11 @@ public class ErrorHandler {
         ApiError.Code code = ApiError.Code.INTERNAL_ERROR;
         String message = "an unexpected error occurred";
         List<ApiError.Detail> details = null;
-        if (ex instanceof BusinessRuleViolation) {
+        if (ex instanceof SeatsUnavailableException) {
+            // AC-07.8: the departure is full or too small; the client can tell the customer (PROPOSED code of the contract).
+            code = ApiError.Code.SEATS_UNAVAILABLE;
+            message = ex.getMessage();
+        } else if (ex instanceof BusinessRuleViolation) {
             code = ApiError.Code.BUSINESS_RULE_VIOLATION;
             message = "PATCH".equals(request.getMethod())
                     ? "The capacity cannot be lower than the seats already held in a scheduled departure"
