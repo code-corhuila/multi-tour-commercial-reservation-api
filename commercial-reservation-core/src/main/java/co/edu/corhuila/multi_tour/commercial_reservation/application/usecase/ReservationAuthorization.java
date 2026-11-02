@@ -6,13 +6,18 @@ import java.util.Set;
 
 // RN-10 (AC-07.13): Administrator and Collaborator quote and create; Manager, Accountant and Analyst read; the departures also
 // go to the Final Customer.
-// HU-COM-008: the Final Customer also quotes, creates and reads through the same routes; what they read is their own (own scope).
+// HU-COM-008: the Final Customer also creates and reads through the same routes (not the quote, see requireQuote); what they read is their own (own scope).
 public final class ReservationAuthorization {
 
     private ReservationAuthorization() {}
 
     public static void requireWrite(CustomerActor actor) {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.FINAL_CUSTOMER);
+    }
+
+    // AC-07.5, AC-07.13: only the operators quote; the Final Customer has no quote route until HU-COM-008 names its own.
+    public static void requireQuote(CustomerActor actor) {
+        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR);
     }
 
     public static void requireRead(CustomerActor actor) {
