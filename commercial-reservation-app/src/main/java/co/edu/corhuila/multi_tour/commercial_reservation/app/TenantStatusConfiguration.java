@@ -9,6 +9,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantStatusStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyTenantEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.LinkAccountOnEmailVerified;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.MirrorSalidaState;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerAccountLink;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
@@ -61,8 +62,9 @@ class TenantStatusConfiguration {
     }
 
     @Bean
-    TenantEventController tenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link, ObjectMapper json) {
-        return new TenantEventController(apply, link, json);
+    TenantEventController tenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link,
+            @Lazy MirrorSalidaState mirror, ObjectMapper json) {
+        return new TenantEventController(apply, link, mirror, json);
     }
 
     @Bean
