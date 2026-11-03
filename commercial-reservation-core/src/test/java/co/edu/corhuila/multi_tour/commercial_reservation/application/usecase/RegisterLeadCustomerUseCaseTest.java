@@ -69,6 +69,14 @@ class RegisterLeadCustomerUseCaseTest {
         assertThat(fakes.events).hasSize(1);
     }
 
+    @Test void theRegisteredLeadCarriesTheRiskMarkOfItsActivity() {
+        var risky = register.register(actor(Role.TENANT_ADMINISTRATOR), command(RISKY, COMPLETE));
+        var ordinary = register.register(actor(Role.TENANT_ADMINISTRATOR), command(ORDINARY, null));
+
+        assertThat(risky.highRisk()).isTrue();
+        assertThat(ordinary.highRisk()).isFalse();
+    }
+
     @Test void ordinaryActivityDoesNotRequireTheExtraData() {
         assertThat(register.register(actor(Role.TENANT_ADMINISTRATOR), command(ORDINARY, null))).isNotNull();
     }

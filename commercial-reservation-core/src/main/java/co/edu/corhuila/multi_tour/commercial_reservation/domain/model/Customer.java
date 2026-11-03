@@ -14,12 +14,14 @@ public final class Customer {
     private final boolean termsAccepted;
     private final Instant createdAt, termsAcceptedAt;
     private final HighRiskData highRiskData;
+    // Known only at registration (read from the catalog); a restored customer keeps no service, so it is null.
+    private final Boolean highRisk;
 
     private Customer(UUID id, UUID tenant, DocumentNumber document, String name, BirthDateOrAge birth,
-            ContactInfo contact, boolean terms, Instant created, Instant termsAt, HighRiskData highRisk) {
+            ContactInfo contact, boolean terms, Instant created, Instant termsAt, HighRiskData highRiskData, Boolean highRisk) {
         customerId = id; tenantId = tenant; documentNumber = document; fullName = name;
         birthDateOrAge = birth; this.contact = contact; termsAccepted = terms; createdAt = created; termsAcceptedAt = termsAt;
-        highRiskData = highRisk;
+        this.highRiskData = highRiskData; this.highRisk = highRisk;
     }
 
     public static Customer registerLead(UUID id, UUID tenant, String document, String fullName,
@@ -43,7 +45,7 @@ public final class Customer {
                     ? new HighRiskData(null, null, null, false).missingFields() : highRiskData.missingFields();
             if (!missing.isEmpty()) throw new MissingHighRiskDataException(missing);
         }
-        return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now, now, highRiskData);
+        return new Customer(id, tenant, number, fullName.strip(), birth, contact, true, now, now, highRiskData, highRisk);
     }
 
     // Rebuilds a stored customer: its rules were checked when it was registered, so none is repeated here. The
@@ -51,7 +53,7 @@ public final class Customer {
     public static Customer restore(UUID id, UUID tenant, DocumentNumber document, String fullName,
             BirthDateOrAge birth, ContactInfo contact, Instant createdAt, Instant termsAcceptedAt, HighRiskData highRiskData) {
         return new Customer(id, tenant, document, fullName, birth, contact, true, createdAt, termsAcceptedAt,
-                highRiskData);
+                highRiskData, null);
     }
 
     private static <T> T required(T value, String field) {
@@ -69,4 +71,5 @@ public final class Customer {
     public Instant createdAt() { return createdAt; }
     public Instant termsAcceptedAt() { return termsAcceptedAt; }
     public HighRiskData highRiskData() { return highRiskData; }
+    public Boolean highRisk() { return highRisk; }
 }

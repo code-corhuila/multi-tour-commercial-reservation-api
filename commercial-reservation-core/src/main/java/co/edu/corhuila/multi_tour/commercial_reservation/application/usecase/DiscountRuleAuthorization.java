@@ -17,4 +17,11 @@ public final class DiscountRuleAuthorization {
     public static void requireRead(DiscountRuleActor actor) {
         requireWrite(actor);
     }
+
+    // Row "Discount rules" of authentication.md (quote): everyone but the Operational Collaborator (HU-COM-004 DP-08).
+    public static void requireQuote(DiscountRuleActor actor) {
+        if (actor == null || actor.tenantId() == null || actor.actorId() == null
+                || actor.role() == DiscountRuleActor.Role.OPERATIONAL_COLLABORATOR)
+            throw new DiscountRuleAccessDeniedException();
+    }
 }
