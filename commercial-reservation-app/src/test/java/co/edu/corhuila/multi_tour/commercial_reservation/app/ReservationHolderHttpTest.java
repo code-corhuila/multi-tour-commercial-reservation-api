@@ -88,6 +88,21 @@ class ReservationHolderHttpTest extends ReservationHttpBase {
         assertThat(customers.registered).isEmpty();
     }
 
+    // AC-08.13: with no holder data the answer names each missing field, as the companions do, not only the first.
+    @Test void aHolderWithOnlyANameNamesEveryMissingFieldAtOnce() throws Exception {
+        var onlyName = new LinkedHashMap<String, Object>();
+        onlyName.put("fullName", "Titular Ficticio");
+
+        var error = CatalogHttpTest.json(exchange(create(bodyWith(onlyName), "holder-key-030", ADMIN), 400));
+
+        assertThat(error.get("error").asText()).isEqualTo("VALIDATION_ERROR");
+        var fields = new java.util.ArrayList<String>();
+        error.get("details").forEach(detail -> fields.add(detail.get("field").asText()));
+        assertThat(fields).containsExactlyInAnyOrder("documentNumber", "birthDateOrAge", "contact", "termsAccepted");
+        assertThat(store.reservations).isEmpty();
+        assertThat(customers.registered).isEmpty();
+    }
+
     @Test void theEmailOfAnUnverifiedRecordIsRefusedNamingTheEmailAndNothingIsStored() throws Exception {
         var error = CatalogHttpTest.json(exchange(create(bodyWith(holder("persona@example.invalid")), "holder-key-010", ADMIN), 422));
 

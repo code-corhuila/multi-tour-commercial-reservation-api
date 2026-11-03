@@ -27,6 +27,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -91,9 +92,7 @@ public class CreateReservationUseCase implements CreateReservation {
         requireDataTheTourNeeds(lead, tour);
         requireValidGroup(lead, tour, command.companions());
         departures.require(command.tenantId(), command.departureId(), command.serviceId(), command.people());
-        if (!options.isEnabled(command.tenantId(), command.serviceId(), type, method)) {
-            throw new BusinessRuleViolation("the payment type or medium is not enabled");
-        }
+        requireEnabled(command, type, method);
         ReservationQuote quote = pricing.quote(command.tenantId(), tour, command.departureId(), command.people(),
                 LocalDate.now(clock));
         Reservation reservation = Reservation.create(ids.newId(), command.tenantId(), lead.customerId(), command.departureId(),
@@ -102,6 +101,15 @@ public class CreateReservationUseCase implements CreateReservation {
         if (registration != null) holders.write(registration, command.actorId());
         reservations.save(reservation);
         return reservation;
+    }
+
+    // AC-08.4: the refusal names the field: the type when no medium is enabled for it, the medium otherwise.
+    private void requireEnabled(CreateReservationCommand command, PaymentType type, PaymentMethod method) {
+        if (options.isEnabled(command.tenantId(), command.serviceId(), type, method)) return;
+        boolean typeOffered = Arrays.stream(PaymentMethod.values())
+                .anyMatch(each -> options.isEnabled(command.tenantId(), command.serviceId(), type, each));
+        throw typeOffered ? new DomainException("paymentMethod", "the payment method is not enabled")
+                : new DomainException("paymentType", "the payment type is not enabled");
     }
 
     // Exactly one of customerId and holder (contract oneOf); a Final Customer whose account has a record sends neither (AC-08.13).
