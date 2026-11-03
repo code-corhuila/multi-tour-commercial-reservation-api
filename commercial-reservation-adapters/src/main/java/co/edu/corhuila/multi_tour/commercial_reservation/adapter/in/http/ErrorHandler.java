@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PublicOfferNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AssociatedEstablishmentNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleNotFoundException;
@@ -79,6 +80,7 @@ public class ErrorHandler {
             message = "the request has invalid fields";
             details = List.of(new ApiError.Detail(mismatch.getName(), "has an invalid format"));
         } else if (ex instanceof CatalogServiceNotFoundException || ex instanceof AssociatedEstablishmentNotFoundException
+                || ex instanceof PublicOfferNotFoundException
                 || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException || ex instanceof AuthorizableReasonNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
@@ -94,7 +96,8 @@ public class ErrorHandler {
             LoggerFactory.getLogger(ErrorHandler.class).error("Unexpected request failure, traceId={}",
                     request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE), ex);
         }
-        int status = ex instanceof EstablishmentImageContent.Rejected image ? image.status : code.status();
+        int status = ex instanceof EstablishmentImageContent.Rejected image ? image.status
+                : ex instanceof RejectedRequest rejected ? rejected.status() : code.status();
         if (ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException) status = 413;
         return ResponseEntity.status(status).body(errors.body(request, code, message, details));
     }

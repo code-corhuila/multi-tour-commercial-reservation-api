@@ -69,7 +69,8 @@ public class Rs256Verifier {
                     granted.add(permission.textValue());
                 }
             }
-            return new AuthenticatedPrincipal(sub.textValue(), tenantId, names, granted);
+            return new AuthenticatedPrincipal(sub.textValue(), tenantId, names, granted,
+                    "restricted".equals(claims.path("access").textValue()));
         } catch (Exception failure) {
             LOG.warn("Access token rejected: {}", failure instanceof IllegalArgumentException
                     ? failure.getMessage() : failure.getClass().getSimpleName());

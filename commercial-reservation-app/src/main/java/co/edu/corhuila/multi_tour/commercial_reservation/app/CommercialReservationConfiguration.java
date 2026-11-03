@@ -28,6 +28,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Id
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.policy.NoCollaboratorEditing;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CollaboratorEditingPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCatalogServiceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.InactivateCatalogServiceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListCatalogServicesForManagementUseCase;
@@ -42,6 +43,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Clock;
 import java.time.Duration;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -199,8 +201,9 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors) {
-        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors));
+    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors,
+            ObjectProvider<TenantStatusReader> statuses) {
+        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses.getIfAvailable()));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }

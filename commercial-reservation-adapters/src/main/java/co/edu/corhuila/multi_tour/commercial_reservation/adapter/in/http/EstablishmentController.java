@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolvePublicTenant;
 import static co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.EstablishmentHttpAccess.actor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.*;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.*;
@@ -20,11 +21,13 @@ public final class EstablishmentController {
     private final ReactivateAssociatedEstablishment reactivate;
     private final AssociatedEstablishmentRepository repository;
     private final EstablishmentImages images;
+    private final ResolvePublicTenant tenants;
     public EstablishmentController(RegisterAssociatedEstablishment register, GetAssociatedEstablishment get,
             ListAssociatedEstablishments list, InactivateAssociatedEstablishment inactivate,
-            ReactivateAssociatedEstablishment reactivate, AssociatedEstablishmentRepository repository, EstablishmentImages images) {
+            ReactivateAssociatedEstablishment reactivate, AssociatedEstablishmentRepository repository, EstablishmentImages images,
+            ResolvePublicTenant tenants) {
         this.register = register; this.get = get; this.list = list; this.inactivate = inactivate;
-        this.reactivate = reactivate; this.repository = repository; this.images = images;
+        this.reactivate = reactivate; this.repository = repository; this.images = images; this.tenants = tenants;
     }
     @PostMapping(value = "/api/v1/commercial-reservation/associated-establishments", consumes = "multipart/form-data")
     public ResponseEntity<Response> create(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
@@ -73,8 +76,8 @@ public final class EstablishmentController {
     public Response reactivate(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("associationId") UUID id) { return Response.from(reactivate.reactivate(actor(principal), id)); }
     @GetMapping("/api/v1/commercial-reservation/public/tenants/{identifier}/associated-establishments/{associationId}/image")
-    public ResponseEntity<byte[]> image(@PathVariable("identifier") UUID tenant, @PathVariable("associationId") UUID id) {
-        // DD-5 remains proposed: this slice interprets the public identifier as the tenant UUID.
+    public ResponseEntity<byte[]> image(@PathVariable("identifier") String identifier, @PathVariable("associationId") UUID id) {
+        UUID tenant = tenants.resolve(identifier);
         var item = repository.findByTenantAndId(tenant, id).filter(value -> value.tenantId().equals(tenant))
                 .orElseThrow(AssociatedEstablishmentNotFoundException::new);
         var image = images.read(tenant, item.imageReference());
