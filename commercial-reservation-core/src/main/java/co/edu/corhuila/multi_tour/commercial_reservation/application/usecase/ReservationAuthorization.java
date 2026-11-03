@@ -15,9 +15,14 @@ public final class ReservationAuthorization {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.FINAL_CUSTOMER);
     }
 
-    // AC-07.5, AC-07.13: only the operators quote; the Final Customer has no quote route until HU-COM-008 names its own.
+    // AC-07.5, AC-07.13: only the operators quote on this route; the Final Customer quotes through requireOwnQuote (HU-COM-008 DP-12).
     public static void requireQuote(CustomerActor actor) {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR);
+    }
+
+    // HU-COM-008 DP-12, AC-08.18: the own quote route is for the Final Customer only.
+    public static void requireOwnQuote(CustomerActor actor) {
+        require(actor, Role.FINAL_CUSTOMER);
     }
 
     public static void requireRead(CustomerActor actor) {

@@ -40,7 +40,7 @@ class ReservationHttpFixture {
         int saves;
 
         void clear() {
-            reservations.clear(); departures.clear(); transportRate = Optional.empty();
+            reservations.clear(); departures.clear(); transportRate = Optional.empty(); disabledTypes.clear(); disabledMethods.clear();
             lastIncludeArchived = false; saves = 0;
         }
         public void save(Reservation reservation) { saves++; reservations.put(reservation.reservationId(), reservation); }
@@ -75,7 +75,11 @@ class ReservationHttpFixture {
         @Override public Optional<DepartureState> find(UUID tenant, UUID id) {
             return Optional.ofNullable(departures.get(id)).filter(row -> row.tenantId().equals(tenant));
         }
-        public boolean isEnabled(UUID tenant, UUID service, PaymentType type, PaymentMethod method) { return true; }
+        final java.util.Set<PaymentType> disabledTypes = new java.util.HashSet<>();
+        final java.util.Set<PaymentMethod> disabledMethods = new java.util.HashSet<>();
+        public boolean isEnabled(UUID tenant, UUID service, PaymentType type, PaymentMethod method) {
+            return !disabledTypes.contains(type) && !disabledMethods.contains(method);
+        }
         public Optional<Cents> perPersonCents(UUID tenant, UUID tour, UUID departure) { return transportRate; }
     }
 }
