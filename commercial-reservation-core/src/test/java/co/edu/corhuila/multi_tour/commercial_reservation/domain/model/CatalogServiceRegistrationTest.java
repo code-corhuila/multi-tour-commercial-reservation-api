@@ -76,15 +76,15 @@ class CatalogServiceRegistrationTest {
     }
 
     @Test
-    void aTransportationItemKeepsItsBaseRateAsThePerPersonRate() {
+    void aTransportationItemKeepsItsBaseRateApartFromThePerPersonTransportRate() {
         CatalogService transport = CatalogService.register(ID, TENANT, CatalogServiceType.TRANSPORTATION,
                 "Bus to the canyon", CommercialTerms.of(12_000L, 8_000L, null, false, false), NOW);
 
         assertThat(transport.terms().baseRate().amount()).isEqualTo(12_000L);
         assertThat(transport.terms().configuredCapacity()).isNull();
-        // RN-TRA-002 lives in baseRate (plan DD-20): a second rate field would be a second source of truth.
+        // RN-TRA-002 has its own optional field since the decision of 2026-11-02 (docs 06-data, gap G-E); it supersedes plan DD-20.
         assertThat(declaredFieldNames(CatalogService.class, CommercialTerms.class))
-                .filteredOn(name -> name.toLowerCase().contains("rate")).containsExactly("baseRate");
+                .filteredOn(name -> name.toLowerCase().contains("rate")).containsExactlyInAnyOrder("baseRate", "transportRatePerPerson");
     }
 
     @Test
