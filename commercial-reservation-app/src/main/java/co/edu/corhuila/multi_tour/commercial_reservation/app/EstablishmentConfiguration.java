@@ -1,5 +1,9 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.memory.UuidTenantDirectory;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolvePublicTenant;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantDirectory;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ResolvePublicTenantUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.*;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.memory.InMemoryEstablishments;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAssociatedEstablishmentKeys;
@@ -59,9 +63,12 @@ class EstablishmentConfiguration {
     @Bean EstablishmentController establishmentController(RegisterAssociatedEstablishment register,
             GetAssociatedEstablishment get, ListAssociatedEstablishments list, InactivateAssociatedEstablishment inactivate,
             ReactivateAssociatedEstablishment reactivate, AssociatedEstablishmentRepository repository,
-            EstablishmentImages images) {
-        return new EstablishmentController(register, get, list, inactivate, reactivate, repository, images);
+            EstablishmentImages images, ResolvePublicTenant tenants) {
+        return new EstablishmentController(register, get, list, inactivate, reactivate, repository, images, tenants);
     }
+    // Interim (DD-2): the directory over the tenant copy replaces it.
+    @Bean TenantDirectory tenantDirectory() { return new UuidTenantDirectory(); }
+    @Bean ResolvePublicTenant resolvePublicTenant(TenantDirectory directory) { return new ResolvePublicTenantUseCase(directory); }
     @Bean WebMvcConfigurer establishmentAccess() {
         return new WebMvcConfigurer() {
             @Override public void addInterceptors(InterceptorRegistry registry) {
