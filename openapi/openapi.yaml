@@ -1,13 +1,15 @@
-# Reference copy of specs/Commercial and Reservations/commercial-reservation.yaml.
-# PROPOSED, not yet published in 07-api
+# Reference copy of the operations of this service in the published contract
+# (07-api/contracts/openapi/commercial-reservation.yaml); it holds the catalog and the associated
+# establishments. The tests validate every exchange against this file.
 openapi: 3.0.3
 info:
   title: Commercial Reservation API
   version: 1.0.0
   description: |
     Service `multi-tour-commercial-reservation` (ADR-004 D1), macrodomain Commercial and
-    Reservations. This version of the contract holds only the operations of **HU-COM-001 — Manage
-    the operational catalog** (`code-corhuila/multi-tour-docs#167`); each later story of the
+    Reservations. This version of the contract holds the operations of **HU-COM-001 — Manage the
+    operational catalog** (`code-corhuila/multi-tour-docs#167`) and of **HU-COM-002 — Manage
+    associated establishments** (`code-corhuila/multi-tour-docs#168`); each later story of the
     macrodomain adds its own operations to this file.
 
     Design contract. The contract the service is tested against is its own
