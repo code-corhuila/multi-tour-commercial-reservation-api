@@ -56,7 +56,9 @@ public class CatalogService {
                         ? change.baseOperationalCostCents() : terms.baseOperationalCost().amount(),
                 change.configuredCapacity() != null ? change.configuredCapacity() : terms.configuredCapacity(),
                 change.transportRequired() != null ? change.transportRequired() : terms.transportRequired(),
-                change.highRisk() != null ? change.highRisk() : terms.highRisk());
+                change.highRisk() != null ? change.highRisk() : terms.highRisk(),
+                change.transportRatePerPersonCents() != null ? change.transportRatePerPersonCents()
+                        : terms.transportRatePerPerson() == null ? null : terms.transportRatePerPerson().amount());
         this.terms = coherentWith(serviceType, merged);
         this.updatedAt = now;
     }
@@ -125,7 +127,7 @@ public class CatalogService {
         }
         // The contract fixes transportRequired to false for transportation; a transport item is the transport.
         return new CommercialTerms(terms.baseRate(), terms.baseOperationalCost(), terms.configuredCapacity(),
-                false, terms.highRisk());
+                false, terms.highRisk(), terms.transportRatePerPerson());
     }
 
     public UUID serviceId() { return serviceId; }
