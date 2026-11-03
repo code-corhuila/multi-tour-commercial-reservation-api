@@ -1,9 +1,12 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.AccountLinkOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.MirrorOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.SalidaEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantEventOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyTenantEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.LinkAccountOnEmailVerified;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.MirrorSalidaState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AccountEmailVerified;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantEvent;
@@ -34,11 +37,14 @@ public final class TenantEventController {
 
     private final ApplyTenantEvent apply;
     private final LinkAccountOnEmailVerified link;
+    private final MirrorSalidaState mirror;
     private final ObjectMapper json;
 
-    public TenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link, ObjectMapper json) {
+    public TenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link, MirrorSalidaState mirror,
+            ObjectMapper json) {
         this.apply = apply;
         this.link = link;
+        this.mirror = mirror;
         this.json = json;
     }
 
@@ -63,9 +69,60 @@ public final class TenantEventController {
             sameKey(key, verified.eventId());
             return ResponseEntity.status(link.link(verified) == AccountLinkOutcome.ALREADY_PROCESSED ? HttpStatus.OK : HttpStatus.CREATED).build();
         }
+        String type = body.path("eventType").asText(null);
+        if (type != null && type.startsWith("Salida")) {
+            SalidaEvent salida = toSalidaEvent(body, type, tenantId);
+            sameKey(key, salida.eventId());
+            return departureAnswer(mirror.apply(salida));
+        }
         TenantEvent event = toEvent(body, tenantId);
         sameKey(key, event.eventId());
         return ResponseEntity.status(apply.apply(event) == TenantEventOutcome.APPLIED ? HttpStatus.CREATED : HttpStatus.OK).build();
+    }
+
+    // A departure event with no row yet is not marked as received, so it answers 400 and its redelivery can still apply it (DP-16).
+    private static ResponseEntity<Void> departureAnswer(MirrorOutcome outcome) {
+        return switch (outcome) {
+            case APPLIED -> ResponseEntity.status(HttpStatus.CREATED).build();
+            case DUPLICATE, IGNORED_OUT_OF_ORDER -> ResponseEntity.ok().build();
+            case IGNORED_UNKNOWN -> throw new DomainException("salidaId", "has no row yet; redeliver the event after SalidaScheduled");
+        };
+    }
+
+    // The aggregate of these events is the departure; the payload carries the minimum the mirror needs and no personal data.
+    private static SalidaEvent toSalidaEvent(JsonNode body, String type, UUID pathTenant) {
+        UUID eventId = uuid(body, "eventId");
+        JsonNode version = body.path("eventVersion");
+        if (!version.isIntegralNumber() || version.asInt() < 1) throw new DomainException("eventVersion", "must be an integer of 1 or more");
+        UUID tenantId = uuid(body, "tenantId");
+        JsonNode payload = body.path("payload");
+        if (!tenantId.equals(pathTenant) || !payload.isObject() || !uuid(payload, "tenantId").equals(tenantId)) {
+            throw new DomainException("tenantId", "must be the tenant of the path");
+        }
+        UUID salidaId = uuid(payload, "salidaId");
+        if (!uuid(body, "aggregateId").equals(salidaId)) throw new DomainException("aggregateId", "must be the salidaId of the payload");
+        return switch (type) {
+            case "SalidaScheduled" -> new SalidaEvent.Scheduled(eventId, tenantId, salidaId, uuid(payload, "serviceId"), instant(payload, "startsAt"));
+            case "SalidaVehiclesChanged" -> {
+                JsonNode total = payload.path("vehicleTotalCapacity");
+                if (!total.isIntegralNumber() || !total.canConvertToInt() || total.asInt() < 0) {
+                    throw new DomainException("vehicleTotalCapacity", "must be an integer of 0 or more");
+                }
+                yield new SalidaEvent.VehiclesChanged(eventId, tenantId, salidaId, total.asInt());
+            }
+            case "SalidaExecutionStarted" -> new SalidaEvent.ExecutionStarted(eventId, tenantId, salidaId);
+            case "SalidaFinalized" -> new SalidaEvent.Finalized(eventId, tenantId, salidaId);
+            case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId);
+            default -> throw new DomainException("eventType", "is not an event this service consumes");
+        };
+    }
+
+    private static Instant instant(JsonNode node, String field) {
+        try {
+            return Instant.parse(text(node, field));
+        } catch (DateTimeParseException invalid) {
+            throw new DomainException(field, "must be an ISO 8601 UTC timestamp");
+        }
     }
 
     private static void sameKey(String key, UUID eventId) {
