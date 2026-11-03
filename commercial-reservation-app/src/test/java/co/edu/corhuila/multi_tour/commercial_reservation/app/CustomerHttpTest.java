@@ -79,6 +79,7 @@ class CustomerHttpTest {
         assertThat(customer.get("birthDate").asText()).isEqualTo("1990-05-17");
         assertThat(customer.get("termsAccepted").asBoolean()).isTrue();
         assertThat(customer.get("createdAt").asText()).endsWith("Z");
+        assertThat(customer.get("highRisk").asBoolean()).isTrue();
         assertThat(customer.has("tenantId")).isFalse();
         assertThat(result.getResponse().getContentAsString()).doesNotContain(BLOOD, EMERGENCY, RESTRICTION)
                 .doesNotContain("emergencyInfo", "informedConsentSigned");
@@ -92,12 +93,14 @@ class CustomerHttpTest {
         var customer = CatalogHttpTest.json(exchange(create(request, "customer-key-2", TestJwtKeys.TENANT, COLLABORATOR), 201));
         assertThat(customer.get("age").asInt()).isEqualTo(34);
         assertThat(customer.has("birthDate")).isFalse();
+        assertThat(customer.get("highRisk").asBoolean()).isFalse();
     }
 
     @Test void repeatingTheSameKeyAnswers200WithTheSameCustomerAndNoSecondOne() throws Exception {
         var first = CatalogHttpTest.json(exchange(create(body(plainService), "customer-key-3", TestJwtKeys.TENANT, ADMIN), 201));
         var second = CatalogHttpTest.json(exchange(create(body(plainService), "customer-key-3", TestJwtKeys.TENANT, ADMIN), 200));
-        assertThat(second).isEqualTo(first);
+        // The replay is a read: it answers the same customer without the registration-only highRisk.
+        assertThat(second).isEqualTo(((com.fasterxml.jackson.databind.node.ObjectNode) first.deepCopy()).without("highRisk"));
         assertThat(store.customers).hasSize(1);
         assertThat(store.registered).hasSize(1);
     }
