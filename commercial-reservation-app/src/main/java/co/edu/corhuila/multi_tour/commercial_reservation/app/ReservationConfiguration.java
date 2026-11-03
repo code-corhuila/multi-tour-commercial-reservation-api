@@ -121,7 +121,8 @@ class ReservationConfiguration {
         return new WebMvcConfigurer() {
             @Override public void addInterceptors(InterceptorRegistry registry) {
                 registry.addInterceptor(new ReservationHttpAccess()).addPathPatterns(
-                        "/api/v1/commercial-reservation/reservation-quotes", "/api/v1/commercial-reservation/reservations",
+                        "/api/v1/commercial-reservation/reservation-quotes", "/api/v1/commercial-reservation/own/reservation-quotes",
+                        "/api/v1/commercial-reservation/reservations",
                         "/api/v1/commercial-reservation/reservations/*", "/api/v1/commercial-reservation/reservations/*/discount-breakdown",
                         "/api/v1/commercial-reservation/catalog/services/*/departures");
             }
