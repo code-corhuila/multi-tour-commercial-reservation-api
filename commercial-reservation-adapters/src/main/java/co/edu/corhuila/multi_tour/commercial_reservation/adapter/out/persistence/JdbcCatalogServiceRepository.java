@@ -24,15 +24,17 @@ import org.springframework.transaction.support.TransactionTemplate;
 public final class JdbcCatalogServiceRepository implements CatalogServiceRepository {
     private static final String COLUMNS = "service_id, tenant_id, service_type, commercial_name, catalog_status, "
             + "base_rate_cents, base_operational_cost_cents, configured_capacity, transport_required, high_risk, "
-            + "created_at, updated_at";
+            + "transport_rate_per_person_cents, created_at, updated_at";
     private static final String SELECT = "SELECT " + COLUMNS + " FROM commercial_reservation.catalog_service";
     private static final String UPSERT = "INSERT INTO commercial_reservation.catalog_service (" + COLUMNS + ") "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (service_id) DO UPDATE SET "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (service_id) DO UPDATE SET "
             + "service_type = EXCLUDED.service_type, commercial_name = EXCLUDED.commercial_name, "
             + "catalog_status = EXCLUDED.catalog_status, base_rate_cents = EXCLUDED.base_rate_cents, "
             + "base_operational_cost_cents = EXCLUDED.base_operational_cost_cents, "
             + "configured_capacity = EXCLUDED.configured_capacity, transport_required = EXCLUDED.transport_required, "
-            + "high_risk = EXCLUDED.high_risk, updated_at = EXCLUDED.updated_at "
+            + "high_risk = EXCLUDED.high_risk, "
+            + "transport_rate_per_person_cents = EXCLUDED.transport_rate_per_person_cents, "
+            + "updated_at = EXCLUDED.updated_at "
             + "WHERE catalog_service.tenant_id = EXCLUDED.tenant_id";
     private static final String OUTBOX = "INSERT INTO commercial_reservation.outbox_event "
             + "(tenant_id, event_type, service_id, previous_catalog_status, new_catalog_status, actor_id, "
@@ -54,7 +56,9 @@ public final class JdbcCatalogServiceRepository implements CatalogServiceReposit
             int affected = jdbc.update(UPSERT, service.serviceId(), service.tenantId(), service.serviceType().name(),
                     service.commercialName(), service.catalogStatus().name(), terms.baseRate().amount(),
                     terms.baseOperationalCost().amount(), terms.configuredCapacity(), terms.transportRequired(),
-                    terms.highRisk(), timestamp(service.createdAt()), timestamp(service.updatedAt()));
+                    terms.highRisk(),
+                    terms.transportRatePerPerson() == null ? null : terms.transportRatePerPerson().amount(),
+                    timestamp(service.createdAt()), timestamp(service.updatedAt()));
             if (affected == 0) {
                 throw new IllegalStateException("Catalog service belongs to another tenant");
             }
@@ -118,7 +122,8 @@ public final class JdbcCatalogServiceRepository implements CatalogServiceReposit
     private CatalogService restore(ResultSet row, int index) throws SQLException {
         CommercialTerms terms = CommercialTerms.of(row.getLong("base_rate_cents"),
                 row.getLong("base_operational_cost_cents"), row.getObject("configured_capacity", Integer.class),
-                row.getBoolean("transport_required"), row.getBoolean("high_risk"));
+                row.getBoolean("transport_required"), row.getBoolean("high_risk"),
+                row.getObject("transport_rate_per_person_cents", Long.class));
         return CatalogService.restore(row.getObject("service_id", UUID.class), row.getObject("tenant_id", UUID.class),
                 CatalogServiceType.valueOf(row.getString("service_type")), row.getString("commercial_name"),
                 CatalogStatus.valueOf(row.getString("catalog_status")), terms,
