@@ -49,10 +49,10 @@ class CreatePortsPersistenceTest {
     }
 
     @Test
-    void withNoConditionConfiguredEveryTypeAndMediumIsEnabled() {
+    void withNoConditionConfiguredNoTypeAndNoMediumIsEnabled() { // DP-11: a row enables a type; no row offers nothing
         for (PaymentType type : PaymentType.values()) {
             for (PaymentMethod method : PaymentMethod.values()) {
-                assertThat(options.isEnabled(tenant, tour.serviceId(), type, method)).isTrue();
+                assertThat(options.isEnabled(tenant, tour.serviceId(), type, method)).isFalse();
             }
         }
     }
@@ -63,7 +63,7 @@ class CreatePortsPersistenceTest {
 
         assertThat(options.isEnabled(tenant, tour.serviceId(), PaymentType.DEPOSIT, PaymentMethod.TRANSFER)).isFalse();
         assertThat(options.isEnabled(tenant, tour.serviceId(), PaymentType.DEPOSIT, PaymentMethod.CASH)).isTrue();
-        assertThat(options.isEnabled(tenant, tour.serviceId(), PaymentType.FULL_PAYMENT, PaymentMethod.TRANSFER)).isTrue();
+        assertThat(options.isEnabled(tenant, tour.serviceId(), PaymentType.FULL_PAYMENT, PaymentMethod.TRANSFER)).isFalse(); // no row
     }
 
     @Test
@@ -83,7 +83,7 @@ class CreatePortsPersistenceTest {
                 + "transfer_enabled, cash_enabled, changed_by, change_reason, changed_at) VALUES (?, ?, null, 'DEPOSIT', 24, 12, "
                 + "3000, 48, false, false, ?, 'test', now())", UUID.randomUUID(), stranger, UUID.randomUUID());
 
-        assertThat(options.isEnabled(tenant, tour.serviceId(), PaymentType.DEPOSIT, PaymentMethod.TRANSFER)).isTrue();
+        assertThat(options.isEnabled(tenant, tour.serviceId(), PaymentType.DEPOSIT, PaymentMethod.TRANSFER)).isFalse();
     }
 
     @Test
