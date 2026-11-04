@@ -240,9 +240,9 @@ class PaymentJdbcHttpTest {
     // HU-COM-009 audit F10: the contract declares paymentDeadline in the answer of a payment; it is the due instant of the open deadline.
     @Test void thePaymentAnswerCarriesTheDueInstantOfTheOpenDeadline() throws Exception {
         String id = reservation("pay-jdbc-0020");
-        OffsetDateTime due = OffsetDateTime.ofInstant(TestJwtKeys.NOW, ZoneOffset.UTC).plusHours(20);
-        jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, deadline_kind, due_at) "
-                + "VALUES (?, ?, ?, 'INITIAL_PAYMENT', ?)", UUID.randomUUID(), tenant, UUID.fromString(id), due);
+        // Since HU-COM-011 the creation of the reservation already writes its initial deadline row (one per reservation): read it, never insert it.
+        OffsetDateTime due = jdbc.queryForObject("SELECT due_at FROM commercial_reservation.payment_deadline WHERE tenant_id = ? AND reservation_id = ?",
+                OffsetDateTime.class, tenant, UUID.fromString(id));
 
         JsonNode payment = transfer(id, 90_000, "pay-jdbc-0021");
         JsonNode read = CatalogHttpTest.json(exchange(get(BASE + "/reservations/" + id + "/payments/" + payment.get("paymentId").asText()), admin(), 200));
