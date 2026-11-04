@@ -17,6 +17,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureS
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DocumentNumber;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ValidationStatus;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -107,6 +108,38 @@ class OwnReservationQueriesPersistenceTest {
 
         assertThat(page.items()).isEmpty();
         assertThat(page.total()).isZero();
+    }
+
+    // HU-COM-014 AC-14.1, RN-03, RN-04: the row carries the payment type and method, the validated value as stored (final value minus
+    // the pending balance) and the state of the latest attempt, which is none when no attempt exists.
+    @Test
+    void theListCarriesTypeMethodValidatedValueAndTheStateOfTheLatestProof() {
+        UUID mine = savedFor(fixture.customer);
+        ReservationListItem fresh = queries.page(fixture.tenant, fixture.customer, false, 1, 20).items().get(0);
+        assertThat(fresh.paymentType()).isEqualTo(fixture.reservation(UUID.randomUUID(), true).expectedPaymentType());
+        assertThat(fresh.paymentMethod()).isEqualTo(fixture.reservation(UUID.randomUUID(), true).expectedPaymentMethod());
+        assertThat(fresh.validatedValue().amount()).isZero();
+        assertThat(fresh.latestProof()).isEmpty();
+
+        attempt(mine, "REJECTED", "now() - interval '2 hours'");
+        attempt(mine, "IN_VALIDATION", "now() - interval '1 hour'");
+        fixture.jdbc.update("UPDATE commercial_reservation.reservation SET pending_balance_cents = pending_balance_cents - 1000 "
+                + "WHERE reservation_id = ?", mine);
+
+        ReservationListItem later = queries.page(fixture.tenant, fixture.customer, false, 1, 20).items().get(0);
+        assertThat(later.latestProof()).contains(ValidationStatus.IN_VALIDATION);
+        assertThat(later.validatedValue().amount()).isEqualTo(1000);
+        assertThat(queries.page(fixture.tenant, other, false, 1, 20).items()).isEmpty();
+    }
+
+    private void attempt(UUID reservation, String status, String registeredAt) {
+        boolean rejected = status.equals("REJECTED");
+        fixture.jdbc.update("INSERT INTO commercial_reservation.payment_attempt (payment_attempt_id, tenant_id, reservation_id, "
+                + "payment_method, received_amount_cents, validation_status, payment_status_snapshot, registered_by, registered_at"
+                + (rejected ? ", decided_by, decided_at, decision_reason" : "") + ") VALUES (?, ?, ?, 'TRANSFER', 100000, ?, "
+                + "'NO_PAYMENT', ?, " + registeredAt + (rejected ? ", ?, now(), 'The amount does not match'" : "") + ")",
+                rejected ? new Object[] {UUID.randomUUID(), fixture.tenant, reservation, status, UUID.randomUUID(), UUID.randomUUID()}
+                        : new Object[] {UUID.randomUUID(), fixture.tenant, reservation, status, UUID.randomUUID()});
     }
 
     private static boolean present(String name) {
