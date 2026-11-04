@@ -5,9 +5,12 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Reser
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OwnReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ValidationStatus;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -66,12 +69,16 @@ public final class JdbcReservationQueries implements ReservationQueries, OwnRese
         arguments.add(limit);
         arguments.add((page - 1L) * limit);
         List<ReservationListItem> items = jdbc.query("SELECT r.reservation_id, c.full_name, s.commercial_name, d.hora_inicio, "
-                + "r.reservation_status, r.payment_status, r.pending_balance_cents" + where
+                + "r.reservation_status, r.payment_status, r.pending_balance_cents, r.payment_type, r.payment_method, "
+                + "r.final_value_cents - r.pending_balance_cents AS validated, (SELECT a.validation_status FROM commercial_reservation.payment_attempt a "
+                + "WHERE a.tenant_id = r.tenant_id AND a.reservation_id = r.reservation_id ORDER BY a.registered_at DESC LIMIT 1) AS latest_proof" + where
                 + " ORDER BY r.created_at DESC, r.reservation_id DESC LIMIT ? OFFSET ?",
                 (row, index) -> new ReservationListItem(row.getObject("reservation_id", UUID.class), row.getString("full_name"),
                         row.getString("commercial_name"), row.getObject("hora_inicio", OffsetDateTime.class).toInstant(),
                         ReservationStatus.valueOf(row.getString("reservation_status")),
-                        PaymentStatus.valueOf(row.getString("payment_status")), new Cents(row.getLong("pending_balance_cents"))),
+                        PaymentStatus.valueOf(row.getString("payment_status")), new Cents(row.getLong("pending_balance_cents")),
+                        PaymentType.valueOf(row.getString("payment_type")), PaymentMethod.valueOf(row.getString("payment_method")),
+                        new Cents(row.getLong("validated")), Optional.ofNullable(row.getString("latest_proof")).map(ValidationStatus::valueOf)),
                 arguments.toArray());
         return new ReservationPage(items, total);
     }

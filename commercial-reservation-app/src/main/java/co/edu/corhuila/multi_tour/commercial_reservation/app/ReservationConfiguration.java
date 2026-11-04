@@ -19,8 +19,14 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OpenProposalReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolveNextAction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ResolveNextActionUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialWaitPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OwnReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
@@ -71,9 +77,10 @@ class ReservationConfiguration {
     CreateReservation createReservation(@Lazy TenantDirectory tenants, CustomerRepository customers, @Lazy CustomerByAccount accounts,
             CatalogServiceRepository catalog, ReservableDeparture departures, ReservationPricing pricing,
             @Lazy EnabledPaymentOptions options, @Lazy ReservationRepository reservations, IdGenerator ids, Clock clock,
-            CustomerRegisteredOutbox customerEvents, CustomerByEmail emails) {
+            CustomerRegisteredOutbox customerEvents, CustomerByEmail emails, @Lazy InitialWaitPolicy waits,
+            @Lazy InitialDeadlineRecorder initialDeadlines) {
         return new CreateReservationUseCase(tenants, customers, accounts, catalog, departures, pricing, options, reservations, ids, clock,
-                customerEvents, emails);
+                customerEvents, emails, waits, initialDeadlines);
     }
 
     @Bean
@@ -85,6 +92,17 @@ class ReservationConfiguration {
     @Bean
     ListReservations listReservations(@Lazy ReservationQueries queries) {
         return new ListReservationsUseCase(queries);
+    }
+
+    @Bean
+    OpenProposalReader openProposalReader() {
+        return (tenantId, reservationId) -> false; // the proposal is HU-COM-018's: none can be open before it exists
+    }
+
+    @Bean
+    ResolveNextAction resolveNextAction(@Lazy PaymentDeadlineReader deadlines, @Lazy DepartureReader departures,
+            OpenProposalReader proposals, Clock clock) {
+        return new ResolveNextActionUseCase(deadlines, departures, proposals, clock);
     }
 
     @Bean
@@ -112,8 +130,8 @@ class ReservationConfiguration {
     @Bean
     ReservationController reservationController(ListReservationDepartures departures, QuoteReservation quote,
             IdempotentReservationCreation creation, ListReservations list, GetReservation get, ListOwnReservations listOwn,
-            GetOwnReservation getOwn, Clock clock) {
-        return new ReservationController(departures, quote, creation, list, get, listOwn, getOwn, clock);
+            GetOwnReservation getOwn, ResolveNextAction nextAction, Clock clock) {
+        return new ReservationController(departures, quote, creation, list, get, listOwn, getOwn, nextAction, clock);
     }
 
     @Bean

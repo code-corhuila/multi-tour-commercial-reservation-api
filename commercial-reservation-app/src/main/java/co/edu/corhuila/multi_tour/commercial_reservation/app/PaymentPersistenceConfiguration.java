@@ -2,6 +2,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashSession;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDuePaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialWaitPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentConditionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentEventOutbox;
@@ -13,6 +15,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredPaymentSettlement;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialWaitPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentConditionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
@@ -82,7 +86,7 @@ class PaymentPersistenceConfiguration {
         return new JdbcPaymentDeadlineReader(jdbc);
     }
 
-    // HU-COM-011: the adapters of the deadline, the follow-up, the pending list and the cancellation. The routes come with the next slice.
+    // HU-COM-011: the adapters of the deadline, the follow-up, the pending list and the cancellation; their routes are in PaymentDeadlineController and PaymentExpiryController.
     @Bean
     PaymentDeadlineWriter paymentDeadlineWriter(JdbcTemplate jdbc) {
         return new JdbcPaymentDeadlineWriter(jdbc);
@@ -108,18 +112,29 @@ class PaymentPersistenceConfiguration {
         return new JdbcDuePaymentQueries(jdbc);
     }
 
+    // HU-COM-011 RN-01: the creation writes the initial deadline from the initial wait of the payment condition.
+    @Bean
+    InitialWaitPolicy initialWaitPolicy(JdbcTemplate jdbc) {
+        return new JdbcInitialWaitPolicy(jdbc);
+    }
+
+    @Bean
+    InitialDeadlineRecorder initialDeadlineRecorder(JdbcTemplate jdbc) {
+        return new JdbcInitialDeadlineRecorder(jdbc);
+    }
+
     @Bean
     ReservationCancellation reservationCancellation(JdbcTemplate jdbc) {
         return new JdbcReservationCancellation(jdbc);
     }
 
-    // The cash domain does not exist yet: this stand-in refuses every cash payment (declared debt DD-2) and never invents an income.
+    // The cash domain is not wired yet: this stand-in refuses every cash payment with 422 (declared debt DD-2) and never invents an income.
     @Bean
     UnverifiedCashSession unverifiedCashSession() {
         return new UnverifiedCashSession();
     }
 
-    // HU-COM-016 and HU-COM-017 are not built (declared debts DD-5 and DD-9): the amounts stay on the decided attempt.
+    // HU-COM-016 and HU-COM-017 are not built (declared debts DD-5 and DD-9); the cancellation for non-payment is real above. The amounts stay on the decided attempt.
     @Bean
     DeferredPaymentSettlement deferredPaymentSettlement() {
         return new DeferredPaymentSettlement();

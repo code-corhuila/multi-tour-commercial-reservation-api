@@ -89,7 +89,11 @@ class PaymentJdbcHttpTest {
     String admin() throws Exception { return CatalogHttpTest.token(tenant.toString(), ADMIN); }
 
     String reservation(String key) throws Exception {
-        var body = Map.of("serviceId", tour.toString(), "salidaId", departure.toString(), "people", 3, "customerId", customer.toString(),
+        return reservationOn(departure, key);
+    }
+
+    String reservationOn(UUID salida, String key) throws Exception {
+        var body = Map.of("serviceId", tour.toString(), "salidaId", salida.toString(), "people", 3, "customerId", customer.toString(),
                 "paymentType", "DEPOSIT", "paymentMethod", "TRANSFER");
         return CatalogHttpTest.json(exchange(post(BASE + "/reservations").header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON)
                 .content(TestJwtKeys.JSON.writeValueAsBytes(body)), admin(), 201)).get("reservationId").asText();
@@ -196,5 +200,54 @@ class PaymentJdbcHttpTest {
         JsonNode refused = CatalogHttpTest.json(exchange(post(BASE + "/reservations/" + id + "/payments").header("Idempotency-Key", "pay-jdbc-0012")
                 .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(cash)), admin(), 422));
         assertThat(refused.get("message").asText()).contains("cash session");
+    }
+
+    // HU-COM-009 audit F1: two payments of the same reservation, with different keys and at the same moment, are serialized by the row
+    // lock. Neither may end as a 500, and the seats of the departure are held once, never twice.
+    @Test void twoConcurrentFirstPaymentsOfOneReservationNeverAnswer500AndHoldTheSeatsOnce() throws Exception {
+        for (int round = 0; round < 6; round++) {
+            UUID salida = UUID.randomUUID();
+            jdbc.update("INSERT INTO commercial_reservation.salida_capacity (salida_capacity_id, tenant_id, salida_id, service_id, "
+                    + "hora_inicio, status, effective_capacity, held_seats) VALUES (?, ?, ?, ?, ?, 'SCHEDULED', 10, 4)", UUID.randomUUID(), tenant,
+                    salida, tour, OffsetDateTime.ofInstant(TestJwtKeys.NOW, ZoneOffset.UTC).plusDays(1));
+            String id = reservationOn(salida, "pay-race-" + round + "-0");
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+            try {
+                String keyOne = "pay-race-" + round + "-1", keyTwo = "pay-race-" + round + "-2";
+                var first = pool.submit(() -> paymentStatus(start, id, keyOne));
+                var second = pool.submit(() -> paymentStatus(start, id, keyTwo));
+                start.countDown();
+
+                assertThat(List.of(first.get(), second.get())).allMatch(code -> code == 201 || code == 422);
+            } finally {
+                pool.shutdownNow();
+            }
+            assertThat(jdbc.queryForObject("SELECT held_seats FROM commercial_reservation.salida_capacity WHERE tenant_id = ? AND salida_id = ?",
+                    Integer.class, tenant, salida)).isEqualTo(7);
+        }
+    }
+
+    private int paymentStatus(java.util.concurrent.CountDownLatch start, String reservation, String key) throws Exception {
+        start.await();
+        return mvc.perform(multipart(BASE + "/reservations/" + reservation + "/payments")
+                .file(new MockMultipartFile("payment", "", "application/json",
+                        TestJwtKeys.JSON.writeValueAsBytes(Map.of("paymentMethod", "TRANSFER", "amountCents", 90_000L))))
+                .file(new MockMultipartFile("proof", "proof.png", "image/png", PNG)).header("Idempotency-Key", key)
+                .header("Authorization", "Bearer " + admin()).header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn().getResponse().getStatus();
+    }
+
+    // HU-COM-009 audit F10: the contract declares paymentDeadline in the answer of a payment; it is the due instant of the open deadline.
+    @Test void thePaymentAnswerCarriesTheDueInstantOfTheOpenDeadline() throws Exception {
+        String id = reservation("pay-jdbc-0020");
+        // Since HU-COM-011 the creation of the reservation already writes its initial deadline row (one per reservation): read it, never insert it.
+        OffsetDateTime due = jdbc.queryForObject("SELECT due_at FROM commercial_reservation.payment_deadline WHERE tenant_id = ? AND reservation_id = ?",
+                OffsetDateTime.class, tenant, UUID.fromString(id));
+
+        JsonNode payment = transfer(id, 90_000, "pay-jdbc-0021");
+        JsonNode read = CatalogHttpTest.json(exchange(get(BASE + "/reservations/" + id + "/payments/" + payment.get("paymentId").asText()), admin(), 200));
+
+        assertThat(java.time.Instant.parse(payment.get("paymentDeadline").asText())).isEqualTo(due.toInstant());
+        assertThat(java.time.Instant.parse(read.get("paymentDeadline").asText())).isEqualTo(due.toInstant());
     }
 }

@@ -124,4 +124,17 @@ class PaymentDeadlineHttpTest extends ReservationHttpBase {
         exchange(get(BASE + "/pending-payments").header("Authorization", "Bearer " + CustomerHttpTest.token(null, "SERVICE", List.of()))
                 .header("X-Correlation-Id", TRACE), 403);
     }
+
+    @Test void theCreationWritesTheInitialDeadlineFromTheInitialWaitAndNoneWhenThereIsNoWait() throws Exception {
+        var created = CatalogHttpTest.json(exchange(create(createBody(), "reservation-key-31", ADMIN), 201));
+        assertThat(deadlines.initial).isEmpty();
+
+        deadlines.initialWait = 24;
+        var withWait = CatalogHttpTest.json(exchange(create(createBody(), "reservation-key-32", ADMIN), 201));
+
+        assertThat(deadlines.initial).containsExactly(withWait.get("reservationId").asText() + ":" + NOW.plus(Duration.ofHours(24)));
+        assertThat(created.get("reservationId").asText()).isNotEqualTo(withWait.get("reservationId").asText());
+        exchange(create(createBody(), "reservation-key-32", ADMIN), 200);
+        assertThat(deadlines.initial).hasSize(1);
+    }
 }
