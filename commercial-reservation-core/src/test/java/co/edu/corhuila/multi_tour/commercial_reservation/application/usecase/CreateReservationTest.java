@@ -77,6 +77,17 @@ class CreateReservationTest {
             new ReservationPricing(new QuoteDiscountBreakdownUseCase(evaluation), evaluation, (t, s, d) -> Optional.of(new Cents(20_000))),
             (tenant, service, type, method) -> optionsEnabled, reservations, () -> RESERVATION, clock);
 
+    // HU-COM-011 RN-01: the initial deadline is written at creation, from the initial wait of the payment condition of the type.
+    private final List<String> recorded = new ArrayList<>();
+    private Integer initialWait = 24;
+    private final CreateReservationUseCase createWithDeadline = new CreateReservationUseCase(
+            identifier -> Optional.ofNullable(tenants.get(identifier)), customerRepository, (tenant, account) -> Optional.empty(), catalog,
+            new ReservableDeparture(departures, clock),
+            new ReservationPricing(new QuoteDiscountBreakdownUseCase(evaluation), evaluation, (t, s, d) -> Optional.of(new Cents(20_000))),
+            (tenant, service, type, method) -> optionsEnabled, reservations, () -> RESERVATION, clock, null, null,
+            (tenant, reservation) -> Optional.ofNullable(initialWait),
+            (tenant, id, dueAt) -> recorded.add(tenant + ":" + id + ":" + dueAt));
+
     CreateReservationTest() {
         customers.put(CUSTOMER, Customer.registerLead(CUSTOMER, TENANT, "CC12345", "Lead Person", BirthDateOrAge.ofAge(30),
                 new ContactInfo("lead@example.com", "3000000000"), true, CREATED));
@@ -287,5 +298,27 @@ class CreateReservationTest {
 
         assertThat(create.create(withGroup(RISKY_TOUR, RISKY_DEPARTURE, 2, companion("Ana Gomez", "CC1", data))).companions())
                 .hasSize(1);
+    }
+
+    @Test
+    void theInitialDeadlineIsCreationPlusTheInitialWaitOfThePaymentCondition() {
+        Reservation reservation = createWithDeadline.create(valid());
+
+        assertThat(recorded).containsExactly(TENANT + ":" + reservation.reservationId() + ":" + NOW.plusSeconds(24 * 3_600));
+        assertThat(stored).containsExactly(reservation);
+    }
+
+    @Test
+    void withoutAnInitialWaitNoDeadlineIsInventedAndAnythingRefusedWritesNone() {
+        initialWait = null;
+        createWithDeadline.create(valid());
+        initialWait = 24;
+        assertThatThrownBy(() -> createWithDeadline.create(command(null, null, null, 0, null, null)))
+                .isInstanceOf(MissingReservationDataException.class);
+        optionsEnabled = false;
+        assertThatThrownBy(() -> createWithDeadline.create(valid())).isInstanceOf(DomainException.class);
+
+        assertThat(recorded).isEmpty();
+        assertThat(stored).hasSize(1);
     }
 }
