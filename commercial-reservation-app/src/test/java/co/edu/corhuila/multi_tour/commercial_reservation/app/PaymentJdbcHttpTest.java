@@ -236,4 +236,18 @@ class PaymentJdbcHttpTest {
                 .file(new MockMultipartFile("proof", "proof.png", "image/png", PNG)).header("Idempotency-Key", key)
                 .header("Authorization", "Bearer " + admin()).header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn().getResponse().getStatus();
     }
+
+    // HU-COM-009 audit F10: the contract declares paymentDeadline in the answer of a payment; it is the due instant of the open deadline.
+    @Test void thePaymentAnswerCarriesTheDueInstantOfTheOpenDeadline() throws Exception {
+        String id = reservation("pay-jdbc-0020");
+        OffsetDateTime due = OffsetDateTime.ofInstant(TestJwtKeys.NOW, ZoneOffset.UTC).plusHours(20);
+        jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, deadline_kind, due_at) "
+                + "VALUES (?, ?, ?, 'INITIAL_PAYMENT', ?)", UUID.randomUUID(), tenant, UUID.fromString(id), due);
+
+        JsonNode payment = transfer(id, 90_000, "pay-jdbc-0021");
+        JsonNode read = CatalogHttpTest.json(exchange(get(BASE + "/reservations/" + id + "/payments/" + payment.get("paymentId").asText()), admin(), 200));
+
+        assertThat(java.time.Instant.parse(payment.get("paymentDeadline").asText())).isEqualTo(due.toInstant());
+        assertThat(java.time.Instant.parse(read.get("paymentDeadline").asText())).isEqualTo(due.toInstant());
+    }
 }
