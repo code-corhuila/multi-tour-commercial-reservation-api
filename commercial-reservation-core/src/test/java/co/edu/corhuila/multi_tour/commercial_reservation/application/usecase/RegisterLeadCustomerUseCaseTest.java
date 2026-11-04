@@ -74,7 +74,9 @@ class RegisterLeadCustomerUseCaseTest {
 
     @Test void theRegisteredLeadCarriesTheRiskMarkOfItsActivity() {
         var risky = register.register(actor(Role.TENANT_ADMINISTRATOR), command(RISKY, COMPLETE));
-        var ordinary = register.register(actor(Role.TENANT_ADMINISTRATOR), command(ORDINARY, null));
+        // Another e-mail: the same one would be a match (AC-05.8).
+        var ordinary = register.register(actor(Role.TENANT_ADMINISTRATOR), new Command(ORDINARY, " cc-123ab ", "Bea Perez",
+                LocalDate.of(1990, 5, 17), null, "bea@example.com", "3001234567", true, null));
 
         assertThat(risky.highRisk()).isTrue();
         assertThat(ordinary.highRisk()).isFalse();
