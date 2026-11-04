@@ -15,6 +15,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Custo
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CustomerActor.Role;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterLeadCustomer.Command;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.HighRiskData;
@@ -27,12 +30,12 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 // HU-COM-005 T-02, T-06, T-08 at the application level: RN-01, RN-02, RN-09, RN-10, RN-12, RN-13.
 // TODO(T-07/AC-05.14): Idempotency-Key is enforced over HTTP and the real schema; not at this level.
-// TODO(T-05, DP-05) e-mail linking, T-03 companions (DP-02) and T-04 sensitive reads are other slices.
+// AC-05.7 and AC-05.8 (T-05, DD-7) close the class; T-03 companions (DP-02) and T-04 sensitive reads are other slices.
 class RegisterLeadCustomerUseCaseTest {
     private static final HighRiskData COMPLETE = new HighRiskData("O+", "Luis 3009876543", "Ninguna", true);
     private final CustomerFakes fakes = new CustomerFakes();
     private final RegisterLeadCustomerUseCase register =
-            new RegisterLeadCustomerUseCase(fakes, fakes, fakes, fakes, fakes.ids, fakes.clock);
+            new RegisterLeadCustomerUseCase(fakes, fakes, fakes, fakes, fakes, fakes.ids, fakes.clock);
 
     private static Command command(UUID service, HighRiskData data) {
         return new Command(service, " cc-123ab ", "Ana Perez", LocalDate.of(1990, 5, 17), null,
@@ -148,5 +151,55 @@ class RegisterLeadCustomerUseCaseTest {
         assertThat(event.getClass().getRecordComponents()).extracting(c -> c.getName())
                 .containsExactly("tenantId", "customerId", "actorId", "occurredAt");
         assertThat(event.toString()).doesNotContain("CC-123AB", "ana@example.com", "3001234567", "O+", "Luis");
+    }
+
+    private static final UUID EXISTING = new UUID(0, 0xb1), ACCOUNT = new UUID(9, 1);
+
+    // A record already in the tenant, with the e-mail of the commands above; it has an account when one is given.
+    private Customer existing(UUID tenant, UUID account) {
+        Customer record = Customer.registerLead(EXISTING, tenant, "zz-999", "Persona Previa",
+                BirthDateOrAge.ofBirthDate(LocalDate.of(1980, 1, 1), LocalDate.of(2026, 10, 27)),
+                new ContactInfo("ana@example.com", null), true, NOW);
+        return account == null ? record : record.linkedTo(account);
+    }
+
+    @Test void theEmailOfAVerifiedAccountLinksTheExistingCustomerAndCreatesNone() {
+        fakes.save(existing(TENANT, ACCOUNT));
+
+        Customer answered = register.register(actor(Role.TENANT_ADMINISTRATOR), command(ORDINARY, null));
+
+        assertThat(answered.customerId()).isEqualTo(EXISTING);
+        assertThat(fakes.customers).hasSize(1);
+        assertThat(fakes.events).isEmpty();
+    }
+
+    @Test void theEmailOfARecordWithoutAccountIsRefusedNamingTheEmailAndStoresNothing() {
+        fakes.save(existing(TENANT, null));
+
+        assertThatThrownBy(() -> register.register(actor(Role.OPERATIONAL_COLLABORATOR), command(ORDINARY, null)))
+                .isInstanceOfSatisfying(BusinessRuleViolation.class,
+                        e -> assertThat(e.getMessage()).contains("ana@example.com"));
+        assertThat(fakes.customers).hasSize(1);
+        assertThat(fakes.events).isEmpty();
+    }
+
+    @Test void theEmailOfAnotherTenantMatchesNothingAndTheLeadIsRegistered() {
+        fakes.save(existing(OTHER_TENANT, ACCOUNT));
+
+        Customer lead = register.register(actor(Role.OPERATIONAL_COLLABORATOR), command(ORDINARY, null));
+
+        assertThat(lead.customerId()).isEqualTo(fakes.ids.newId());
+        assertThat(fakes.customers).hasSize(2);
+        assertThat(fakes.events).hasSize(1);
+    }
+
+    @Test void aLeadWithOnlyAPhoneLooksUpNoEmail() {
+        fakes.save(existing(TENANT, null));
+
+        Customer lead = register.register(actor(Role.OPERATIONAL_COLLABORATOR), new Command(ORDINARY, "cc-123ab",
+                "Ana Perez", LocalDate.of(1990, 5, 17), null, null, "3001234567", true, null));
+
+        assertThat(lead.customerId()).isEqualTo(fakes.ids.newId());
+        assertThat(fakes.events).hasSize(1);
     }
 }
