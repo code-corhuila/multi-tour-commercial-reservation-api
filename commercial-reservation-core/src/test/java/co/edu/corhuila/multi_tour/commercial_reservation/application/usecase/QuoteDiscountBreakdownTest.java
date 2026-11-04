@@ -48,7 +48,7 @@ class QuoteDiscountBreakdownTest {
         assertThat(result.finalValue()).isEqualTo(new Cents(90_000));
         assertThat(result.totalDiscounted()).isEqualTo(new Cents(10_000));
         assertThat(result.lines()).containsExactly(
-                new BreakdownLine(1, "Early", DiscountBase.ORIGINAL_VALUE, new Cents(100_000), new Cents(10_000), new Cents(90_000)));
+                new BreakdownLine(1, new UUID(2, 100), "Early", DiscountBase.ORIGINAL_VALUE, new Cents(100_000), new Cents(10_000), new Cents(90_000)));
     }
 
     @Test
@@ -77,9 +77,9 @@ class QuoteDiscountBreakdownTest {
         rule("Third", 3, DiscountBase.ORIGINAL_VALUE, null, 5_000L, null);
         DiscountBreakdown result = quoteOf(100_000);
         assertThat(result.lines()).containsExactly(
-                new BreakdownLine(1, "First", DiscountBase.ORIGINAL_VALUE, new Cents(100_000), new Cents(20_000), new Cents(80_000)),
-                new BreakdownLine(2, "Second", DiscountBase.PREVIOUS_SUBTOTAL, new Cents(80_000), new Cents(8_000), new Cents(72_000)),
-                new BreakdownLine(3, "Third", DiscountBase.ORIGINAL_VALUE, new Cents(100_000), new Cents(5_000), new Cents(67_000)));
+                new BreakdownLine(1, new UUID(2, 101), "First", DiscountBase.ORIGINAL_VALUE, new Cents(100_000), new Cents(20_000), new Cents(80_000)),
+                new BreakdownLine(2, new UUID(2, 100), "Second", DiscountBase.PREVIOUS_SUBTOTAL, new Cents(80_000), new Cents(8_000), new Cents(72_000)),
+                new BreakdownLine(3, new UUID(2, 102), "Third", DiscountBase.ORIGINAL_VALUE, new Cents(100_000), new Cents(5_000), new Cents(67_000)));
         assertThat(result.finalValue()).isEqualTo(new Cents(67_000));
         assertThat(result.totalDiscounted()).isEqualTo(new Cents(33_000));
     }
@@ -129,5 +129,13 @@ class QuoteDiscountBreakdownTest {
         DiscountBreakdown result = quoteOf(100_000);
         assertThat(result.tiedPriorities()).isEqualTo(Set.of(1));
         assertThat(result.lines()).extracting(BreakdownLine::ruleName).containsExactly("One", "Two");
+    }
+
+    // DD-8 of HU-COM-007: every line names the rule it came from, so the reservation can fix it without matching by name.
+    @Test
+    void DD_8_everyLineCarriesTheIdOfItsRuleEvenWhenTwoRulesShareAName() {
+        DiscountRule first = rule("Same", 1, DiscountBase.ORIGINAL_VALUE, 1000, null, null);
+        DiscountRule second = rule("Same", 2, DiscountBase.PREVIOUS_SUBTOTAL, 1000, null, null);
+        assertThat(quoteOf(100_000).lines()).extracting(BreakdownLine::ruleId).containsExactly(first.ruleId(), second.ruleId());
     }
 }
