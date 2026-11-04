@@ -185,4 +185,16 @@ class PaymentDeadlinePersistenceTest {
         assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event WHERE reservation_id = ? "
                 + "AND event_type = 'ReservationCancelled'", Integer.class, reservation.reservationId())).isEqualTo(1);
     }
+
+    @Test
+    void aFollowupIsFoundByItsIdInsideItsTenantOnly() {
+        Reservation reservation = stored();
+        var followups = new JdbcPaymentFollowupRepository(fixture.jdbc);
+        UUID id = UUID.randomUUID();
+        followups.append(new PaymentFollowup(id, fixture.tenant, reservation.reservationId(), fixture.actor, NOW, "Replay me"));
+
+        assertThat(followups.find(fixture.tenant, id)).map(PaymentFollowup::note).contains("Replay me");
+        assertThat(followups.find(UUID.randomUUID(), id)).isEmpty();
+        assertThat(followups.find(fixture.tenant, UUID.randomUUID())).isEmpty();
+    }
 }
