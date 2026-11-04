@@ -57,10 +57,10 @@ public class RegisterCashPaymentUseCase implements RegisterCashPayment {
     public RegisteredPayment register(RegisterCashCommand command) {
         if (command.amountCents() == null) throw new MissingPaymentDataException(List.of("amountCents"));
         Cents amount = Cents.of("amountCents", command.amountCents());
-        Reservation reservation = preconditions.requireOpenFor(command.tenantId(), command.reservationId(), PaymentMethod.CASH);
-        if (!session.isOpen(command.tenantId())) throw new BusinessRuleViolation("there is no open cash session");
-        Cents minimum = preconditions.minimumFor(reservation);
         return transaction.inTransaction(() -> {
+            Reservation reservation = preconditions.requireOpenFor(command.tenantId(), command.reservationId(), PaymentMethod.CASH);
+            if (!session.isOpen(command.tenantId())) throw new BusinessRuleViolation("there is no open cash session");
+            Cents minimum = preconditions.minimumFor(reservation);
             CashReceipt receipt = reservation.registerCash(ids.newId(), amount, minimum, command.actorId(), preconditions.now());
             UUID movement = income.record(command.tenantId(), reservation.reservationId(), amount, command.actorId());
             try {

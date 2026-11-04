@@ -23,7 +23,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 
-// The core of a transfer registration (plan D-06): the body, then the reservation, the departure and the deadline, and
+// The core of a transfer registration (plan D-06): the body, then, in one transaction, the locked reservation, the departure and the deadline, and
 // only then the writes, all in one transaction. The attempt takes the user of the command, never of a body (AC-09.9).
 public class RegisterTransferUseCase implements RegisterTransfer {
 
@@ -53,9 +53,9 @@ public class RegisterTransferUseCase implements RegisterTransfer {
         if (!missing.isEmpty()) throw new MissingPaymentDataException(missing);
         Cents amount = Cents.of("amountCents", command.amountCents());
         ProofFile proof = ProofFile.of(command.proof());
-        Reservation reservation = preconditions.requireOpenFor(command.tenantId(), command.reservationId(), PaymentMethod.TRANSFER);
-        Cents minimum = preconditions.minimumFor(reservation);
         return transaction.inTransaction(() -> {
+            Reservation reservation = preconditions.requireOpenFor(command.tenantId(), command.reservationId(), PaymentMethod.TRANSFER);
+            Cents minimum = preconditions.minimumFor(reservation);
             PaymentAttempt attempt = reservation.registerTransfer(ids.newId(), amount, minimum, command.actorId(), preconditions.now());
             preconditions.holdFirstSeat(reservation);
             reservations.save(reservation); // the proof table has a foreign key to the attempt, so the attempt goes first
