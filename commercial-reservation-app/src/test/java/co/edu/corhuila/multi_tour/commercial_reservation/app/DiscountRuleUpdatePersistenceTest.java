@@ -164,7 +164,7 @@ class DiscountRuleUpdatePersistenceTest {
     void AC_03_17_reactivationPersistsTheStatusAndWritesOneEvent() {
         DiscountRule rule = create.create(admin, command("Season", ServiceCoverage.all(), null));
         inactivate.inactivate(admin, rule.ruleId());
-        reactivate.reactivate(admin, rule.ruleId());
+        new ReactivateDiscountRuleUseCase(rules, rules, rules, Clock.fixed(NOW.plusSeconds(120), ZoneOffset.UTC)).reactivate(admin, rule.ruleId()); // a later moment keeps the event order deterministic
         assertThat(rules.findByTenantAndId(tenant, rule.ruleId()).orElseThrow().status()).isEqualTo(DiscountStatus.ACTIVE);
         List<Map<String, Object>> events = events(rule);
         assertThat(events).hasSize(3);

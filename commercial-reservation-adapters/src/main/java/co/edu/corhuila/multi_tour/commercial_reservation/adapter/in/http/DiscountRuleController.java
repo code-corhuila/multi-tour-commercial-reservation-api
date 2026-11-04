@@ -2,13 +2,17 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateDiscountRule;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReactivateDiscountRule;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.UpdateDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDiscountRules;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URI;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
@@ -18,8 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// PATCH is not mapped on purpose: no update use case exists until the editable fields are closed (HU-COM-003).
-// Nothing deletes a rule (RN-13) and there is no reactivation (DP-07).
+// PATCH (updateDiscountRule) and reactivate exist since the decision of 2026-11-03 (HU-COM-003); nothing deletes a rule (RN-13).
 @RestController
 @RequestMapping("/api/v1/commercial-reservation/discount-rules")
 public final class DiscountRuleController {
@@ -27,13 +30,18 @@ public final class DiscountRuleController {
     private final IdempotentDiscountRuleCreation creation;
     private final GetDiscountRule get;
     private final InactivateDiscountRule inactivate;
+    private final UpdateDiscountRule update;
+    private final ReactivateDiscountRule reactivate;
     private final ListDiscountRules list;
 
     public DiscountRuleController(IdempotentDiscountRuleCreation creation, GetDiscountRule get,
-            InactivateDiscountRule inactivate, ListDiscountRules list) {
+            InactivateDiscountRule inactivate, UpdateDiscountRule update, ReactivateDiscountRule reactivate,
+            ListDiscountRules list) {
         this.creation = creation;
         this.get = get;
         this.inactivate = inactivate;
+        this.update = update;
+        this.reactivate = reactivate;
         this.list = list;
     }
 
@@ -70,5 +78,21 @@ public final class DiscountRuleController {
             @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("discountRuleId") UUID ruleId) {
         return DiscountRuleResponse.from(inactivate.inactivate(DiscountRuleHttpAccess.actor(principal), ruleId));
+    }
+
+    @PostMapping("/{discountRuleId}/reactivate")
+    public DiscountRuleResponse reactivate(
+            @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @PathVariable("discountRuleId") UUID ruleId) {
+        return DiscountRuleResponse.from(reactivate.reactivate(DiscountRuleHttpAccess.actor(principal), ruleId));
+    }
+
+    // JSON merge: the body is read as a tree so an absent field and a null stay different.
+    @PatchMapping("/{discountRuleId}")
+    public DiscountRuleResponse update(
+            @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @PathVariable("discountRuleId") UUID ruleId, @RequestBody JsonNode body) {
+        return DiscountRuleResponse.from(update.update(DiscountRuleHttpAccess.actor(principal), ruleId,
+                UpdateDiscountRuleRequest.toPatch(body)));
     }
 }
