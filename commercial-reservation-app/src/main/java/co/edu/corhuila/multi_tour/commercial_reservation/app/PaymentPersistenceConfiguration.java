@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashSession;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDuePaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentConditionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentEventOutbox;
@@ -11,6 +12,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredPaymentSettlement;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentConditionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
@@ -99,6 +101,11 @@ class PaymentPersistenceConfiguration {
     @Bean
     PendingPaymentQueries pendingPaymentQueries(JdbcTemplate jdbc) {
         return new JdbcPendingPaymentQueries(jdbc);
+    }
+
+    @Bean
+    DuePaymentQueries duePaymentQueries(JdbcTemplate jdbc) {
+        return new JdbcDuePaymentQueries(jdbc);
     }
 
     @Bean
