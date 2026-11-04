@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistenc
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityAllocated;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationCancelled;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvidenceRegistered;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentRejected;
@@ -62,6 +63,10 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
                 payload.put("serviceId", e.serviceId().toString());
                 payload.put("salidaId", e.salidaId().toString());
                 payload.put("reason", e.reason());
+            }
+            case ReservationCancelled e -> {
+                payload.put("cause", e.cause().name());
+                payload.put("releasedSeats", e.releasedSeats());
             }
             default -> throw new IllegalArgumentException("not a payment event: " + event.getClass().getSimpleName());
         }
