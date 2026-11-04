@@ -48,9 +48,10 @@ final class PaymentPreconditions {
         return Instant.now(clock);
     }
 
-    // Another tenant's reservation looks missing (AC-09.18).
+    // Another tenant's reservation looks missing (AC-09.18). It runs inside the transaction of the caller, because it locks the row.
     Reservation requireOpenFor(UUID tenantId, UUID reservationId, PaymentMethod method) {
-        Reservation reservation = reservations.findByTenantAndId(tenantId, reservationId)
+        // The row lock (F1): a second payment of the same reservation waits here and then reads the state the first one left.
+        Reservation reservation = reservations.lockByTenantAndId(tenantId, reservationId)
                 .filter(found -> found.tenantId().equals(tenantId))
                 .orElseThrow(() -> new ReservationNotFoundException(reservationId));
         if (!options.isEnabled(tenantId, reservation.service().serviceId(), reservation.expectedPaymentType(), method)) {
