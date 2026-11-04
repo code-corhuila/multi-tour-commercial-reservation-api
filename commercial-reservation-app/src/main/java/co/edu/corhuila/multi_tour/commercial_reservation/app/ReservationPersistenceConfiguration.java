@@ -5,7 +5,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.rate.UnparametrizedTransportRates;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTransportRateReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FieldCipher;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCreatedOutbox;
@@ -50,9 +50,9 @@ class ReservationPersistenceConfiguration {
         return new JdbcEnabledPaymentOptions(jdbc);
     }
 
-    // DP-03 (OPEN): the per-person transport fare has no storage yet, so the port answers empty for every tour.
+    // DP-03: the per-person transport fare is the transport_rate_per_person_cents column of the tour in the catalog; NULL answers empty (RN-15).
     @Bean
-    TransportRateReader transportRateReader() {
-        return new UnparametrizedTransportRates();
+    TransportRateReader transportRateReader(JdbcTemplate jdbc) {
+        return new JdbcTransportRateReader(jdbc);
     }
 }
