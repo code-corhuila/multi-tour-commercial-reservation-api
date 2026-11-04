@@ -28,7 +28,7 @@ public class EvaluateApplicableDiscountRulesUseCase implements EvaluateApplicabl
 
     @Override
     public ApplicableDiscountRules evaluate(UUID tenantId, UUID serviceId, LocalDate referenceDate) {
-        List<DiscountRule> applicable = repository.findByTenant(tenantId).stream()
+        List<DiscountRule> ordered = repository.findByTenant(tenantId).stream()
                 .filter(r -> r.tenantId().equals(tenantId))
                 .filter(DiscountRule::isActive)
                 .filter(r -> !referenceDate.isBefore(r.validFrom()) && !referenceDate.isAfter(r.validTo()))
@@ -37,6 +37,12 @@ public class EvaluateApplicableDiscountRulesUseCase implements EvaluateApplicabl
                 .filter(r -> r.serviceCoverage().isAll() || r.serviceCoverage().serviceIds().contains(serviceId))
                 .sorted(ORDER)
                 .toList();
+        // AC-03.7 (DP-04): once a rule that is not stackable applies, no rule of lower priority applies after it.
+        int cut = ordered.size();
+        for (int i = 0; i < ordered.size(); i++) {
+            if (!ordered.get(i).stackable()) { cut = i + 1; break; }
+        }
+        List<DiscountRule> applicable = ordered.subList(0, cut);
         Set<Integer> tied = applicable.stream()
                 .collect(Collectors.groupingBy(DiscountRule::priority, Collectors.counting())).entrySet().stream()
                 .filter(e -> e.getValue() > 1).map(Map.Entry::getKey).collect(Collectors.toSet());
