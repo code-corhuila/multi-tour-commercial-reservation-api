@@ -28,7 +28,7 @@ import java.time.ZoneOffset;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-// RN-10 (second half), RN-11, AC-03.11, AC-03.12; create and inactivate (update: see the TODO at the end).
+// RN-10 (second half), RN-11, AC-03.11, AC-03.12; create and inactivate (update and reactivate: see DiscountRuleUpdateAuditTest).
 class DiscountRuleChangeAuditTest {
     private final DiscountRuleFakes fakes = new DiscountRuleFakes();
     private final CreateDiscountRuleUseCase create =
@@ -154,6 +154,5 @@ class DiscountRuleChangeAuditTest {
         }
     }
 
-    // TODO update: the spec lists it (D-10, AC-03.2) but the aggregate has no update behavior and the editable
-    // fields are not closed; its audit test comes with it.
+    // Update (D-10, AC-03.2) and reactivate have their audit tests in DiscountRuleUpdateAuditTest.
 }
