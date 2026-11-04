@@ -11,6 +11,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialWaitPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantDirectory;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
@@ -48,6 +50,8 @@ public class CreateReservationUseCase implements CreateReservation {
     private final IdGenerator ids;
     private final Clock clock;
     private final ReservationHolder holders; // null when the inline holder is not wired: a holder is then refused
+    private final InitialWaitPolicy waits; // null when the initial deadline is not wired: none is written
+    private final InitialDeadlineRecorder initialDeadlines;
 
     public CreateReservationUseCase(TenantDirectory tenants, CustomerRepository customers, CatalogServiceRepository catalog, ReservableDeparture departures,
             ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
@@ -67,6 +71,15 @@ public class CreateReservationUseCase implements CreateReservation {
             CatalogServiceRepository catalog, ReservableDeparture departures,
             ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
             Clock clock, CustomerRegisteredOutbox customerEvents, CustomerByEmail emails) {
+        this(tenants, customers, accounts, catalog, departures, pricing, options, reservations, ids, clock, customerEvents, emails, null, null);
+    }
+
+    // HU-COM-011 RN-01: with the wait policy and the recorder the initial payment deadline is written with the reservation.
+    public CreateReservationUseCase(TenantDirectory tenants, CustomerRepository customers, CustomerByAccount accounts,
+            CatalogServiceRepository catalog, ReservableDeparture departures,
+            ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
+            Clock clock, CustomerRegisteredOutbox customerEvents, CustomerByEmail emails, InitialWaitPolicy waits,
+            InitialDeadlineRecorder initialDeadlines) {
         this.holders = customerEvents == null ? null : new ReservationHolder(customers, customerEvents, emails, clock);
         this.activeTenant = new ActiveTenant(tenants);
         this.customers = customers;
@@ -78,6 +91,8 @@ public class CreateReservationUseCase implements CreateReservation {
         this.reservations = reservations;
         this.ids = ids;
         this.clock = clock;
+        this.waits = waits;
+        this.initialDeadlines = initialDeadlines;
     }
 
     @Override
@@ -100,7 +115,16 @@ public class CreateReservationUseCase implements CreateReservation {
                 quote.discounts(), type, method, Instant.now(clock), command.companions());
         if (registration != null) holders.write(registration, command.actorId());
         reservations.save(reservation);
+        recordInitialDeadline(reservation);
         return reservation;
+    }
+
+    // RN-01 (RN-RES-006): the initial deadline is the creation instant plus the initial wait of the payment condition of the type. No wait
+    // configured, no deadline: the number is not invented. It runs in the transaction of the creation, after the reservation is stored.
+    private void recordInitialDeadline(Reservation reservation) {
+        if (waits == null || initialDeadlines == null) return;
+        waits.initialWaitHours(reservation.tenantId(), reservation).ifPresent(hours -> initialDeadlines.record(reservation.tenantId(),
+                reservation.reservationId(), reservation.createdAt().plus(java.time.Duration.ofHours(hours))));
     }
 
     // AC-08.4: the refusal names the field: the type when no medium is enabled for it, the medium otherwise.
