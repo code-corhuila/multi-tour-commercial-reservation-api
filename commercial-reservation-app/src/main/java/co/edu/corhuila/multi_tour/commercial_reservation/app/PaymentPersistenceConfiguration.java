@@ -80,7 +80,7 @@ class PaymentPersistenceConfiguration {
         return new JdbcPaymentDeadlineReader(jdbc);
     }
 
-    // HU-COM-011: the adapters of the deadline, the follow-up, the pending list and the cancellation. The routes come with the next slice.
+    // HU-COM-011: the adapters of the deadline, the follow-up, the pending list and the cancellation; their routes are in PaymentDeadlineController and PaymentExpiryController.
     @Bean
     PaymentDeadlineWriter paymentDeadlineWriter(JdbcTemplate jdbc) {
         return new JdbcPaymentDeadlineWriter(jdbc);
@@ -106,13 +106,13 @@ class PaymentPersistenceConfiguration {
         return new JdbcReservationCancellation(jdbc);
     }
 
-    // The cash domain does not exist yet: this stand-in refuses every cash payment (declared debt DD-2) and never invents an income.
+    // The cash domain is not wired yet: this stand-in refuses every cash payment with 422 (declared debt DD-2) and never invents an income.
     @Bean
     UnverifiedCashSession unverifiedCashSession() {
         return new UnverifiedCashSession();
     }
 
-    // HU-COM-016 and HU-COM-017 are not built (declared debts DD-5 and DD-9): the amounts stay on the decided attempt.
+    // HU-COM-016 and HU-COM-017 are not built (declared debts DD-5 and DD-9); the cancellation for non-payment is real above. The amounts stay on the decided attempt.
     @Bean
     DeferredPaymentSettlement deferredPaymentSettlement() {
         return new DeferredPaymentSettlement();
