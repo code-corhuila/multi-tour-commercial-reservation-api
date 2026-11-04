@@ -87,6 +87,19 @@ class ReservationReadPersistenceTest {
     }
 
     @Test
+    void thePaidAmountOfTheSnapshotIsWhatWasValidatedNotZero() {
+        UUID id = UUID.randomUUID();
+        repository.save(fixture.reservation(id, true));
+        fixture.jdbc.update("UPDATE commercial_reservation.reservation SET pending_balance_cents = 124000 "
+                + "WHERE tenant_id = ? AND reservation_id = ?", fixture.tenant, id);
+
+        ReservationSnapshot snapshot = reader.findByTenantAndId(fixture.tenant, id).orElseThrow();
+
+        assertThat(snapshot.subtotal()).isEqualTo(new Cents(324_000));
+        assertThat(snapshot.paid()).isEqualTo(new Cents(200_000));
+    }
+
+    @Test
     void theAdditionalDiscountCountsAndTheStatesAreMapped() {
         UUID id = UUID.randomUUID();
         repository.save(fixture.reservation(id, true));
