@@ -15,7 +15,13 @@ public record ReservationResponse(UUID reservationId, UUID customerId, UUID serv
         String reservationStatus, String paymentStatus, String paymentType, String paymentMethod,
         ReservationQuoteResponse.Line tourLine, ReservationQuoteResponse.Line transportLine, long projectedValueCents,
         List<ReservationQuoteResponse.DiscountLine> discounts, long finalValueCents, long pendingBalanceCents,
-        boolean seatHeld, String createdAt, long validatedValueCents, String proofStatus, String continueAction) {
+        boolean seatHeld, String createdAt, Long validatedValueCents, String proofStatus, String continueAction) {
+
+    // AC-07.17: the validated value is absent until one is held; it is the stored final value minus the pending balance.
+    private static Long validated(Reservation reservation) {
+        long held = reservation.finalValue().amount() - reservation.pendingBalance().amount();
+        return held > 0 ? held : null;
+    }
 
     public static ReservationResponse from(Reservation reservation, NextCustomerAction action) {
         var service = reservation.service();
@@ -29,7 +35,7 @@ public record ReservationResponse(UUID reservationId, UUID customerId, UUID serv
                 reservation.projectedValue().amount(), ReservationQuoteResponse.lines(reservation.fixedDiscounts()),
                 reservation.finalValue().amount(), reservation.pendingBalance().amount(), reservation.seatHeld(),
                 reservation.createdAt().toString(),
-                reservation.finalValue().amount() - reservation.pendingBalance().amount(),
+                validated(reservation),
                 reservation.attempts().stream().max(Comparator.comparing(PaymentAttempt::registeredAt))
                         .map(PaymentAttempt::validationStatus).map(Enum::name).orElse(null),
                 action.name());
