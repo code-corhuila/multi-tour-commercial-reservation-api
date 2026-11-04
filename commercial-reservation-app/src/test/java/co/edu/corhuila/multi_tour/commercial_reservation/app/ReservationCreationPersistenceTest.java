@@ -18,6 +18,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Cre
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.EvaluateApplicableDiscountRulesUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.InactivateDiscountRuleUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.QuoteDiscountBreakdownUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReactivateDiscountRuleUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.UpdateDiscountRuleUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountRulePatch;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservableDeparture;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservationPricing;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
@@ -128,6 +131,31 @@ class ReservationCreationPersistenceTest {
         assertThat(readAfter.finalValue()).isEqualTo(readBefore.finalValue());
         assertThat(readAfter.projectedValue()).isEqualTo(readBefore.projectedValue());
         assertThat(reader.findByTenantAndId(fixture.tenant, id).orElseThrow().subtotal()).isEqualTo(created.finalValue());
+    }
+
+    // HU-COM-003 AC-03.11 and AC-03.17: updating and reactivating rules through their use cases writes nothing of the reservation.
+    @Test
+    void anUpdatedAndAReactivatedRuleLeaveTheFixedDiscountsOfAnExistingReservationAsTheyWere() {
+        Reservation created = create.create(command(3));
+        UUID id = created.reservationId();
+        List<Map<String, Object>> linesBefore = fixture.jdbc.queryForList(LINES, id);
+        Map<String, Object> rowBefore = fixture.jdbc.queryForMap(
+                "SELECT * FROM commercial_reservation.reservation WHERE reservation_id = ?", id);
+        Reservation readBefore = reader.findAsCreated(fixture.tenant, id).orElseThrow();
+        Clock later = Clock.fixed(ReservationPersistenceFixture.NOW.plusSeconds(60), ZoneOffset.UTC);
+        var admin = new DiscountRuleActor(fixture.tenant, fixture.actor, DiscountRuleActor.Role.TENANT_ADMINISTRATOR);
+
+        new UpdateDiscountRuleUseCase(rules, rules, rules, later).update(admin, fixture.percentageRule,
+                DiscountRulePatch.none().withPercentageBasisPoints(2500).withStackable(false).withPriority(9));
+        new InactivateDiscountRuleUseCase(rules, rules, rules, later).inactivate(admin, fixture.fixedRule);
+        new ReactivateDiscountRuleUseCase(rules, rules, rules, later).reactivate(admin, fixture.fixedRule);
+
+        assertThat(fixture.jdbc.queryForList(LINES, id)).isEqualTo(linesBefore);
+        assertThat(fixture.jdbc.queryForMap("SELECT * FROM commercial_reservation.reservation WHERE reservation_id = ?", id))
+                .isEqualTo(rowBefore);
+        Reservation readAfter = reader.findAsCreated(fixture.tenant, id).orElseThrow();
+        assertThat(readAfter.fixedDiscounts()).isEqualTo(readBefore.fixedDiscounts());
+        assertThat(readAfter.finalValue()).isEqualTo(readBefore.finalValue());
     }
 
     private CreateReservationCommand command(int people) {
