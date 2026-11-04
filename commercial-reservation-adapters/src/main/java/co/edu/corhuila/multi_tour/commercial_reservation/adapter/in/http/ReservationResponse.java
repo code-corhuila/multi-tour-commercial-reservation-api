@@ -1,5 +1,8 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.NextCustomerAction;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentAttempt;
+import java.util.Comparator;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
@@ -12,9 +15,15 @@ public record ReservationResponse(UUID reservationId, UUID customerId, UUID serv
         String reservationStatus, String paymentStatus, String paymentType, String paymentMethod,
         ReservationQuoteResponse.Line tourLine, ReservationQuoteResponse.Line transportLine, long projectedValueCents,
         List<ReservationQuoteResponse.DiscountLine> discounts, long finalValueCents, long pendingBalanceCents,
-        boolean seatHeld, String createdAt) {
+        boolean seatHeld, String createdAt, Long validatedValueCents, String proofStatus, String continueAction) {
 
-    public static ReservationResponse from(Reservation reservation) {
+    // AC-07.17: the validated value is absent until one is held; it is the stored final value minus the pending balance.
+    private static Long validated(Reservation reservation) {
+        long held = reservation.finalValue().amount() - reservation.pendingBalance().amount();
+        return held > 0 ? held : null;
+    }
+
+    public static ReservationResponse from(Reservation reservation, NextCustomerAction action) {
         var service = reservation.service();
         int people = reservation.people();
         return new ReservationResponse(reservation.reservationId(), reservation.customerId(), service.serviceId(),
@@ -25,6 +34,10 @@ public record ReservationResponse(UUID reservationId, UUID customerId, UUID serv
                         service.transportRatePerPerson(), people, service.transportLine(people)),
                 reservation.projectedValue().amount(), ReservationQuoteResponse.lines(reservation.fixedDiscounts()),
                 reservation.finalValue().amount(), reservation.pendingBalance().amount(), reservation.seatHeld(),
-                reservation.createdAt().toString());
+                reservation.createdAt().toString(),
+                validated(reservation),
+                reservation.attempts().stream().max(Comparator.comparing(PaymentAttempt::registeredAt))
+                        .map(PaymentAttempt::validationStatus).map(Enum::name).orElse(null),
+                action.name());
     }
 }
