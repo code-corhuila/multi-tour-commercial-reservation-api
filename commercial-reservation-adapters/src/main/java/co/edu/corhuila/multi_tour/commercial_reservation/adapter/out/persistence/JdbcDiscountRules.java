@@ -35,7 +35,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public final class JdbcDiscountRules implements DiscountRuleRepository, DiscountRuleChangeOutbox, DiscountRuleTransaction {
     private static final String COLUMNS = "discount_rule_id, tenant_id, name, starts_on, ends_on, priority, "
             + "calculation_base, discount_type, discount_percentage_bp, discount_amount_cents, status, "
-            + "covers_all_services, cap_cents, created_at, updated_at";
+            + "covers_all_services, cap_cents, stackable, created_at, updated_at";
     private static final String SELECT = "SELECT " + COLUMNS + " FROM commercial_reservation.discount_rule";
     private static final String OUTBOX = "INSERT INTO commercial_reservation.outbox_event (tenant_id, event_type, "
             + "discount_rule_id, previous_discount_rule_state, new_discount_rule_state, actor_id, occurred_at) "
@@ -54,18 +54,27 @@ public final class JdbcDiscountRules implements DiscountRuleRepository, Discount
     @Override
     public void save(DiscountRule rule) {
         transactions.executeWithoutResult(status -> {
-            int changed = jdbc.update("UPDATE commercial_reservation.discount_rule SET status = ?, updated_at = ? "
-                    + "WHERE tenant_id = ? AND discount_rule_id = ?", rule.status().name(),
-                    timestamp(rule.updatedAt()), rule.tenantId(), rule.ruleId());
-            if (changed == 1) return; // the other fields and the coverage never change after creation
+            // An update (AC-03.16), an inactivation or a reactivation writes the whole editable state of the rule.
+            int changed = jdbc.update("UPDATE commercial_reservation.discount_rule SET name = ?, starts_on = ?, ends_on = ?, "
+                    + "priority = ?, calculation_base = ?, discount_type = ?, discount_percentage_bp = ?, "
+                    + "discount_amount_cents = ?, status = ?, covers_all_services = ?, cap_cents = ?, stackable = ?, "
+                    + "updated_at = ? WHERE tenant_id = ? AND discount_rule_id = ?", rule.name(), rule.validFrom(),
+                    rule.validTo(), rule.priority(), rule.calculationBase().name(),
+                    rule.percentageBasisPoints() != null ? "PERCENTAGE" : "FIXED_AMOUNT", rule.percentageBasisPoints(),
+                    rule.amountCents(), rule.status().name(), rule.serviceCoverage().isAll(), rule.capCents(),
+                    rule.stackable(), timestamp(rule.updatedAt()), rule.tenantId(), rule.ruleId());
+            if (changed == 1) {
+                syncCoverage(rule);
+                return;
+            }
             if (!jdbc.queryForList("SELECT 1 FROM commercial_reservation.discount_rule WHERE discount_rule_id = ?",
                     rule.ruleId()).isEmpty()) throw new IllegalStateException("Discount rule belongs to another tenant");
             requireServicesOfTheTenant(rule);
             jdbc.update("INSERT INTO commercial_reservation.discount_rule (" + COLUMNS + ") "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rule.ruleId(), rule.tenantId(),
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rule.ruleId(), rule.tenantId(),
                     rule.name(), rule.validFrom(), rule.validTo(), rule.priority(), rule.calculationBase().name(),
                     rule.percentageBasisPoints() != null ? "PERCENTAGE" : "FIXED_AMOUNT", rule.percentageBasisPoints(),
-                    rule.amountCents(), rule.status().name(), rule.serviceCoverage().isAll(), rule.capCents(),
+                    rule.amountCents(), rule.status().name(), rule.serviceCoverage().isAll(), rule.capCents(), rule.stackable(),
                     timestamp(rule.createdAt()), timestamp(rule.updatedAt()));
             for (UUID serviceId : rule.serviceCoverage().serviceIds()) {
                 jdbc.update("INSERT INTO commercial_reservation.discount_rule_service "
@@ -73,6 +82,34 @@ public final class JdbcDiscountRules implements DiscountRuleRepository, Discount
                         rule.tenantId(), rule.ruleId(), serviceId);
             }
         });
+    }
+
+    // The application user cannot DELETE (RN-13), so the selected services of an existing rule are moved with UPDATE
+    // and added with INSERT. A rows-to-drop surplus cannot be removed, so a selection that drops more services than
+    // it adds is refused instead of leaving stale rows that would read back as coverage.
+    private void syncCoverage(DiscountRule rule) {
+        if (rule.serviceCoverage().isAll()) return; // the rows, if any, are ignored while the flag says "all"
+        Set<UUID> selected = rule.serviceCoverage().serviceIds();
+        Set<UUID> existing = new TreeSet<>(jdbc.queryForList("SELECT service_id FROM commercial_reservation."
+                + "discount_rule_service WHERE tenant_id = ? AND discount_rule_id = ?", UUID.class,
+                rule.tenantId(), rule.ruleId()));
+        if (existing.equals(selected)) return;
+        requireServicesOfTheTenant(rule);
+        List<UUID> stale = existing.stream().filter(id -> !selected.contains(id)).toList();
+        List<UUID> added = selected.stream().filter(id -> !existing.contains(id)).sorted().toList();
+        if (stale.size() > added.size())
+            throw new DomainException("serviceCoverage", "a selection cannot drop services of a rule; create a new rule instead");
+        for (int i = 0; i < added.size(); i++) {
+            if (i < stale.size()) {
+                jdbc.update("UPDATE commercial_reservation.discount_rule_service SET service_id = ? "
+                        + "WHERE tenant_id = ? AND discount_rule_id = ? AND service_id = ?",
+                        added.get(i), rule.tenantId(), rule.ruleId(), stale.get(i));
+            } else {
+                jdbc.update("INSERT INTO commercial_reservation.discount_rule_service "
+                        + "(tenant_id, discount_rule_id, service_id) VALUES (?, ?, ?)",
+                        rule.tenantId(), rule.ruleId(), added.get(i));
+            }
+        }
     }
 
     // The engine keeps simple foreign keys here (db 013), so a service of another tenant is refused by this adapter.
@@ -120,7 +157,7 @@ public final class JdbcDiscountRules implements DiscountRuleRepository, Discount
                 row.getObject("starts_on", java.time.LocalDate.class), row.getObject("ends_on", java.time.LocalDate.class),
                 row.getInt("priority"), DiscountBase.valueOf(row.getString("calculation_base")),
                 row.getObject("discount_percentage_bp", Integer.class), row.getObject("discount_amount_cents", Long.class),
-                coverage, row.getObject("cap_cents", Long.class), DiscountStatus.valueOf(row.getString("status")),
+                coverage, row.getObject("cap_cents", Long.class), row.getBoolean("stackable"), DiscountStatus.valueOf(row.getString("status")),
                 row.getObject("created_at", OffsetDateTime.class).toInstant(),
                 row.getObject("updated_at", OffsetDateTime.class).toInstant());
     }
@@ -140,6 +177,7 @@ public final class JdbcDiscountRules implements DiscountRuleRepository, Discount
         body.put("coversAllServices", state.serviceCoverage().isAll());
         body.put("serviceIds", new TreeSet<>(state.serviceCoverage().serviceIds()));
         body.put("capCents", state.capCents());
+        body.put("stackable", state.stackable());
         body.put("status", state.status().name());
         body.put("createdAt", state.createdAt().truncatedTo(ChronoUnit.MICROS).toString());
         body.put("updatedAt", state.updatedAt().truncatedTo(ChronoUnit.MICROS).toString());
