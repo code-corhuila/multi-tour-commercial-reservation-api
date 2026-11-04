@@ -46,7 +46,8 @@ public class ManageAuthorizableReasonsUseCase implements ManageAuthorizableReaso
         if (!reason.enabled()) {
             return reason;
         }
-        // TODO: the adapter must lock the catalogue so two concurrent disables cannot empty it.
+        // Concurrency: the adapter (TransactionalAuthorizableReasons) locks the tenant catalogue before this call, so two
+        // concurrent disables cannot empty it.
         if (reasons.findByTenant(actor.tenantId()).stream().filter(AuthorizableReason::enabled).count() <= 1) {
             throw new ReasonRuleViolation("the last enabled reason cannot be disabled");
         }
