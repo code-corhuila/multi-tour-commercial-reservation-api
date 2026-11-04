@@ -7,6 +7,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcEnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTransportRateReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
@@ -14,7 +15,6 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Ow
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TransportRateReader;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,8 +52,7 @@ class ReservationWiringTest {
     }
 
     @Test
-    void untilTheFareHasAHomeNoTourHasAParametrizedTransportRate() {
-        assertThat(context.getBean(TransportRateReader.class).perPersonCents(UUID.randomUUID(), UUID.randomUUID(),
-                UUID.randomUUID())).isEmpty();
+    void theTransportFareIsReadFromTheCatalogRowOfTheTour() {
+        assertThat(context.getBean(TransportRateReader.class)).isInstanceOf(JdbcTransportRateReader.class);
     }
 }

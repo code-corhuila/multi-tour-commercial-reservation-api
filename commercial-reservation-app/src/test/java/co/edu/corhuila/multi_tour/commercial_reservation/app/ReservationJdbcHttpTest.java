@@ -221,4 +221,50 @@ class ReservationJdbcHttpTest {
         assertThat(list.getResponse().getStatus()).isEqualTo(200);
         assertThat(CatalogHttpTest.json(list).at("/meta/total").asInt()).isZero();
     }
+
+    // HU-COM-007 DP-03: a tour that requires transport is quoted and created with the fare of its catalog row; with no fare it is refused (RN-15).
+    UUID transportTour(Long rate) {
+        UUID id = UUID.randomUUID();
+        catalog.save(CatalogService.register(id, tenant, CatalogServiceType.TOUR, "Tour con Transporte",
+                CommercialTerms.of(100_000L, 40_000L, 20, true, false, rate), TestJwtKeys.NOW));
+        jdbc.update("INSERT INTO commercial_reservation.salida_capacity (salida_capacity_id, tenant_id, salida_id, service_id, "
+                + "hora_inicio, status, effective_capacity, held_seats) VALUES (?, ?, ?, ?, ?, 'SCHEDULED', 10, 0)",
+                UUID.randomUUID(), tenant, UUID.randomUUID(), id, OffsetDateTime.ofInstant(TestJwtKeys.NOW, ZoneOffset.UTC).plusDays(1));
+        return id;
+    }
+
+    Map<String, Object> bodyOf(UUID service, boolean forCreation) {
+        UUID salida = jdbc.queryForObject("SELECT salida_id FROM commercial_reservation.salida_capacity WHERE service_id = ?",
+                UUID.class, service);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("serviceId", service.toString()); body.put("salidaId", salida.toString()); body.put("people", 3);
+        if (forCreation) {
+            body.put("customerId", customer.toString()); body.put("paymentType", "DEPOSIT"); body.put("paymentMethod", "TRANSFER");
+        }
+        return body;
+    }
+
+    MockHttpServletRequestBuilder createFor(UUID service, String key) throws Exception {
+        return post(BASE + "/reservations").header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON)
+                .content(TestJwtKeys.JSON.writeValueAsBytes(bodyOf(service, true)));
+    }
+
+    @Test void aTransportRequiredTourWithAParametrizedRateIsQuotedAndCreated() throws Exception {
+        UUID withRate = transportTour(20_000L);
+
+        JsonNode quote = CatalogHttpTest.json(exchange(quote(bodyOf(withRate, false)), ADMIN, 200));
+        assertThat(quote.at("/transportLine/amountCents").asLong()).isEqualTo(60_000L);
+        assertThat(quote.get("projectedValueCents").asLong()).isEqualTo(360_000L);
+
+        JsonNode created = CatalogHttpTest.json(exchange(createFor(withRate, "jdbc-transport-0001"), ADMIN, 201));
+        assertThat(created.get("finalValueCents").asLong()).isEqualTo(360_000L);
+    }
+
+    @Test void aTransportRequiredTourWithNoRateIsRefusedOnTheQuoteAndOnTheCreation() throws Exception {
+        UUID noRate = transportTour(null);
+
+        JsonNode error = CatalogHttpTest.json(exchange(quote(bodyOf(noRate, false)), ADMIN, 422));
+        assertThat(error.get("message").asText()).contains("transport");
+        exchange(createFor(noRate, "jdbc-transport-0002"), ADMIN, 422);
+    }
 }
