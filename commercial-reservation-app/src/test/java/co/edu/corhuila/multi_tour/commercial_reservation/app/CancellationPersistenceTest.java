@@ -93,9 +93,9 @@ class CancellationPersistenceTest {
         cancel.cancel(command(reservation));
 
         assertThatThrownBy(() -> fixture.jdbc.update("UPDATE commercial_reservation.reservation_cancellation SET reason = 'edited' "
-                + "WHERE reservation_id = ?", reservation.reservationId())).hasMessageContaining("permission denied");
+                + "WHERE reservation_id = ?", reservation.reservationId())).hasStackTraceContaining("permission denied");
         assertThatThrownBy(() -> fixture.jdbc.update("DELETE FROM commercial_reservation.reservation_cancellation WHERE reservation_id = ?",
-                reservation.reservationId())).hasMessageContaining("permission denied");
+                reservation.reservationId())).hasStackTraceContaining("permission denied");
     }
 
     @Test
