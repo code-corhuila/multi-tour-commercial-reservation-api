@@ -13,6 +13,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Get
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadSensitiveCustomerData;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterLeadCustomer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerTransaction;
@@ -72,8 +73,8 @@ class CustomerConfiguration {
 
     @Bean
     RegisterLeadCustomer registerLeadCustomer(CustomerRepository repository, CustomerRegisteredOutbox outbox,
-            CustomerTransaction transaction, ServiceRiskReader risk, IdGenerator ids, Clock clock) {
-        return new RegisterLeadCustomerUseCase(repository, outbox, transaction, risk, ids, clock);
+            CustomerTransaction transaction, ServiceRiskReader risk, CustomerByEmail emails, IdGenerator ids, Clock clock) {
+        return new RegisterLeadCustomerUseCase(repository, outbox, transaction, risk, emails, ids, clock);
     }
 
     @Bean
