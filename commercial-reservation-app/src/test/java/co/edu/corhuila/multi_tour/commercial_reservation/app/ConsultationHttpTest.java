@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,5 +52,39 @@ class ConsultationHttpTest extends ReservationHttpBase {
         var read = CatalogHttpTest.json(exchange(withToken(get(BASE + "/reservations/" + id), FINAL_CUSTOMER), 200));
         assertThat(read.get("proofStatus").asText()).isEqualTo("REJECTED");
         assertThat(read.get("continueAction").asText()).isEqualTo("PRESENT_NEW_RECEIPT");
+    }
+
+    @Test void aCancelledReservationShowsItsCauseInTheListAndInTheReadAndAnOpenOneShowsNone() throws Exception {
+        var open = createOwn("reservation-key-143");
+        var cancelled = createOwn("reservation-key-144");
+        UUID id = UUID.fromString(cancelled.get("reservationId").asText());
+        store.reservations.get(id).cancel(CancellationCause.CUSTOMER_REQUEST, ADMIN_ACTOR, NOW, 0);
+
+        var rows = CatalogHttpTest.json(exchange(withToken(get(BASE + "/reservations?scope=all"), FINAL_CUSTOMER), 200)).get("data");
+        for (var row : rows) {
+            boolean isCancelled = row.get("reservationId").asText().equals(id.toString());
+            assertThat(row.has("cancellationCause")).isEqualTo(isCancelled);
+            if (isCancelled) assertThat(row.get("cancellationCause").asText()).isEqualTo("CUSTOMER_REQUEST");
+        }
+        var read = CatalogHttpTest.json(exchange(withToken(get(BASE + "/reservations/" + id), FINAL_CUSTOMER), 200));
+        assertThat(read.get("cancellationCause").asText()).isEqualTo("CUSTOMER_REQUEST");
+        assertThat(CatalogHttpTest.json(exchange(
+                withToken(get(BASE + "/reservations/" + open.get("reservationId").asText()), FINAL_CUSTOMER), 200)).has("cancellationCause")).isFalse();
+    }
+
+    @Test void thePaymentsOfAnOwnReservationListNewestFirstWithTheReasonOfTheRejectedOne() throws Exception {
+        var created = createOwn("reservation-key-145");
+        UUID id = UUID.fromString(created.get("reservationId").asText()), first = new UUID(14, 2), second = new UUID(14, 3);
+        var stored = store.reservations.get(id);
+        stored.registerTransfer(first, new Cents(100_000), new Cents(100_000), ADMIN_ACTOR, NOW.minusSeconds(7_200));
+        stored.reject(first, "illegible", ADMIN_ACTOR, NOW.minusSeconds(3_600));
+        stored.registerTransfer(second, new Cents(100_000), new Cents(100_000), ADMIN_ACTOR, NOW.minusSeconds(1_800));
+
+        var page = CatalogHttpTest.json(exchange(withToken(get(BASE + "/reservations/" + id + "/payments"), FINAL_CUSTOMER), 200));
+        assertThat(page.at("/data/0/paymentId").asText()).isEqualTo(second.toString());
+        assertThat(page.at("/data/1/paymentId").asText()).isEqualTo(first.toString());
+        assertThat(page.at("/data/1/validationStatus").asText()).isEqualTo("REJECTED");
+        assertThat(page.at("/data/1/decisionReason").asText()).isEqualTo("illegible");
+        assertThat(page.at("/data/0/decisionReason").isMissingNode()).isTrue();
     }
 }
