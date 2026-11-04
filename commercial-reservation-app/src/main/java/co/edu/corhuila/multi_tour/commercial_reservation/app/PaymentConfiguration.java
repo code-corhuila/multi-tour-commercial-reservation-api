@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentParameterChange;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentProofDecision;
@@ -104,8 +105,15 @@ class PaymentConfiguration {
     }
 
     @Bean
-    PaymentSettingsController paymentSettingsController(GetPaymentQuote quote, GetOwnReservation getOwn, ManagePaymentParameters parameters) {
-        return new PaymentSettingsController(quote, getOwn, parameters);
+    IdempotentPaymentParameterChange idempotentPaymentParameterChange(ManagePaymentParameters parameters, IdempotencyKeys keys,
+            PlatformTransactionManager manager) {
+        return new IdempotentPaymentParameterChange(parameters, keys, new TransactionTemplate(manager));
+    }
+
+    @Bean
+    PaymentSettingsController paymentSettingsController(GetPaymentQuote quote, GetOwnReservation getOwn, ManagePaymentParameters parameters,
+            IdempotentPaymentParameterChange changes) {
+        return new PaymentSettingsController(quote, getOwn, parameters, changes);
     }
 
     @Bean
