@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.application.model;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentStatus;
@@ -15,12 +16,21 @@ import java.util.UUID;
 // balance, never recomputed here) and the state of the latest attempt, which is absent when there is none or the payment was cash.
 public record ReservationListItem(UUID reservationId, String customerName, String tourName, Instant departureStartsAt,
         ReservationStatus reservationStatus, PaymentStatus paymentStatus, Cents pendingBalance, PaymentType paymentType,
-        PaymentMethod paymentMethod, Cents validatedValue, Optional<ValidationStatus> latestProof) {
+        PaymentMethod paymentMethod, Cents validatedValue, Optional<ValidationStatus> latestProof,
+        Optional<CancellationCause> cancellationCause) {
 
     // The row of the earlier stories, which did not read the payment: no type or method known, nothing validated, no proof.
     public ReservationListItem(UUID reservationId, String customerName, String tourName, Instant departureStartsAt,
             ReservationStatus reservationStatus, PaymentStatus paymentStatus, Cents pendingBalance) {
         this(reservationId, customerName, tourName, departureStartsAt, reservationStatus, paymentStatus, pendingBalance, null, null,
-                new Cents(0), Optional.empty());
+                new Cents(0), Optional.empty(), Optional.empty());
+    }
+
+    // The row of HU-COM-014 slice (a): no cancellation cause stored.
+    public ReservationListItem(UUID reservationId, String customerName, String tourName, Instant departureStartsAt,
+            ReservationStatus reservationStatus, PaymentStatus paymentStatus, Cents pendingBalance, PaymentType paymentType,
+            PaymentMethod paymentMethod, Cents validatedValue, Optional<ValidationStatus> latestProof) {
+        this(reservationId, customerName, tourName, departureStartsAt, reservationStatus, paymentStatus, pendingBalance, paymentType,
+                paymentMethod, validatedValue, latestProof, Optional.empty());
     }
 }
