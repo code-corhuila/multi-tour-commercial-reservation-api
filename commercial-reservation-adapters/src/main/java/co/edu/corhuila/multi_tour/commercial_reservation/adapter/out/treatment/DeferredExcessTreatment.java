@@ -10,6 +10,7 @@ import java.util.UUID;
 public final class DeferredExcessTreatment implements ExcessTreatment {
     @Override
     public void open(UUID tenantId, UUID reservationId, Cents excess) {
-        // TODO D-06: ask HU-COM-016/017 to open the treatment (24 hours, 100 % refund by default, PROPOSED).
+        // Plan D-06 (PROPOSED, pending the Project Lead): once HU-COM-016/017 exist, this port asks them to open the treatment
+        // (24 hours, 100 % refund by default).
     }
 }

@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
-// RN-05 / AC-04.6 at the aggregate: minimum 1 %, never below zero. TODO DP-03: no cap, NO DEFINIDO.
+// RN-05 / AC-04.6 at the aggregate: minimum 1 %, never below zero. No cap, by decision (closing decision 2026-10-28, DP-03).
 class AdditionalDiscountTest {
 
     @Test void onePercentIsTheMinimumAndTakesTheExactCents() {
