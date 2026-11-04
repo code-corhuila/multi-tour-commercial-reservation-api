@@ -1,5 +1,21 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentDeadlineWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentDeadlineController;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExtendPaymentDeadlineUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetPaymentDeadlineUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListPaymentFollowupsUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListPendingPaymentsUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RecordPaymentFollowupUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExtendPaymentDeadline;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetPaymentDeadline;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListPaymentFollowups;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListPendingPayments;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RecordPaymentFollowup;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentExtensionPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentFollowupRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PendingPaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentParameterChange;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentController;
@@ -163,6 +179,48 @@ class PaymentConfiguration {
     PaymentProofDecisionController paymentProofDecisionController(IdempotentProofDecision decisions, RecordValidatedPayment validated,
             CustomerRepository customers, Clock clock) {
         return new PaymentProofDecisionController(decisions, validated, customers, clock);
+    }
+
+    // HU-COM-011: the public routes of the deadline, the follow-up and the single extension (the internal routes of the job come next).
+    @Bean
+    RecordPaymentFollowup recordPaymentFollowup(@Lazy ReservationRepository reservations, @Lazy PaymentFollowupRepository followups,
+            IdGenerator ids, @Lazy PaymentTransaction transaction, Clock clock) {
+        return new RecordPaymentFollowupUseCase(reservations, followups, ids, transaction, clock);
+    }
+
+    @Bean
+    ListPaymentFollowups listPaymentFollowups(@Lazy ReservationRepository reservations, @Lazy PaymentFollowupRepository followups) {
+        return new ListPaymentFollowupsUseCase(reservations, followups);
+    }
+
+    @Bean
+    GetPaymentDeadline getPaymentDeadline(@Lazy ReservationRepository reservations, @Lazy PaymentDeadlineReader deadlines,
+            @Lazy DepartureReader departures) {
+        return new GetPaymentDeadlineUseCase(reservations, deadlines, departures);
+    }
+
+    @Bean
+    ListPendingPayments listPendingPayments(@Lazy PendingPaymentQueries queries) {
+        return new ListPendingPaymentsUseCase(queries);
+    }
+
+    @Bean
+    ExtendPaymentDeadline extendPaymentDeadline(@Lazy ReservationRepository reservations, @Lazy PaymentDeadlineReader deadlines,
+            @Lazy DepartureReader departures, @Lazy PaymentExtensionPolicy policy, @Lazy PaymentDeadlineWriter writer,
+            @Lazy PaymentTransaction transaction, Clock clock) {
+        return new ExtendPaymentDeadlineUseCase(reservations, deadlines, departures, policy, writer, transaction, clock);
+    }
+
+    @Bean
+    IdempotentDeadlineWrites idempotentDeadlineWrites(RecordPaymentFollowup followups, ExtendPaymentDeadline extensions,
+            GetPaymentDeadline reads, @Lazy PaymentFollowupRepository history, IdempotencyKeys keys, PlatformTransactionManager manager) {
+        return new IdempotentDeadlineWrites(followups, extensions, reads, history, keys, new TransactionTemplate(manager));
+    }
+
+    @Bean
+    PaymentDeadlineController paymentDeadlineController(ListPendingPayments pending, GetPaymentDeadline deadline, ListPaymentFollowups history,
+            IdempotentDeadlineWrites writes) {
+        return new PaymentDeadlineController(pending, deadline, history, writes);
     }
 
     @Bean
