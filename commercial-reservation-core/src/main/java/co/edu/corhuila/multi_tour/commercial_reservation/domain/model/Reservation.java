@@ -24,6 +24,9 @@ public final class Reservation {
     private PaymentStatus paymentStatus = PaymentStatus.NO_PAYMENT;
     private Cents pendingBalance;
     private boolean seatHeld;
+    private CancellationCause cancellationCause;
+    private Instant cancelledAt;
+    private UUID cancelledBy;
 
     private Reservation(UUID id, UUID tenant, UUID customer, UUID departure, UUID creator, int people, ReservedService service,
             Cents projected, Cents finalValue, List<FixedDiscount> discounts, PaymentType type, PaymentMethod method, Instant now, List<Companion> companions) {
@@ -213,6 +216,38 @@ public final class Reservation {
         if (seatHeld) throw new BusinessRuleViolation("the seats of the reservation are already held");
         seatHeld = true;
         events.add(new CapacityAllocated(tenantId, reservationId, service.serviceId(), departureId, CapacityAllocated.RESERVATION_KIND, now));
+    }
+
+    public CancellationCause cancellationCause() { return cancellationCause; }
+    public Instant cancelledAt() { return cancelledAt; }
+    public UUID cancelledBy() { return cancelledBy; }
+
+    // HU-COM-011 RN-06: the one place that moves a reservation to CANCELLED, with its cause, instant and actor (null when the system
+    // acted). Terminal: a cancelled reservation refuses it, and so does the engine on any later update. The use case released the seats.
+    public void cancel(CancellationCause cause, UUID by, Instant now, int releasedSeats) {
+        if (cause == null || now == null) throw new MissingReservationDataException(List.of("cause", "cancelledAt"));
+        if (reservationStatus == ReservationStatus.CANCELLED) throw new InvalidStatusTransitionException("the reservation is already cancelled");
+        if (reservationStatus != ReservationStatus.PENDING_PAYMENT && reservationStatus != ReservationStatus.CONFIRMED)
+            throw new InvalidStatusTransitionException("a reservation in execution or completed cannot be cancelled");
+        reservationStatus = ReservationStatus.CANCELLED;
+        cancellationCause = cause; cancelledAt = now; cancelledBy = by;
+        events.add(new ReservationCancelled(tenantId, reservationId, cause, releasedSeats, now));
+    }
+
+    // RN-04, RN-08, RN-09; AC-11.1, AC-11.4, AC-11.13: may the job cancel it for non-payment at this instant? The deadline is closed at
+    // both ends: the exact instant is due, and evidence recorded at that very instant still prevails. Cash, a validated payment, or a
+    // transfer presented in time and still in validation stop the expiry; for a balance deadline only a settled balance does.
+    public ExpiryVerdict expiryVerdict(DeadlineKind kind, Instant effectiveDeadline, boolean frozen, Instant now) {
+        if (reservationStatus == ReservationStatus.CANCELLED) return ExpiryVerdict.ALREADY_CANCELLED;
+        if (frozen) return ExpiryVerdict.FROZEN;
+        if (now.isBefore(effectiveDeadline)) return ExpiryVerdict.NOT_DUE;
+        boolean paid = kind == DeadlineKind.INITIAL_PAYMENT
+                ? reservationStatus != ReservationStatus.PENDING_PAYMENT || attempts.stream().anyMatch(a -> a.method() == PaymentMethod.CASH)
+                : reservationStatus != ReservationStatus.CONFIRMED || pendingBalance.amount() == 0;
+        if (paid) return ExpiryVerdict.PAID;
+        boolean proofInTime = attempts.stream().anyMatch(a -> a.validationStatus() == ValidationStatus.IN_VALIDATION
+                && !a.registeredAt().isAfter(effectiveDeadline));
+        return proofInTime ? ExpiryVerdict.PROOF_IN_VALIDATION : ExpiryVerdict.EXPIRABLE;
     }
 
     // The events born since the last pull, in order; the use case writes them to the outbox in the same transaction.
