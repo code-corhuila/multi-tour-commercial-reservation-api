@@ -50,8 +50,10 @@ class ReservationQueriesPersistenceTest {
     private UUID saved(long minutesAgo, String reservationStatus) {
         UUID id = UUID.randomUUID();
         repository.save(fixture.reservation(id, true));
-        fixture.jdbc.update("UPDATE commercial_reservation.reservation SET created_at = ?, reservation_status = ? "
-                + "WHERE reservation_id = ?", OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(minutesAgo), reservationStatus, id);
+        fixture.jdbc.update("UPDATE commercial_reservation.reservation SET created_at = ?, reservation_status = ?, "
+                + "cancellation_cause = CASE WHEN ?::text = 'CANCELLED' THEN 'CUSTOMER_REQUEST' END, "
+                + "cancelled_at = CASE WHEN ?::text = 'CANCELLED' THEN now() END WHERE reservation_id = ?",
+                OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(minutesAgo), reservationStatus, reservationStatus, reservationStatus, id);
         return id;
     }
 
