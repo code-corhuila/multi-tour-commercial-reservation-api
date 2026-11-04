@@ -16,7 +16,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
-// T-05: RN-08, AC-04.9. All or nothing (plan D-07). TODO DP-08: the read half waits for the owner.
+// T-05: RN-08, AC-04.9. All or nothing (plan D-07). The read half (DP-08) was decided by default on 2026-11-03
+// (PROPOSED DEFAULT) and the HTTP tests of the quote and the breakdown cover it.
 class AdditionalDiscountAuthorizationTest {
     private final AdditionalDiscountFakes fakes = new AdditionalDiscountFakes()
             .withReservation(reservation(State.PENDING_PAYMENT, 1_000_000, 0))
