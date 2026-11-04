@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 // The parametrized transport fare per person of a tour (plan D-04, RN-TRA-002). Empty when none exists; where it lives
-// is DP-03, so the adapter is a double until that closes.
+// is DP-03: the catalog row of the tour (transport_rate_per_person_cents), where NULL means not parametrized.
 public interface TransportRateReader {
 
     Optional<Cents> perPersonCents(UUID tenantId, UUID tourId, UUID departureId);
