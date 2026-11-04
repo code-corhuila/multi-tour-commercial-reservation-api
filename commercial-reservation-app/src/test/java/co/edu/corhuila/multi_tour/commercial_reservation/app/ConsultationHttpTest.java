@@ -33,7 +33,7 @@ class ConsultationHttpTest extends ReservationHttpBase {
         assertThat(row.has("proofStatus")).isFalse();
         var read = CatalogHttpTest.json(exchange(
                 withToken(get(BASE + "/reservations/" + created.get("reservationId").asText()), FINAL_CUSTOMER), 200));
-        assertThat(read.get("validatedValueCents").asLong()).isZero();
+        assertThat(read.has("validatedValueCents")).isFalse();
         assertThat(read.get("continueAction").asText()).isEqualTo("CONTINUE_PAYMENT");
         assertThat(read.has("proofStatus")).isFalse();
     }
@@ -42,7 +42,7 @@ class ConsultationHttpTest extends ReservationHttpBase {
         var created = createOwn("reservation-key-142");
         UUID id = UUID.fromString(created.get("reservationId").asText()), attempt = new UUID(14, 1);
         var stored = store.reservations.get(id);
-        stored.registerTransfer(attempt, new Cents(50_000), null, ADMIN_ACTOR, NOW.minusSeconds(7_200));
+        stored.registerTransfer(attempt, new Cents(100_000), new Cents(100_000), ADMIN_ACTOR, NOW.minusSeconds(7_200));
         stored.reject(attempt, "illegible", ADMIN_ACTOR, NOW.minusSeconds(3_600));
 
         var row = CatalogHttpTest.json(exchange(withToken(get(BASE + "/reservations"), FINAL_CUSTOMER), 200)).at("/data/0");
