@@ -85,11 +85,11 @@ class ModifyReservationTest {
 
     @Test
     void anIncreaseKeepsTheReservationConfirmedAndCreatesTheDifferenceDeadline() {
-        Reservation reservation = planted(PaymentType.DEPOSIT, 100_000);
+        Reservation reservation = planted(PaymentType.DEPOSIT, 300_000);
 
         ModificationOutcome outcome = ask(3, DEPARTURE, ChangeType.MODIFICATION);
 
-        assertThat(outcome.newPendingBalance()).isEqualTo(new Cents(350_000));
+        assertThat(outcome.newPendingBalance()).isEqualTo(new Cents(150_000));
         assertThat(reservation.reservationStatus()).isEqualTo(ReservationStatus.CONFIRMED);
         assertThat(reservation.paymentStatus()).isEqualTo(PaymentStatus.DEPOSIT_RECEIVED);
         assertThat(differences).containsExactly(START.minus(Duration.ofHours(48)));
