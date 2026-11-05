@@ -45,6 +45,15 @@ public record RefundAuthorization(UUID id, UUID tenantId, UUID reservationId, Re
                 AuthorizationMode.AUTOMATIC_DETERMINATION, null, at, dueAt, ExecutionState.AUTHORIZED, null, null, null, null, null, null);
     }
 
+    // DP-11, AC-16.16: a value recognized after the refund was decided follows it as one more automatic authorization of the same decision, for the increment.
+    public static RefundAuthorization increment(UUID id, FinancialDecision decision, Cents increment, Instant at, Instant dueAt) {
+        if (decision.outcome() != DecisionOutcome.REFUND_FULL)
+            throw new BusinessRuleViolation("only a decision decided as a refund takes a late value as one more refund");
+        return new RefundAuthorization(id, decision.tenantId(), decision.reservationId(), RefundOrigin.valueOf(decision.kind().name()), decision.id(),
+                increment, increment, "Late value of a decided refund", AuthorizationMode.AUTOMATIC_DETERMINATION, null, at, dueAt, ExecutionState.AUTHORIZED,
+                null, null, null, null, null, null);
+    }
+
     // RN-03: step 1 of the saga. A repeat with the same person and method changes nothing.
     public RefundAuthorization startExecution(UUID by, OutflowMethod method, Instant at) {
         if (by == null || method == null) throw new DomainException("executedBy", "the person and the method are required");

@@ -1,0 +1,85 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
+
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageRefundDecisions;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.BusinessCalendar;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FinancialDecisionRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizationRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.UUID;
+
+// HU-COM-016 plan D-04, D-07, D-09: the aggregates decide, this class orders what surrounds them in one transaction (the decision or the refund and its
+// event commit together). The clock and the calendar are ports; the caller never sends an instant or an amount.
+public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
+
+    private final FinancialDecisionRepository decisions;
+    private final RefundAuthorizationRepository refunds;
+    private final BusinessCalendar calendar;
+    private final RefundAuthorizedOutbox outbox;
+    private final IdGenerator ids;
+    private final PaymentTransaction transaction;
+    private final Clock clock;
+
+    public ManageRefundDecisionsUseCase(FinancialDecisionRepository decisions, RefundAuthorizationRepository refunds, BusinessCalendar calendar,
+            RefundAuthorizedOutbox outbox, IdGenerator ids, PaymentTransaction transaction, Clock clock) {
+        this.decisions = decisions;
+        this.refunds = refunds;
+        this.calendar = calendar;
+        this.outbox = outbox;
+        this.ids = ids;
+        this.transaction = transaction;
+        this.clock = clock;
+    }
+
+    @Override
+    public FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId) {
+        RefundAuthorizationRules.requireAdministrator(actor);
+        FinancialDecision decision = load(actor.tenantId(), financialDecisionId);
+        Instant now = Instant.now(clock);
+        return transaction.inTransaction(() -> {
+            FinancialDecision decided = decision.recordRefundFull(actor.actorId(), now);
+            decisions.save(decided);
+            return decided;
+        });
+    }
+
+    @Override
+    public RefundAuthorization authorize(PaymentActor actor, UUID financialDecisionId, String reason) {
+        RefundAuthorizationRules.requireAdministrator(actor);
+        FinancialDecision decision = load(actor.tenantId(), financialDecisionId);
+        if (refunds.findByDecision(actor.tenantId(), financialDecisionId).isPresent())
+            throw new InvalidStatusTransitionException("the decision already has its refund authorized");
+        Instant now = Instant.now(clock);
+        return transaction.inTransaction(() -> {
+            RefundAuthorization refund = RefundAuthorization.authorize(ids.newId(), decision, reason, actor.actorId(), now,
+                    calendar.addBusinessDays(now, RefundAuthorizationRules.BUSINESS_DAYS));
+            refunds.save(refund);
+            outbox.append(refund);
+            return refund;
+        });
+    }
+
+    @Override
+    public FinancialDecision reject(PaymentActor actor, UUID financialDecisionId, String justification) {
+        RefundAuthorizationRules.requireAdministrator(actor);
+        FinancialDecision decision = load(actor.tenantId(), financialDecisionId);
+        Instant now = Instant.now(clock);
+        return transaction.inTransaction(() -> {
+            FinancialDecision rejected = decision.reject(actor.actorId(), justification, now);
+            decisions.save(rejected);
+            return rejected;
+        });
+    }
+
+    private FinancialDecision load(UUID tenantId, UUID id) {
+        return decisions.find(tenantId, id).orElseThrow(() -> new RefundNotFoundException("financial decision", id));
+    }
+}
