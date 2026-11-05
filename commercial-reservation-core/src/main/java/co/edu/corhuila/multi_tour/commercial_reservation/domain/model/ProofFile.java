@@ -25,7 +25,7 @@ public final class ProofFile {
 
     public static ProofFile of(byte[] content) {
         if (content == null || content.length == 0) throw new DomainException("proof", "the proof file is required");
-        if (content.length > MAX_BYTES) throw new DomainException("proof", "the proof file cannot be larger than 5 MB");
+        if (content.length > MAX_BYTES) throw new ProofTooLargeException();
         byte[] copy = content.clone();
         if (startsWith(copy, PDF)) return new ProofFile(copy, "application/pdf");
         if (startsWith(copy, JPEG)) return new ProofFile(copy, "image/jpeg");
