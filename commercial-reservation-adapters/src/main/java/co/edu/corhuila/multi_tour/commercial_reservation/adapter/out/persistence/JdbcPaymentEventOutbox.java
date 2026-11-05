@@ -4,6 +4,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityAllocated;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationCancelled;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationChanged;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvidenceRegistered;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentRejected;
@@ -26,6 +27,10 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
 
     public JdbcPaymentEventOutbox(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    private static String type(PaymentEvent event) {
+        return event instanceof ReservationChanged ? "ReservationModified" : event.getClass().getSimpleName();
     }
 
     @Override
@@ -68,6 +73,17 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
                 payload.put("cause", e.cause().name());
                 payload.put("releasedSeats", e.releasedSeats());
             }
+            case ReservationChanged e -> {
+                // The modification shape of ReservationModified: the nine keys of the closed list of the db, never the reason (DP-D12-3).
+                payload.put("changeType", e.changeType().name());
+                payload.put("previousFinalValueCents", e.previousFinalValue().amount());
+                payload.put("newFinalValueCents", e.newFinalValue().amount());
+                payload.put("previousPendingBalanceCents", e.previousPendingBalance().amount());
+                payload.put("newPendingBalanceCents", e.newPendingBalance().amount());
+                payload.put("partySize", e.partySize());
+                payload.put("departureChanged", e.departureChanged());
+                payload.put("reasonCode", e.reasonCode());
+            }
             default -> throw new IllegalArgumentException("not a payment event: " + event.getClass().getSimpleName());
         }
         try {
@@ -75,7 +91,7 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
                     + "payload) VALUES (?, ?, ?, COALESCE((SELECT COALESCE(decided_by, registered_by) FROM "
                     + "commercial_reservation.payment_attempt WHERE reservation_id = ? ORDER BY COALESCE(decided_at, registered_at) DESC "
                     + "LIMIT 1), (SELECT created_by FROM commercial_reservation.reservation WHERE reservation_id = ?)), ?, ?::jsonb)",
-                    event.tenantId(), event.getClass().getSimpleName(), event.reservationId(), event.reservationId(),
+                    event.tenantId(), type(event), event.reservationId(), event.reservationId(),
                     event.reservationId(), event.occurredAt().truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC),
                     JSON.writeValueAsString(payload));
         } catch (JsonProcessingException failure) {
