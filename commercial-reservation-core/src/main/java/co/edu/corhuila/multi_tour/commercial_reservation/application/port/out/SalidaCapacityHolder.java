@@ -11,4 +11,14 @@ public interface SalidaCapacityHolder {
     // The open allocation of the reservation goes back to the departure by conditional update; returns the seats released,
     // zero when nothing was held (010 G-I, plan D-10).
     int release(UUID tenantId, UUID reservationId);
+
+    // HU-COM-012 D-05: fewer travellers give back only their seats, in the caller's transaction; returns the seats released.
+    default int releaseSeats(UUID tenantId, UUID reservationId, int seats) {
+        throw new UnsupportedOperationException("the partial release needs the adapter override");
+    }
+
+    // HU-COM-012 D-05: a date change holds the new departure and releases the old one as one operation; false when the new one has no room.
+    default boolean move(UUID tenantId, UUID reservationId, UUID fromSalidaId, UUID toSalidaId, int seats) {
+        throw new UnsupportedOperationException("the move needs the adapter override");
+    }
 }
