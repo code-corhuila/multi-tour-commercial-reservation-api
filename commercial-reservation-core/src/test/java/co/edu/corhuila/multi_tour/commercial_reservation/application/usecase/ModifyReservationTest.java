@@ -178,7 +178,7 @@ class ModifyReservationTest {
     void theTermsRefuseTheChangeNamingTheReasonAndNothingChanges() {
         Reservation reservation = planted(PaymentType.FULL_PAYMENT, 300_000);
         ModifyReservationUseCase refusing = new ModifyReservationUseCase(fakes, departures, (tenant, service, type) -> Optional.empty(), fakes,
-                fakes, decisions, deadlines, fakes, Clock.fixed(NOW, ZoneOffset.UTC));
+                fakes, decisions, deadlines, history, fakes, fakes, Clock.fixed(NOW, ZoneOffset.UTC));
 
         assertThatThrownBy(() -> refusing.modify(new PaymentActor(TENANT, COLLABORATOR, Role.OPERATIONAL_COLLABORATOR), RESERVATION,
                 new ModificationRequest(ChangeType.MODIFICATION, 3, DEPARTURE, List.of()), "reason"))
