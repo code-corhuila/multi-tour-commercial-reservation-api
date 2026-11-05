@@ -64,7 +64,8 @@ final class PaymentPreconditions {
         if (!now().isBefore(departure.startsAt())) throw new BusinessRuleViolation("the departure has already started");
         reservation.requireOpenToPayment();
         deadlines.openDeadline(tenantId, reservationId).ifPresent(deadline -> {
-            if (!now().isBefore(deadline.dueAt())) throw new BusinessRuleViolation("the payment deadline has expired");
+            // The effective deadline (RN-02: the extension counts, never past the departure start); a frozen one does not expire (RN-17).
+            if (!deadline.frozen() && !now().isBefore(deadline.effective(departure.startsAt()))) throw new BusinessRuleViolation("the payment deadline has expired");
         });
         return reservation;
     }
