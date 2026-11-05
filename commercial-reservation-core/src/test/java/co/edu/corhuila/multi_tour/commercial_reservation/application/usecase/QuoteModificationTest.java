@@ -119,4 +119,31 @@ class QuoteModificationTest {
         assertThatThrownBy(() -> quote.quote(new PaymentActor(OTHER_TENANT, COLLABORATOR, Role.TENANT_ADMINISTRATOR), RESERVATION,
                 new ModificationRequest(ChangeType.MODIFICATION, 3, DEPARTURE, List.of()))).isInstanceOf(ReservationNotFoundException.class);
     }
+
+    @Test
+    void anAbsentFieldStaysAsItIsAndAChangeWithNoFieldIsRefused() {
+        policy = Optional.of(new ChangePolicy(true, 60));
+
+        ModificationQuote same = quote.quote(actor(Role.OPERATIONAL_COLLABORATOR), RESERVATION,
+                new ModificationRequest(ChangeType.MODIFICATION, 3, null, null));
+        assertThat(same.outcome().newFinalValue()).isEqualTo(new Cents(450_000));
+
+        assertThatThrownBy(() -> quote.quote(actor(Role.OPERATIONAL_COLLABORATOR), RESERVATION,
+                new ModificationRequest(ChangeType.MODIFICATION, null, null, null)))
+                .isInstanceOf(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException.class);
+    }
+
+    @Test
+    void theQuoteSaysWhetherTheDepartureCanTakeTheExtraSeats() {
+        policy = Optional.of(new ChangePolicy(true, 60));
+
+        ModificationQuote fits = ask();
+        ModificationQuote crowded = quote.quote(actor(Role.OPERATIONAL_COLLABORATOR), RESERVATION,
+                new ModificationRequest(ChangeType.MODIFICATION, 12, DEPARTURE, List.of()));
+
+        assertThat(fits.seatsAvailable()).isTrue();
+        assertThat(crowded.seatsAvailable()).isFalse();
+        assertThat(crowded.allowed()).isFalse();
+        assertThat(crowded.reason()).isEqualTo(Reason.NO_AVAILABILITY);
+    }
 }
