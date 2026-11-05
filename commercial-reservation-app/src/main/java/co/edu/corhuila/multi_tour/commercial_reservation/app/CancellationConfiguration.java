@@ -3,7 +3,6 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CancellationController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CancellationHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCancellation;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.DeferredFinancialDecisionOpener;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.NoCancellationPenaltyPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.NoReprogrammingMark;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
@@ -52,11 +51,6 @@ class CancellationConfiguration {
     @Bean
     ReprogrammingMarkReader reprogrammingMarkReader() {
         return new NoReprogrammingMark();
-    }
-
-    @Bean
-    FinancialDecisionOpener financialDecisionOpener() {
-        return new DeferredFinancialDecisionOpener();
     }
 
     @Bean
