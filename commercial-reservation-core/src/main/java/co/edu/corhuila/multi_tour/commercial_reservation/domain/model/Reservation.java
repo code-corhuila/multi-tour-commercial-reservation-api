@@ -313,6 +313,18 @@ public final class Reservation {
                 new ModificationOutcome(oldFinal, newFinal, oldPending, newPending, excess, seatDelta));
     }
 
+    // HU-COM-012 RN-04, AC-12.3, AC-12.14: the situation after a modification, from validated values only. A confirmed reservation stays
+    // confirmed and needs no new minimum; a pending one is judged against the minimum of the new value and is never confirmed here (DP-05).
+    public void settleSituation(Cents minimumDeposit) {
+        long validated = finalValue.amount() - pendingBalance.amount();
+        if (reservationStatus == ReservationStatus.CONFIRMED) {
+            paymentStatus = pendingBalance.amount() == 0 ? PaymentStatus.FULLY_PAID
+                    : expectedPaymentType == PaymentType.DEPOSIT ? PaymentStatus.DEPOSIT_RECEIVED : PaymentStatus.BALANCE_PENDING;
+        } else {
+            paymentStatus = FinancialSituation.of(finalValue, new Cents(validated), expectedPaymentType, minimumDeposit, reservationStatus);
+        }
+    }
+
     // The events born since the last pull, in order; the use case writes them to the outbox in the same transaction.
     public List<PaymentEvent> pullEvents() {
         List<PaymentEvent> pulled = List.copyOf(events);
