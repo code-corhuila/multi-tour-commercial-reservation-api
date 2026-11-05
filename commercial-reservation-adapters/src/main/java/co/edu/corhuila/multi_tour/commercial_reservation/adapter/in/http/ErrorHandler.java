@@ -8,6 +8,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Cus
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ClientNoticeNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OutboxEventNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteCompanionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteLeadCustomerException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservationAccessDeniedException;
@@ -131,7 +133,8 @@ public class ErrorHandler {
                 || ex instanceof PublicOfferNotFoundException
                 || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException || ex instanceof AuthorizableReasonNotFoundException
                 || ex instanceof DepartureNotFoundException || ex instanceof ReservationNotFoundException || ex instanceof PaymentProofNotFoundException
-                || ex instanceof RefundNotFoundException
+                || ex instanceof RefundNotFoundException || ex instanceof ClientNoticeNotFoundException
+                || ex instanceof OutboxEventNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.
@@ -157,7 +160,8 @@ public class ErrorHandler {
         String path = request.getRequestURI();
         return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && (path.endsWith("/reservations") || path.endsWith("/customers"))
                 || path.contains("/additional-discount") || path.contains("/payments") || path.contains("/payment-proofs") || path.endsWith("/cancellation")
-                || path.contains("/refund-authorizations/") || path.contains("/financial-decisions/") || path.endsWith("/refund-determinations");
+                || path.contains("/refund-authorizations/") || path.contains("/financial-decisions/") || path.endsWith("/refund-determinations")
+                || path.endsWith("/modifications") || path.endsWith("/modification-quote");
     }
 
     private static String jsonField(Throwable error) {

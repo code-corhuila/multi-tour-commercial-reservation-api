@@ -236,4 +236,18 @@ class ModifyReservationTest {
         assertThat(history.rows).isEmpty();
         assertThat(fakes.events).isEmpty();
     }
+
+    @Test
+    void anAbsentFieldStaysAndAnotherTourIsRefused() {
+        Reservation reservation = planted(PaymentType.FULL_PAYMENT, 300_000);
+
+        modify.modify(new PaymentActor(TENANT, COLLABORATOR, Role.OPERATIONAL_COLLABORATOR), RESERVATION,
+                new ModificationRequest(ChangeType.MODIFICATION, 3, null, null), "Only the party changes");
+
+        assertThat(reservation.people()).isEqualTo(3);
+        assertThat(reservation.departureId()).isEqualTo(DEPARTURE);
+        assertThatThrownBy(() -> modify.modify(new PaymentActor(TENANT, COLLABORATOR, Role.OPERATIONAL_COLLABORATOR), RESERVATION,
+                new ModificationRequest(ChangeType.MODIFICATION, 3, null, null, UUID.randomUUID()), "Another tour"))
+                .isInstanceOf(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException.class);
+    }
 }
