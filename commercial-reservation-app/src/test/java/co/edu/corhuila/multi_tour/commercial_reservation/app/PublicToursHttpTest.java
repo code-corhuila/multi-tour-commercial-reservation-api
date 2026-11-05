@@ -190,7 +190,7 @@ class PublicToursHttpTest {
         UUID open = new UUID(3, 1), later = new UUID(3, 2);
         put(open, tourA, NOW.plusSeconds(3_600), DepartureStatus.SCHEDULED, 10, 4);
         put(later, tourA, NOW.plusSeconds(7_200), DepartureStatus.SCHEDULED, 10, 0);
-        put(new UUID(3, 3), tourA, NOW.plusSeconds(3_600), DepartureStatus.SCHEDULED, 10, 10);
+        put(new UUID(3, 3), tourA, NOW.plusSeconds(5_400), DepartureStatus.SCHEDULED, 10, 10);
         put(new UUID(3, 4), tourA, NOW.plusSeconds(3_600), DepartureStatus.CANCELLED, 10, 0);
         put(new UUID(3, 5), tourA, NOW.plusSeconds(3_600), DepartureStatus.IN_EXECUTION, 10, 0);
         put(new UUID(3, 6), tourA, NOW.plusSeconds(3_600), DepartureStatus.FINALIZED, 10, 0);
