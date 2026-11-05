@@ -38,4 +38,26 @@ public final class JdbcSalidaCapacityHolder implements SalidaCapacityHolder {
                 + "AND salida_id = ?", seats, tenantId, salida);
         return seats;
     }
+
+    // HU-COM-012 D-05: fewer travellers give back only their seats, from the departure of the open allocation. The allocation row itself is
+    // kept in step with the reservation by the repository, in the same transaction.
+    @Override
+    public int releaseSeats(UUID tenantId, UUID reservationId, int seats) {
+        List<UUID> open = jdbc.queryForList("SELECT salida_id FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? "
+                + "AND reservation_id = ? AND released_at IS NULL FOR UPDATE", UUID.class, tenantId, reservationId);
+        if (open.isEmpty()) return 0;
+        jdbc.update("UPDATE commercial_reservation.salida_capacity SET held_seats = GREATEST(held_seats - ?, 0) WHERE tenant_id = ? "
+                + "AND salida_id = ?", seats, tenantId, open.get(0));
+        return seats;
+    }
+
+    // HU-COM-012 D-05: the new departure is held by the conditional update first and the old one is released only when that succeeded, both
+    // in the transaction of the caller, so a failure leaves the seats where they were.
+    @Override
+    public boolean move(UUID tenantId, UUID reservationId, UUID fromSalidaId, UUID toSalidaId, int seats) {
+        if (!hold(tenantId, toSalidaId, seats)) return false;
+        jdbc.update("UPDATE commercial_reservation.salida_capacity SET held_seats = GREATEST(held_seats - ?, 0) WHERE tenant_id = ? "
+                + "AND salida_id = ?", seats, tenantId, fromSalidaId);
+        return true;
+    }
 }

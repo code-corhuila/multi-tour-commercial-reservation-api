@@ -110,7 +110,7 @@ class PublicToursHttpTest {
         var detail = CatalogHttpTest.json(call(IDENTIFIER + "/tours/" + tourA, 200));
         assertThat(names(detail)).isSubsetOf("serviceId", "commercialName", "transportIncluded", "baseValueCents",
                 "finalValueCents", "discountPercentageBp", "maxTravelers", "departures");
-        assertThat(names(detail.get("departures").get(0))).containsExactlyInAnyOrder("departureId", "startsAt", "availableSeats");
+        assertThat(names(detail.get("departures").get(0))).containsExactlyInAnyOrder("departureId", "startsAt", "availableSeats", "full");
         assertThat(detail.get("departures").get(0).get("startsAt").asText()).isEqualTo(NOW.plusSeconds(86_400).toString());
         String raw = call(IDENTIFIER + "/tours", 200).getResponse().getContentAsString().toLowerCase();
         for (String forbidden : new String[] {"cost", "status", "highrisk", "tenantid", "capacity", "reason", "configured"}) {
@@ -186,22 +186,27 @@ class PublicToursHttpTest {
         }
     }
 
-    @Test void onlyScheduledFutureDeparturesWithSeatsAreOffered() throws Exception {
+    @Test void onlyScheduledFutureDeparturesAreOfferedAndAFullOneIsMarkedFull() throws Exception {
         UUID open = new UUID(3, 1), later = new UUID(3, 2);
         put(open, tourA, NOW.plusSeconds(3_600), DepartureStatus.SCHEDULED, 10, 4);
         put(later, tourA, NOW.plusSeconds(7_200), DepartureStatus.SCHEDULED, 10, 0);
-        put(new UUID(3, 3), tourA, NOW.plusSeconds(3_600), DepartureStatus.SCHEDULED, 10, 10);
+        put(new UUID(3, 3), tourA, NOW.plusSeconds(5_400), DepartureStatus.SCHEDULED, 10, 10);
         put(new UUID(3, 4), tourA, NOW.plusSeconds(3_600), DepartureStatus.CANCELLED, 10, 0);
         put(new UUID(3, 5), tourA, NOW.plusSeconds(3_600), DepartureStatus.IN_EXECUTION, 10, 0);
         put(new UUID(3, 6), tourA, NOW.plusSeconds(3_600), DepartureStatus.FINALIZED, 10, 0);
         put(new UUID(3, 7), tourA, NOW.minusSeconds(3_600), DepartureStatus.SCHEDULED, 10, 0);
         put(new UUID(3, 8), tourB, NOW.plusSeconds(3_600), DepartureStatus.SCHEDULED, 10, 0);
         var departures = CatalogHttpTest.json(call(IDENTIFIER + "/tours/" + tourA, 200)).get("departures");
-        assertThat(departures).hasSize(2);
+        assertThat(departures).hasSize(3);
         assertThat(departures.get(0).get("departureId").asText()).isEqualTo(open.toString());
         assertThat(departures.get(0).get("availableSeats").asInt()).isEqualTo(6);
-        assertThat(departures.get(1).get("departureId").asText()).isEqualTo(later.toString());
-        assertThat(departures.get(1).get("availableSeats").asInt()).isEqualTo(10);
+        assertThat(departures.get(2).get("departureId").asText()).isEqualTo(later.toString());
+        assertThat(departures.get(2).get("availableSeats").asInt()).isEqualTo(10);
+        assertThat(departures.get(0).get("full").asBoolean()).isFalse();
+        assertThat(departures.get(2).get("full").asBoolean()).isFalse();
+        assertThat(departures.get(1).get("departureId").asText()).isEqualTo(new UUID(3, 3).toString());
+        assertThat(departures.get(1).get("availableSeats").asInt()).isZero();
+        assertThat(departures.get(1).get("full").asBoolean()).isTrue();
     }
 
     @Test void aTourWithNoOpenDepartureAnswersAnEmptyListAndTheMaximumTravellers() throws Exception {
