@@ -19,7 +19,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 // open decision may change (amounts, freeze, outcome group) and inserts when the row does not exist yet; the guard of the engine refuses any other change.
 // Every query leads with the tenant. The justification is stored and read, never logged.
 public final class JdbcFinancialDecisionRepository implements FinancialDecisionRepository {
-    private static final String COLUMNS = "financial_decision_id, tenant_id, reservation_id, credit_balance_id, decision_kind, base_amount_cents, "
+    static final String COLUMNS = "financial_decision_id, tenant_id, reservation_id, credit_balance_id, decision_kind, base_amount_cents, "
             + "penalty_amount_cents, recognized_at, frozen_at, remaining_at_freeze_minutes, outcome, decided_by_system, decided_by, decided_at, "
             + "rejection_justification";
     private final JdbcTemplate jdbc;
@@ -58,7 +58,7 @@ public final class JdbcFinancialDecisionRepository implements FinancialDecisionR
         }
     }
 
-    private static FinancialDecision map(ResultSet row) throws SQLException {
+    static FinancialDecision map(ResultSet row) throws SQLException {
         long penalty = row.getLong("penalty_amount_cents");
         Cents penaltyCents = row.wasNull() ? null : new Cents(penalty);
         long minutes = row.getLong("remaining_at_freeze_minutes");
