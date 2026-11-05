@@ -80,7 +80,7 @@ class ClientNoticePersistenceTest {
 
         Reservation rejected = stored();
         UUID proof = UUID.randomUUID();
-        rejected.registerTransfer(proof, new Cents(5_000), MINIMUM, fixture.actor, ReservationPersistenceFixture.NOW);
+        rejected.registerTransfer(proof, new Cents(100_000), MINIMUM, fixture.actor, ReservationPersistenceFixture.NOW);
         persist(rejected);
         Reservation loaded = repository.findByTenantAndId(fixture.tenant, rejected.reservationId()).orElseThrow();
         loaded.reject(proof, "The proof is illegible", fixture.actor, ReservationPersistenceFixture.NOW);
@@ -92,7 +92,7 @@ class ClientNoticePersistenceTest {
     void aFactThatRollsBackLeavesNoNotice() {
         Reservation reservation = stored();
         UUID proof = UUID.randomUUID();
-        reservation.registerTransfer(proof, new Cents(5_000), MINIMUM, fixture.actor, ReservationPersistenceFixture.NOW);
+        reservation.registerTransfer(proof, new Cents(100_000), MINIMUM, fixture.actor, ReservationPersistenceFixture.NOW);
         persist(reservation);
         Reservation loaded = repository.findByTenantAndId(fixture.tenant, reservation.reservationId()).orElseThrow();
         loaded.reject(proof, "The proof is illegible", fixture.actor, ReservationPersistenceFixture.NOW);
