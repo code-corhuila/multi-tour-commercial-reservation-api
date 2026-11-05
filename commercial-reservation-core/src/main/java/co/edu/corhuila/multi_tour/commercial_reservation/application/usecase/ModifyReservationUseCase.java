@@ -3,17 +3,22 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ModificationQuote.Reason;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ModificationRequest;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationModificationRecord;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ModifyReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ChangePolicyReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExcessDecisionOpener;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentConditionReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationModifications;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PendingDifferenceDeadlines;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityAllocated;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ChangeType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
@@ -21,6 +26,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingRes
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ModificationOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationChanged;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ValidationStatus;
 import java.time.Clock;
@@ -45,12 +51,14 @@ public class ModifyReservationUseCase implements ModifyReservation {
     private final SalidaCapacityHolder holder;
     private final ExcessDecisionOpener decisions;
     private final PendingDifferenceDeadlines deadlines;
+    private final ReservationModifications history;
+    private final PaymentEventOutbox outbox;
     private final PaymentTransaction transaction;
     private final Clock clock;
 
     public ModifyReservationUseCase(ReservationRepository reservations, DepartureReader departures, ChangePolicyReader policies,
             PaymentConditionReader conditions, SalidaCapacityHolder holder, ExcessDecisionOpener decisions, PendingDifferenceDeadlines deadlines,
-            PaymentTransaction transaction, Clock clock) {
+            ReservationModifications history, PaymentEventOutbox outbox, PaymentTransaction transaction, Clock clock) {
         this.reservations = reservations;
         this.departures = departures;
         this.policies = policies;
@@ -58,12 +66,14 @@ public class ModifyReservationUseCase implements ModifyReservation {
         this.holder = holder;
         this.decisions = decisions;
         this.deadlines = deadlines;
+        this.history = history;
+        this.outbox = outbox;
         this.transaction = transaction;
         this.clock = clock;
     }
 
     @Override
-    public ModificationOutcome modify(PaymentActor actor, UUID reservationId, ModificationRequest request, String reason) {
+    public ReservationModificationRecord modify(PaymentActor actor, UUID reservationId, ModificationRequest request, String reason) {
         ModificationAuthorization.requireWrite(actor);
         String why = reason == null ? "" : reason.strip();
         if (why.isEmpty() || why.length() > MAXIMUM_REASON) throw new MissingReservationDataException(List.of("reason"));
@@ -83,6 +93,8 @@ public class ModifyReservationUseCase implements ModifyReservation {
                     .orElseThrow(() -> new DomainException("departureId", "the departure must be one of the reserved tour")) : current;
             reservation.quoteModification(request.partySize(), reservation.service(), request.departureId(), request.companions(),
                     current.startsAt(), now);
+            UUID previousSalida = reservation.departureId();
+            int previousParty = reservation.people();
             moveSeats(reservation, request, dateChange, target);
             ReservationStatus status = reservation.reservationStatus();
             ModificationOutcome outcome = reservation.modify(request.partySize(), reservation.service(), request.departureId(),
@@ -92,8 +104,29 @@ public class ModifyReservationUseCase implements ModifyReservation {
                 deadlines.record(reservation.tenantId(), reservation.reservationId(), differenceDue(reservation, target.startsAt(), now));
             if (outcome.excess().amount() > 0) decisions.open(reservation.tenantId(), reservation.reservationId(), outcome.excess(), now);
             reservations.save(reservation);
-            return outcome;
+            ReservationModificationRecord record = new ReservationModificationRecord(UUID.randomUUID(), reservation.reservationId(),
+                    request.changeType(), why, outcome, previousParty, reservation.people(), reservation.service().serviceId(), previousSalida,
+                    reservation.departureId(), actor.actorId(), now);
+            history.append(reservation.tenantId(), record);
+            announce(reservation, record, previousSalida, now);
+            return record;
         });
+    }
+
+    // AC-12.15: the change and, when the seats moved, the capacity events; values, party and codes only, never the reason or a name.
+    private void announce(Reservation reservation, ReservationModificationRecord record, UUID previousSalida, Instant now) {
+        boolean moved = !previousSalida.equals(record.newSalidaId());
+        outbox.append(new ReservationChanged(reservation.tenantId(), reservation.reservationId(), record.changeType(), record.outcome().oldFinalValue(),
+                record.outcome().newFinalValue(), record.outcome().oldPendingBalance(), record.outcome().newPendingBalance(), record.newPartySize(), moved,
+                ReservationChanged.STAFF_CHANGE, record.registeredBy(), now));
+        if (!reservation.seatHeld() || record.outcome().seatDelta() == 0 && !moved) return;
+        UUID service = reservation.service().serviceId();
+        if (moved || record.outcome().seatDelta() > 0)
+            outbox.append(new CapacityAllocated(reservation.tenantId(), reservation.reservationId(), service, record.newSalidaId(),
+                    CapacityAllocated.RESERVATION_KIND, now));
+        if (moved || record.outcome().seatDelta() < 0)
+            outbox.append(new CapacityReleased(reservation.tenantId(), reservation.reservationId(), service, previousSalida,
+                    CapacityReleased.RESERVATION_MODIFIED, now));
     }
 
     // A modification keeps the departure and a date change keeps the party (plan section 2); a proof under review blocks the move (RN-07).
