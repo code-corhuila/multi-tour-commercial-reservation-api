@@ -146,6 +146,22 @@ class ClientNoticePersistenceTest {
     }
 
     @Test
+    void aCustomerWithoutEmailGetsNoNoticeAndTheFactStands() {
+        var noEmail = (co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader) (tenant, id) -> java.util.Optional.of(
+                co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer.registerLead(id, tenant, "DOC-FICT-0001", "Lead Ficticio",
+                        co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge.ofAge(40),
+                        new co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo(null, "+000-555-0100"), true,
+                        ReservationPersistenceFixture.NOW));
+        events = new JdbcPaymentEventOutbox(fixture.jdbc, new JdbcClientNoticeOutbox(fixture.jdbc, noEmail));
+
+        Reservation reservation = withApprovedTransfer();
+
+        assertThat(noticeTypes(reservation)).isEmpty();
+        assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event WHERE reservation_id = ? "
+                + "AND event_type IN ('PaymentValidated', 'ReservationConfirmed')", Integer.class, reservation.reservationId())).isEqualTo(2);
+    }
+
+    @Test
     void theSameFactTwiceLeavesOneNotice() {
         Reservation reservation = withApprovedTransfer();
         UUID triggering = fixture.jdbc.queryForObject("SELECT outbox_event_id FROM commercial_reservation.outbox_event WHERE reservation_id = ? "
