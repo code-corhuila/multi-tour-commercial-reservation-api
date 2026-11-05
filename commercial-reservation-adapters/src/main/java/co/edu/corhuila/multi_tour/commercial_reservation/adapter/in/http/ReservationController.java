@@ -4,6 +4,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Ide
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CustomerActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetOwnReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolveNextAction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolveReservationDeadline;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListOwnReservations;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListReservationDepartures;
@@ -41,11 +42,12 @@ public final class ReservationController {
     private final ListOwnReservations listOwn;
     private final GetOwnReservation getOwn;
     private final ResolveNextAction nextAction;
+    private final ResolveReservationDeadline deadline;
     private final Clock clock;
 
     public ReservationController(ListReservationDepartures departures, QuoteReservation quote,
             IdempotentReservationCreation creation, ListReservations list, GetReservation get, ListOwnReservations listOwn,
-            GetOwnReservation getOwn, ResolveNextAction nextAction, Clock clock) {
+            GetOwnReservation getOwn, ResolveNextAction nextAction, ResolveReservationDeadline deadline, Clock clock) {
         this.departures = departures;
         this.quote = quote;
         this.creation = creation;
@@ -54,6 +56,7 @@ public final class ReservationController {
         this.listOwn = listOwn;
         this.getOwn = getOwn;
         this.nextAction = nextAction;
+        this.deadline = deadline;
         this.clock = clock;
     }
 
@@ -93,7 +96,8 @@ public final class ReservationController {
         var command = isFinalCustomer(actor) ? request.toOwnCommand(actor.tenantId(), actor.actorId(), today)
                 : request.toCommand(actor.tenantId(), actor.actorId(), today);
         var result = creation.create(command, key);
-        var body = ReservationResponse.from(result.reservation(), nextAction.forReservation(result.reservation()));
+        var body = ReservationResponse.from(result.reservation(), nextAction.forReservation(result.reservation()),
+                deadline.forReservation(result.reservation()));
         return result.created() ? ResponseEntity.created(URI.create(RESERVATIONS + body.reservationId())).body(body)
                 : ResponseEntity.ok(body);
     }
@@ -109,7 +113,8 @@ public final class ReservationController {
         var actor = CustomerHttpAccess.actor(principal);
         var found = isFinalCustomer(actor) ? listOwn.list(actor.tenantId(), actor.actorId(), scope.equals("all"), page, limit)
                 : list.list(actor.tenantId(), scope.equals("all"), page, limit);
-        return ReservationListResponses.of(found, page, limit, row -> nextAction.forRow(actor.tenantId(), row));
+        return ReservationListResponses.of(found, page, limit, row -> nextAction.forRow(actor.tenantId(), row),
+                row -> deadline.forRow(actor.tenantId(), row));
     }
 
     @GetMapping("/reservations/{reservationId}")
@@ -118,7 +123,7 @@ public final class ReservationController {
         var actor = CustomerHttpAccess.actor(principal);
         var found = isFinalCustomer(actor) ? getOwn.get(actor.tenantId(), actor.actorId(), reservationId)
                 : get.get(actor.tenantId(), reservationId);
-        return ReservationResponse.from(found, nextAction.forReservation(found));
+        return ReservationResponse.from(found, nextAction.forReservation(found), deadline.forReservation(found));
     }
 
     // A Final Customer is always served by the own-scope use cases: their token never reaches the tenant-wide reads (RN-08).
