@@ -8,6 +8,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Cus
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ClientNoticeNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteCompanionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteLeadCustomerException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservationAccessDeniedException;
@@ -140,7 +141,7 @@ public class ErrorHandler {
                 || ex instanceof PublicOfferNotFoundException
                 || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException || ex instanceof AuthorizableReasonNotFoundException
                 || ex instanceof DepartureNotFoundException || ex instanceof ReservationNotFoundException || ex instanceof PaymentProofNotFoundException
-                || ex instanceof RefundNotFoundException
+                || ex instanceof RefundNotFoundException || ex instanceof ClientNoticeNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.

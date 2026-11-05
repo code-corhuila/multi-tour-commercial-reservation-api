@@ -37,10 +37,12 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPendingPaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentExtensionPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentFollowupRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PendingPaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -58,8 +60,8 @@ class PaymentPersistenceConfiguration {
     }
 
     @Bean
-    PaymentEventOutbox paymentEventOutbox(JdbcTemplate jdbc) {
-        return new JdbcPaymentEventOutbox(jdbc, new JdbcClientNoticeOutbox(jdbc));
+    PaymentEventOutbox paymentEventOutbox(JdbcTemplate jdbc, @Lazy CustomerProfileReader customers) {
+        return new JdbcPaymentEventOutbox(jdbc, new JdbcClientNoticeOutbox(jdbc, customers));
     }
 
     @Bean
@@ -130,8 +132,8 @@ class PaymentPersistenceConfiguration {
     }
 
     @Bean
-    ReservationCancellation reservationCancellation(JdbcTemplate jdbc) {
-        return new JdbcReservationCancellation(jdbc);
+    ReservationCancellation reservationCancellation(JdbcTemplate jdbc, @Lazy CustomerProfileReader customers) {
+        return new JdbcReservationCancellation(jdbc, customers);
     }
 
     // The cash domain is not wired yet: this stand-in refuses every cash payment with 422 (declared debt DD-2) and never invents an income.
