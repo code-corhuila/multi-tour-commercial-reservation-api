@@ -9,6 +9,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExcessDecisionOpener;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PendingDifferenceDeadlines;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityAllocated;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationChanged;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ChangePolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ChangeType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
@@ -60,8 +63,9 @@ class ModifyReservationTest {
             differences.add(dueAt);
         }
     };
+    private final ReservationModificationFakes history = new ReservationModificationFakes();
     private final ModifyReservationUseCase modify = new ModifyReservationUseCase(fakes, departures, (tenant, service, type) -> Optional.of(new ChangePolicy(true, 60)),
-            fakes, fakes, decisions, deadlines, fakes, Clock.fixed(NOW, ZoneOffset.UTC));
+            fakes, fakes, decisions, deadlines, history, fakes, fakes, Clock.fixed(NOW, ZoneOffset.UTC));
 
     ModifyReservationTest() {
         departures.plant(new DepartureState(DEPARTURE, TENANT, SERVICE, START, DepartureStatus.SCHEDULED, 10, 2));
@@ -80,7 +84,7 @@ class ModifyReservationTest {
 
     private ModificationOutcome ask(int people, UUID departure, ChangeType type) {
         return modify.modify(new PaymentActor(TENANT, COLLABORATOR, Role.OPERATIONAL_COLLABORATOR), RESERVATION,
-                new ModificationRequest(type, people, departure, List.of()), "  The customer asked for it  ");
+                new ModificationRequest(type, people, departure, List.of()), "  The customer asked for it  ").outcome();
     }
 
     @Test
@@ -182,5 +186,54 @@ class ModifyReservationTest {
 
         assertThat(reservation.people()).isEqualTo(2);
         assertThat(fakes.saved).isEmpty();
+    }
+
+    @Test
+    void everyChangeStoresOneImmutableRowWithBeforeAfterReasonAuthorAndInstant() {
+        planted(PaymentType.FULL_PAYMENT, 300_000);
+
+        ask(3, DEPARTURE, ChangeType.MODIFICATION);
+
+        assertThat(history.rows).hasSize(1);
+        var row = history.rows.get(0);
+        assertThat(row.reservationId()).isEqualTo(RESERVATION);
+        assertThat(row.changeType()).isEqualTo(ChangeType.MODIFICATION);
+        assertThat(row.reason()).isEqualTo("The customer asked for it");
+        assertThat(row.outcome().oldFinalValue()).isEqualTo(new Cents(300_000));
+        assertThat(row.outcome().newFinalValue()).isEqualTo(new Cents(450_000));
+        assertThat(row.previousPartySize()).isEqualTo(2);
+        assertThat(row.newPartySize()).isEqualTo(3);
+        assertThat(row.registeredBy()).isEqualTo(COLLABORATOR);
+        assertThat(row.registeredAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void theEventsCarryNoReasonAndTheSeatsChangeIsAnnounced() {
+        planted(PaymentType.FULL_PAYMENT, 300_000);
+
+        ask(3, DEPARTURE, ChangeType.MODIFICATION);
+
+        assertThat(fakes.events).hasAtLeastOneElementOfType(ReservationChanged.class).hasAtLeastOneElementOfType(CapacityAllocated.class);
+        ReservationChanged event = fakes.events.stream().filter(ReservationChanged.class::isInstance).map(ReservationChanged.class::cast)
+                .findFirst().orElseThrow();
+        assertThat(event.changeType()).isEqualTo(ChangeType.MODIFICATION);
+        assertThat(event.newFinalValue()).isEqualTo(new Cents(450_000));
+        assertThat(event.partySize()).isEqualTo(3);
+        assertThat(event.departureChanged()).isFalse();
+        assertThat(event.toString()).doesNotContain("customer asked");
+
+        fakes.events.clear();
+        ask(2, DEPARTURE, ChangeType.MODIFICATION);
+        assertThat(fakes.events).hasAtLeastOneElementOfType(CapacityReleased.class);
+    }
+
+    @Test
+    void aRefusedChangeStoresNoRowAndNoEvent() {
+        planted(PaymentType.FULL_PAYMENT, 300_000);
+
+        assertThatThrownBy(() -> ask(12, DEPARTURE, ChangeType.MODIFICATION)).isInstanceOf(BusinessRuleViolation.class);
+
+        assertThat(history.rows).isEmpty();
+        assertThat(fakes.events).isEmpty();
     }
 }
