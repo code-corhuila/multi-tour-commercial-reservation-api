@@ -164,11 +164,11 @@ class PaymentConfiguration {
     }
 
     @Bean
-    DecidePaymentProofUseCase decidePaymentProof(@Lazy ReservationRepository reservations, @Lazy PaymentDeadlineReader deadlines,
+    DecidePaymentProofUseCase decidePaymentProof(@Lazy ReservationRepository reservations, @Lazy PaymentDeadlineReader deadlines, @Lazy DepartureReader departures,
             @Lazy PaymentConditionReader conditions, @Lazy SalidaCapacityHolder holder, @Lazy ReservationCancellation cancellation,
             @Lazy CancelledValueRecorder cancelledValues, @Lazy CreditBalanceRecorder credit, @Lazy PaymentEventOutbox outbox,
             @Lazy PaymentTransaction transaction, Clock clock) {
-        return new DecidePaymentProofUseCase(reservations, deadlines, conditions, holder, cancellation, cancelledValues, credit, outbox,
+        return new DecidePaymentProofUseCase(reservations, deadlines, departures, conditions, holder, cancellation, cancelledValues, credit, outbox,
                 transaction, clock);
     }
 
