@@ -18,6 +18,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReasonRule
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DiscountRuleAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.EstablishmentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingPaymentDataException;
@@ -130,6 +131,7 @@ public class ErrorHandler {
                 || ex instanceof PublicOfferNotFoundException
                 || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException || ex instanceof AuthorizableReasonNotFoundException
                 || ex instanceof DepartureNotFoundException || ex instanceof ReservationNotFoundException || ex instanceof PaymentProofNotFoundException
+                || ex instanceof RefundNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.
@@ -154,7 +156,8 @@ public class ErrorHandler {
     private static boolean reservationRule(HttpServletRequest request) {
         String path = request.getRequestURI();
         return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && (path.endsWith("/reservations") || path.endsWith("/customers"))
-                || path.contains("/additional-discount") || path.contains("/payments") || path.contains("/payment-proofs") || path.endsWith("/cancellation");
+                || path.contains("/additional-discount") || path.contains("/payments") || path.contains("/payment-proofs") || path.endsWith("/cancellation")
+                || path.contains("/refund-authorizations/") || path.contains("/financial-decisions/") || path.endsWith("/refund-determinations");
     }
 
     private static String jsonField(Throwable error) {
