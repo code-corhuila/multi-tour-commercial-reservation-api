@@ -6,6 +6,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityAl
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.NoticePolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationCancelled;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationChanged;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvidenceRegistered;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentRejected;
@@ -36,6 +37,10 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
     public JdbcPaymentEventOutbox(JdbcTemplate jdbc, ClientNoticeOutbox notices) {
         this.jdbc = jdbc;
         this.notices = notices;
+    }
+
+    private static String type(PaymentEvent event) {
+        return event instanceof ReservationChanged ? "ReservationModified" : event.getClass().getSimpleName();
     }
 
     @Override
@@ -77,6 +82,17 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
             case ReservationCancelled e -> {
                 payload.put("cause", e.cause().name());
                 payload.put("releasedSeats", e.releasedSeats());
+            }
+            case ReservationChanged e -> {
+                // The modification shape of ReservationModified: the nine keys of the closed list of the db, never the reason (DP-D12-3).
+                payload.put("changeType", e.changeType().name());
+                payload.put("previousFinalValueCents", e.previousFinalValue().amount());
+                payload.put("newFinalValueCents", e.newFinalValue().amount());
+                payload.put("previousPendingBalanceCents", e.previousPendingBalance().amount());
+                payload.put("newPendingBalanceCents", e.newPendingBalance().amount());
+                payload.put("partySize", e.partySize());
+                payload.put("departureChanged", e.departureChanged());
+                payload.put("reasonCode", e.reasonCode());
             }
             default -> throw new IllegalArgumentException("not a payment event: " + event.getClass().getSimpleName());
         }
