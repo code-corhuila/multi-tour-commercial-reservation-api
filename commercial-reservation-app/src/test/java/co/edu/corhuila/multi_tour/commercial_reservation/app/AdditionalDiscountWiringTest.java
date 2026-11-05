@@ -8,8 +8,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Reg
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AdditionalDiscountRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExcessTreatment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationReader;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
-import java.util.UUID;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.FinancialDecisionOpening;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,10 +29,10 @@ class AdditionalDiscountWiringTest {
         assertThat(context.getBean(AdditionalDiscountRepository.class)).isInstanceOf(JdbcAdditionalDiscountRepository.class);
     }
 
-    // D-06: the pending treatment belongs to HU-COM-016/017, not built yet, so the port is answered and decides nothing.
+    // D-06: the pending treatment is the real opening of HU-COM-016 now; opening it needs the database, so only the wiring is checked here.
     @Test
-    void theExcessTreatmentPortIsAnsweredAndOpeningItDoesNotFail() {
+    void theExcessTreatmentPortIsAnsweredByTheRealOpening() {
         assertThat(context.getBeansOfType(ExcessTreatment.class)).hasSize(1);
-        context.getBean(ExcessTreatment.class).open(UUID.randomUUID(), UUID.randomUUID(), new Cents(1));
+        assertThat(context.getBean(ExcessTreatment.class)).isInstanceOf(FinancialDecisionOpening.class);
     }
 }
