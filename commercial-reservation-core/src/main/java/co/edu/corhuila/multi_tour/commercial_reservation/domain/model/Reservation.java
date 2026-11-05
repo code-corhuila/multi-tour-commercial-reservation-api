@@ -256,6 +256,23 @@ public final class Reservation {
     // pending = max(0, new final - validated), and what the validated amount exceeds the new value is the excess.
     public ModificationOutcome modify(int newPeople, ReservedService newService, UUID newDeparture, List<Companion> newCompanions,
             Instant departureStart, Instant now) {
+        ModificationPlan plan = plan(newPeople, newService, newDeparture, newCompanions, departureStart, now);
+        fixedDiscounts = plan.lines(); people = newPeople; service = newService; departureId = newDeparture; companions = plan.group();
+        projectedValue = plan.projected(); finalValue = plan.outcome().newFinalValue(); pendingBalance = plan.outcome().newPendingBalance();
+        return plan.outcome();
+    }
+
+    // AC-12.2: the same computation and the same refusals, kept nowhere: the reservation is left as it was.
+    public ModificationOutcome quoteModification(int newPeople, ReservedService newService, UUID newDeparture, List<Companion> newCompanions,
+            Instant departureStart, Instant now) {
+        return plan(newPeople, newService, newDeparture, newCompanions, departureStart, now).outcome();
+    }
+
+    private record ModificationPlan(List<FixedDiscount> lines, List<Companion> group, Cents projected, ModificationOutcome outcome) {
+    }
+
+    private ModificationPlan plan(int newPeople, ReservedService newService, UUID newDeparture, List<Companion> newCompanions,
+            Instant departureStart, Instant now) {
         if (reservationStatus != ReservationStatus.PENDING_PAYMENT && reservationStatus != ReservationStatus.CONFIRMED)
             throw new InvalidStatusTransitionException("only a pending-payment or confirmed reservation can be modified");
         if (departureStart == null || now == null || !now.isBefore(departureStart))
@@ -286,10 +303,8 @@ public final class Reservation {
         Cents newPending = new Cents(Math.max(0, newFinal.amount() - validated));
         Cents excess = new Cents(Math.max(0, validated - newFinal.amount()));
         int seatDelta = newPeople - people;
-        fixedDiscounts = List.copyOf(lines);
-        people = newPeople; service = newService; departureId = newDeparture; companions = List.copyOf(group);
-        projectedValue = projected; finalValue = newFinal; pendingBalance = newPending;
-        return new ModificationOutcome(oldFinal, newFinal, oldPending, newPending, excess, seatDelta);
+        return new ModificationPlan(List.copyOf(lines), List.copyOf(group), projected,
+                new ModificationOutcome(oldFinal, newFinal, oldPending, newPending, excess, seatDelta));
     }
 
     // The events born since the last pull, in order; the use case writes them to the outbox in the same transaction.
