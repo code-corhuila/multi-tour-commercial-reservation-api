@@ -34,7 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 
 // The core of the creation (plan D-06): every check runs before the only write, so a refusal stores nothing.
-// The tenant must be active (RN-16) and the group is checked as one (RN-08). Still out: the transaction and the outbox (T-08).
+// The tenant must be active (RN-16) and the group is checked as one (RN-08).
 public class CreateReservationUseCase implements CreateReservation {
 
     private final ActiveTenant activeTenant;
