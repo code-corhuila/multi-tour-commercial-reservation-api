@@ -11,6 +11,13 @@ final class RefundAuthorizationRules {
 
     private RefundAuthorizationRules() {}
 
+    // DP-04 (PROPOSED default): the Administrator and the Collaborator read; Manager, Accountant, Analyst and the Final Customer do not.
+    static void requireReader(PaymentActor actor) {
+        if (actor == null || actor.tenantId() == null || actor.actorId() == null
+                || (actor.role() != Role.TENANT_ADMINISTRATOR && actor.role() != Role.OPERATIONAL_COLLABORATOR))
+            throw new PaymentAccessDeniedException();
+    }
+
     static void requireAdministrator(PaymentActor actor) {
         if (actor == null || actor.tenantId() == null || actor.actorId() == null || actor.role() != Role.TENANT_ADMINISTRATOR)
             throw new PaymentAccessDeniedException();
