@@ -16,10 +16,14 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 // HU-COM-015 api T-02 over the real schema: the notice is one more row of the outbox, written in the transaction of its fact, with the four keys
 // and no personal datum, once per fact (AC-15.1, AC-15.2, AC-15.8, AC-15.10). Every value is invented.
 @EnabledIfEnvironmentVariable(named = "TEST_DATABASE_URL", matches = ".+")
+@ExtendWith(OutputCaptureExtension.class)
 class ClientNoticePersistenceTest {
     private static final Cents MINIMUM = new Cents(97_200);
     private ReservationPersistenceFixture fixture;
@@ -143,6 +147,23 @@ class ClientNoticePersistenceTest {
             assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event WHERE outbox_event_id = ?::uuid AND reservation_id = ? "
                     + "AND event_type IN ('PaymentValidated', 'ReservationConfirmed')", Integer.class, id, reservation.reservationId())).isEqualTo(1);
         }
+    }
+
+    @Test
+    void aCustomerWithoutEmailGetsNoNoticeAndTheFactStands(CapturedOutput output) {
+        var noEmail = (co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader) (tenant, id) -> java.util.Optional.of(
+                co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer.registerLead(id, tenant, "DOC-FICT-0001", "Lead Ficticio",
+                        co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge.ofAge(40),
+                        new co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo(null, "+000-555-0100"), true,
+                        ReservationPersistenceFixture.NOW));
+        events = new JdbcPaymentEventOutbox(fixture.jdbc, new JdbcClientNoticeOutbox(fixture.jdbc, noEmail));
+
+        Reservation reservation = withApprovedTransfer();
+
+        assertThat(noticeTypes(reservation)).isEmpty();
+        assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event WHERE reservation_id = ? "
+                + "AND event_type IN ('PaymentValidated', 'ReservationConfirmed')", Integer.class, reservation.reservationId())).isEqualTo(2);
+        assertThat(output.getAll()).contains("Client notice skipped").doesNotContain("Lead Ficticio", "+000-555-0100", "@example");
     }
 
     @Test
