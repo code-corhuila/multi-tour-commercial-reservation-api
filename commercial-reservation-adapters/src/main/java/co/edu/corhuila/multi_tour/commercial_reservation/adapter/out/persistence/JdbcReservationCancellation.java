@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationCancelled;
@@ -17,8 +18,12 @@ public final class JdbcReservationCancellation implements ReservationCancellatio
     private final JdbcPaymentEventOutbox outbox;
 
     public JdbcReservationCancellation(JdbcTemplate jdbc) {
+        this(jdbc, null);
+    }
+
+    public JdbcReservationCancellation(JdbcTemplate jdbc, CustomerProfileReader customers) {
         this.jdbc = jdbc;
-        this.outbox = new JdbcPaymentEventOutbox(jdbc, new JdbcClientNoticeOutbox(jdbc));
+        this.outbox = new JdbcPaymentEventOutbox(jdbc, new JdbcClientNoticeOutbox(jdbc, customers));
     }
 
     @Override
