@@ -1,8 +1,10 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ClientNoticeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityAllocated;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.NoticePolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationCancelled;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationChanged;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
@@ -16,6 +18,7 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 // The outbox of the payment family, written inside the transaction of the change. The payload keys are the closed lists of the
@@ -24,9 +27,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final JdbcTemplate jdbc;
+    private final ClientNoticeOutbox notices;
 
     public JdbcPaymentEventOutbox(JdbcTemplate jdbc) {
+        this(jdbc, (tenantId, reservationId, type, triggeringEventType, triggeringEventId, occurredAt) -> { });
+    }
+
+    // The notices of RF-019 are written right after the event that triggers them, in the same transaction (HU-COM-015 plan D-03).
+    public JdbcPaymentEventOutbox(JdbcTemplate jdbc, ClientNoticeOutbox notices) {
         this.jdbc = jdbc;
+        this.notices = notices;
     }
 
     private static String type(PaymentEvent event) {
@@ -87,15 +97,26 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
             default -> throw new IllegalArgumentException("not a payment event: " + event.getClass().getSimpleName());
         }
         try {
-            jdbc.update("INSERT INTO commercial_reservation.outbox_event (tenant_id, event_type, reservation_id, actor_id, occurred_at, "
-                    + "payload) VALUES (?, ?, ?, COALESCE((SELECT COALESCE(decided_by, registered_by) FROM "
+            UUID eventId = UUID.randomUUID();
+            jdbc.update("INSERT INTO commercial_reservation.outbox_event (outbox_event_id, tenant_id, event_type, reservation_id, actor_id, occurred_at, "
+                    + "payload) VALUES (?, ?, ?, ?, COALESCE((SELECT COALESCE(decided_by, registered_by) FROM "
                     + "commercial_reservation.payment_attempt WHERE reservation_id = ? ORDER BY COALESCE(decided_at, registered_at) DESC "
                     + "LIMIT 1), (SELECT created_by FROM commercial_reservation.reservation WHERE reservation_id = ?)), ?, ?::jsonb)",
-                    event.tenantId(), type(event), event.reservationId(), event.reservationId(),
+                    eventId, event.tenantId(), type(event), event.reservationId(), event.reservationId(),
                     event.reservationId(), event.occurredAt().truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC),
                     JSON.writeValueAsString(payload));
+            notice(event, eventId);
         } catch (JsonProcessingException failure) {
             throw new IllegalStateException("the event payload cannot be written", failure);
         }
+    }
+
+    // A validated payment notifies only when the latest attempt of the reservation is a transfer, which a person reviewed; cash recorded by staff does not (DP-15-03).
+    private void notice(PaymentEvent event, UUID eventId) {
+        boolean reviewedProof = event instanceof PaymentValidated && Boolean.TRUE.equals(jdbc.queryForObject("SELECT COALESCE((SELECT payment_method = 'TRANSFER' "
+                + "FROM commercial_reservation.payment_attempt WHERE reservation_id = ? ORDER BY COALESCE(decided_at, registered_at) DESC LIMIT 1), false)",
+                Boolean.class, event.reservationId()));
+        NoticePolicy.of(event, reviewedProof).ifPresent(type -> notices.append(event.tenantId(), event.reservationId(), type,
+                event.getClass().getSimpleName(), eventId, event.occurredAt()));
     }
 }
