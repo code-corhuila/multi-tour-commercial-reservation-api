@@ -22,7 +22,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.De
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OpenProposalReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolveNextAction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolveReservationDeadline;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ResolveNextActionUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ResolveReservationDeadlineUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
@@ -106,6 +108,11 @@ class ReservationConfiguration {
     }
 
     @Bean
+    ResolveReservationDeadline resolveReservationDeadline(@Lazy PaymentDeadlineReader deadlines, @Lazy DepartureReader departures) {
+        return new ResolveReservationDeadlineUseCase(deadlines, departures);
+    }
+
+    @Bean
     ListOwnReservations listOwnReservations(@Lazy CustomerByAccount accounts, @Lazy OwnReservationQueries queries) {
         return new ListOwnReservationsUseCase(accounts, queries);
     }
@@ -130,8 +137,8 @@ class ReservationConfiguration {
     @Bean
     ReservationController reservationController(ListReservationDepartures departures, QuoteReservation quote,
             IdempotentReservationCreation creation, ListReservations list, GetReservation get, ListOwnReservations listOwn,
-            GetOwnReservation getOwn, ResolveNextAction nextAction, Clock clock) {
-        return new ReservationController(departures, quote, creation, list, get, listOwn, getOwn, nextAction, clock);
+            GetOwnReservation getOwn, ResolveNextAction nextAction, ResolveReservationDeadline deadline, Clock clock) {
+        return new ReservationController(departures, quote, creation, list, get, listOwn, getOwn, nextAction, deadline, clock);
     }
 
     @Bean
