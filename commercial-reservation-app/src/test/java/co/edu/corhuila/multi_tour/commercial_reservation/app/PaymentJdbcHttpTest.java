@@ -350,7 +350,7 @@ class PaymentJdbcHttpTest {
                 bearer, 201)).get("paymentId").asText();
     }
 
-    private String status(String paymentId) {
+    private String attemptStatus(String paymentId) {
         return jdbc.queryForObject("SELECT validation_status FROM commercial_reservation.payment_attempt WHERE payment_attempt_id = ?", String.class,
                 UUID.fromString(paymentId));
     }
@@ -379,12 +379,12 @@ class PaymentJdbcHttpTest {
                 .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 404);
         exchange(post(BASE + "/payment-proofs/" + mine + "/reject").header("Idempotency-Key", "iso-reject-" + UUID.randomUUID())
                 .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("reason", "Not mine to reject"))), otherAdmin, 404);
-        assertThat(status(mine)).isEqualTo("IN_VALIDATION");
-        assertThat(status(theirs)).isEqualTo("IN_VALIDATION");
+        assertThat(attemptStatus(mine)).isEqualTo("IN_VALIDATION");
+        assertThat(attemptStatus(theirs)).isEqualTo("IN_VALIDATION");
 
         exchange(post(BASE + "/payment-proofs/" + mine + "/approve").header("Idempotency-Key", "iso-own-" + UUID.randomUUID())
                 .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 200);
-        assertThat(status(mine)).isEqualTo("APPROVED");
-        assertThat(status(theirs)).isEqualTo("IN_VALIDATION");
+        assertThat(attemptStatus(mine)).isEqualTo("APPROVED");
+        assertThat(attemptStatus(theirs)).isEqualTo("IN_VALIDATION");
     }
 }
