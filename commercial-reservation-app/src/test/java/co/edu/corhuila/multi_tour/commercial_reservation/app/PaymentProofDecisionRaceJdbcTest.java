@@ -197,4 +197,99 @@ class PaymentProofDecisionRaceJdbcTest {
                     + "AND validation_status = 'APPROVED'", Long.class, UUID.fromString(reservation))).isEqualTo(110_000L);
         }
     }
+
+    // ---- HU-COM-010 AC-10.12 and RN-11 (audit of 2026-11-06): the idempotency of the decision, over the real database ----
+
+    private String proof(String tag) throws Exception {
+        return transfer(reservation(salida(), tag + "-0"), 90_000, tag + "-1");
+    }
+
+    private Outcome once(String proof, String action, Map<String, Object> body, String key) throws Exception {
+        return decide(new CountDownLatch(0), proof, action, body, key);
+    }
+
+    private long decisionEvents(String proof) {
+        return jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event e JOIN commercial_reservation.payment_attempt a "
+                + "ON a.reservation_id = e.reservation_id WHERE a.payment_attempt_id = ? AND e.event_type IN ('PaymentValidated', 'PaymentRejected')",
+                Long.class, UUID.fromString(proof));
+    }
+
+    // The same key with the same proof but another body is refused, never answered with the stored decision.
+    @Test void theSameKeyWithAnotherBodyIsRefusedAndTheSameBodyReplays() throws Exception {
+        String proof = proof("idem-body");
+        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-body-key-1").status()).isEqualTo(200);
+
+        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-body-key-1").status()).isEqualTo(200);
+        Outcome otherAmount = once(proof, "approve", Map.of("verifiedAmountCents", 80_000L, "reason", "Short"), "idem-body-key-1");
+        Outcome otherReason = once(proof, "approve", Map.of("verifiedAmountCents", 90_000L, "reason", "Not the same"), "idem-body-key-1");
+        Outcome otherAction = once(proof, "reject", Map.of("reason", "Illegible proof"), "idem-body-key-1");
+
+        assertThat(List.of(otherAmount, otherReason, otherAction)).allMatch(o -> o.status() == 422 && o.error().equals("BUSINESS_RULE_VIOLATION"));
+        assertThat(decisionEvents(proof)).isEqualTo(1);
+    }
+
+    @Test void aRejectionReplaysOnlyWithTheSameReason() throws Exception {
+        String proof = proof("idem-rej");
+        assertThat(once(proof, "reject", Map.of("reason", "Illegible proof"), "idem-rej-key-1").status()).isEqualTo(200);
+
+        assertThat(once(proof, "reject", Map.of("reason", "Illegible proof"), "idem-rej-key-1").status()).isEqualTo(200);
+        Outcome other = once(proof, "reject", Map.of("reason", "Another reason"), "idem-rej-key-1");
+        Outcome approve = once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-rej-key-1");
+
+        assertThat(List.of(other, approve)).allMatch(o -> o.status() == 422 && o.error().equals("BUSINESS_RULE_VIOLATION"));
+    }
+
+    // A refused decision rolls its key back, so the key is not burned: the corrected request with the same key is accepted.
+    @Test void aRefusedDecisionDoesNotBurnItsKey() throws Exception {
+        String proof = proof("idem-burn");
+
+        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 80_000L), "idem-burn-key-1").status()).isEqualTo(400);
+        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-burn-key-1").status()).isEqualTo(200);
+    }
+
+    // The permission is checked before the replay: whoever cannot decide learns nothing from a stored key.
+    @Test void aCollaboratorWithoutThePermissionIsRefusedEvenWithAStoredKey() throws Exception {
+        String proof = proof("idem-perm");
+        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-perm-key-1").status()).isEqualTo(200);
+
+        MockHttpServletResponse response = mvc.perform(post(BASE + "/payment-proofs/" + proof + "/approve").header("Idempotency-Key", "idem-perm-key-1")
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L)))
+                .header("Authorization", "Bearer " + CatalogHttpTest.token(tenant.toString(), "OPERATIONAL_COLLABORATOR"))
+                .header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    // The key race: the same request twice at the same moment leaves one decision and both answers are the stored one.
+    @Test void twoIdenticalRequestsWithOneKeyLeaveOneDecisionAndTwoSuccessfulAnswers() throws Exception {
+        for (int round = 0; round < ROUNDS; round++) {
+            String proof = proof("idem-race-" + round);
+            var start = new CountDownLatch(1);
+            String key = "idem-race-key-" + round;
+
+            List<Outcome> outcomes = together(start, List.of(
+                    () -> decide(start, proof, "approve", Map.of("verifiedAmountCents", 90_000L), key),
+                    () -> decide(start, proof, "approve", Map.of("verifiedAmountCents", 90_000L), key)));
+
+            assertThat(outcomes).as("round %d", round).extracting(Outcome::status).containsExactly(200, 200);
+            assertThat(decisionEvents(proof)).isEqualTo(1);
+        }
+    }
+
+    // The same key and the same proof with two different bodies at once: one decision, the other one is refused as a reused key.
+    @Test void twoDifferentRequestsWithOneKeyLeaveOneWinnerAndTheOtherIsRefused() throws Exception {
+        for (int round = 0; round < ROUNDS; round++) {
+            String proof = proof("idem-mix-" + round);
+            var start = new CountDownLatch(1);
+            String key = "idem-mix-key-" + round;
+
+            List<Outcome> outcomes = together(start, List.of(
+                    () -> decide(start, proof, "approve", Map.of("verifiedAmountCents", 90_000L), key),
+                    () -> decide(start, proof, "reject", Map.of("reason", "Illegible proof"), key)));
+
+            assertThat(outcomes).as("round %d", round).extracting(Outcome::status).containsExactlyInAnyOrder(200, 422);
+            assertThat(outcomes).filteredOn(o -> o.status() == 422).extracting(Outcome::error).containsExactly("BUSINESS_RULE_VIOLATION");
+            assertThat(decisionEvents(proof)).isEqualTo(1);
+        }
+    }
 }
