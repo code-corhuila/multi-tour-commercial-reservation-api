@@ -99,11 +99,45 @@ class PaymentQuoteHttpTest extends ReservationHttpBase {
         assertThat(read.at("/data/1/minimumDepositBp").isMissingNode()).isTrue();
     }
 
-    @Test void onlyTheAdministratorChangesAndTheFinalCustomerReadsNothing() throws Exception {
+    @Test void onlyTheAdministratorChanges() throws Exception {
         var body = new LinkedHashMap<String, Object>();
         body.put("reason", "New season"); body.put("parameters", List.of(row("FULL_PAYMENT")));
         for (String role : List.of(COLLABORATOR, MANAGER, ACCOUNTANT, ANALYST, FINAL_CUSTOMER)) exchange(change(body, role), 403);
-        exchange(withToken(get(BASE + "/payment-parameters"), FINAL_CUSTOMER), 403);
+        assertThat(payments.parameters).isEmpty();
+    }
+
+    // PDR 1.9 and AC-RS.4: the Final Customer knows the enabled types and methods before the reservation exists, with no author,
+    // reason, time, hours or minimum deposit. The decision is the reduced projection, taken by default.
+    @Test void theFinalCustomerReadsOnlyTheTypeAndTheTwoEnabledMethods() throws Exception {
+        var body = new LinkedHashMap<String, Object>();
+        var cashOff = row("FULL_PAYMENT"); cashOff.put("cashEnabled", false);
+        body.put("reason", "New season"); body.put("parameters", List.of(row("DEPOSIT"), cashOff));
+        exchange(change(body, ADMIN), 200);
+
+        var customer = CatalogHttpTest.json(exchange(withToken(get(BASE + "/payment-parameters"), FINAL_CUSTOMER), 200));
+        var full = CatalogHttpTest.json(exchange(withToken(get(BASE + "/payment-parameters"), ADMIN), 200));
+
+        assertThat(customer.at("/meta/total").asInt()).isEqualTo(2);
+        for (JsonNode item : customer.get("data")) {
+            List<String> names = new java.util.ArrayList<>();
+            item.fieldNames().forEachRemaining(names::add);
+            assertThat(names).containsExactlyInAnyOrder("paymentType", "transferEnabled", "cashEnabled");
+        }
+        assertThat(customer.at("/data/1/paymentType").asText()).isEqualTo("FULL_PAYMENT");
+        assertThat(customer.at("/data/1/cashEnabled").asBoolean()).isFalse();
+        for (String hidden : List.of("changedBy", "changeReason", "changedAt", "initialWaitHours", "additionalWaitHours")) {
+            assertThat(customer.toString()).doesNotContain(hidden);
+            assertThat(full.at("/data/0/" + hidden).isMissingNode()).isFalse();
+        }
+        assertThat(customer.toString()).doesNotContain("minimumDepositBp").doesNotContain("balanceDeadlineAdvanceHours");
+        assertThat(full.at("/data/0/minimumDepositBp").asInt()).isEqualTo(3000);
+    }
+
+    @Test void theFinalCustomerCannotChangeAndAnonymousCallersAreRefused() throws Exception {
+        var body = new LinkedHashMap<String, Object>();
+        body.put("reason", "New season"); body.put("parameters", List.of(row("FULL_PAYMENT")));
+        exchange(change(body, FINAL_CUSTOMER), 403);
+        exchange(get(BASE + "/payment-parameters").header("X-Correlation-Id", TRACE), 401);
         assertThat(payments.parameters).isEmpty();
     }
 
