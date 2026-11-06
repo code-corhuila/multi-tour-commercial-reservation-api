@@ -25,6 +25,7 @@ class PaymentCapacityProofPersistenceTest {
     private static final byte[] PNG = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3};
     private static final Cents MINIMUM = new Cents(97_200);
     private ReservationPersistenceFixture fixture;
+    private ReservationPersistenceFixture other; // a second real tenant with its own customer, tour, departure and capacity row
     private JdbcReservationRepository reservations;
     private JdbcSalidaCapacityHolder holder;
     private JdbcPaymentProofStore proofs;
@@ -35,6 +36,7 @@ class PaymentCapacityProofPersistenceTest {
         org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv("TEST_DATABASE_USER") != null && System.getenv("TEST_DATABASE_PASSWORD") != null,
                 "All three TEST_DATABASE variables are required");
         fixture = new ReservationPersistenceFixture();
+        other = new ReservationPersistenceFixture();
         reservations = new JdbcReservationRepository(fixture.jdbc, fixture.cipher, fixture.transactions, new JdbcReservationCreatedOutbox(fixture.jdbc));
         holder = new JdbcSalidaCapacityHolder(fixture.jdbc);
         proofs = new JdbcPaymentProofStore(fixture.jdbc);
@@ -43,11 +45,29 @@ class PaymentCapacityProofPersistenceTest {
         fixture.jdbc.update("INSERT INTO commercial_reservation.salida_capacity (salida_capacity_id, tenant_id, salida_id, service_id, "
                 + "hora_inicio, status, effective_capacity, held_seats) VALUES (?, ?, ?, ?, ?, 'SCHEDULED', 10, 7)", UUID.randomUUID(),
                 fixture.tenant, fixture.salida, fixture.service, start);
+        fixture.jdbc.update("INSERT INTO commercial_reservation.salida_capacity (salida_capacity_id, tenant_id, salida_id, service_id, "
+                + "hora_inicio, status, effective_capacity, held_seats) VALUES (?, ?, ?, ?, ?, 'SCHEDULED', 10, 7)", UUID.randomUUID(),
+                other.tenant, other.salida, other.service, start);
     }
 
     private int held() {
         return fixture.jdbc.queryForObject("SELECT held_seats FROM commercial_reservation.salida_capacity WHERE tenant_id = ? AND salida_id = ?",
                 Integer.class, fixture.tenant, fixture.salida);
+    }
+
+    private int held(ReservationPersistenceFixture of) {
+        return fixture.jdbc.queryForObject("SELECT held_seats FROM commercial_reservation.salida_capacity WHERE tenant_id = ? AND salida_id = ?",
+                Integer.class, of.tenant, of.salida);
+    }
+
+    private Reservation transferOf(ReservationPersistenceFixture of, UUID attempt, long amount, java.time.Instant at) {
+        UUID id = UUID.randomUUID();
+        reservations.save(of.reservation(id, true));
+        Reservation reservation = reservations.findByTenantAndId(of.tenant, id).orElseThrow();
+        reservation.registerTransfer(attempt, new Cents(amount), MINIMUM, of.actor, at);
+        reservation.allocateSeat(at);
+        reservations.save(reservation);
+        return reservation;
     }
 
     private Reservation transfer(UUID attempt, long amount, java.time.Instant at) {
@@ -66,7 +86,8 @@ class PaymentCapacityProofPersistenceTest {
         assertThat(held()).isEqualTo(10);
         assertThat(holder.hold(fixture.tenant, fixture.salida, 1)).isFalse();
         assertThat(held()).isEqualTo(10);
-        assertThat(holder.hold(UUID.randomUUID(), fixture.salida, 1)).isFalse();
+        assertThat(holder.hold(other.tenant, fixture.salida, 1)).isFalse();
+        assertThat(held(other)).isEqualTo(7);
         assertThat(holder.hold(fixture.tenant, UUID.randomUUID(), 1)).isFalse();
     }
 
@@ -92,7 +113,8 @@ class PaymentCapacityProofPersistenceTest {
         assertThat(held()).isEqualTo(7);
         assertThat(holder.release(fixture.tenant, reservation.reservationId())).isZero();
         assertThat(held()).isEqualTo(7);
-        assertThat(holder.release(UUID.randomUUID(), reservation.reservationId())).isZero();
+        assertThat(holder.release(other.tenant, reservation.reservationId())).isZero();
+        assertThat(held(other)).isEqualTo(7);
         assertThat(reservations.findByTenantAndId(fixture.tenant, reservation.reservationId()).orElseThrow().seatHeld()).isFalse();
     }
 
@@ -107,7 +129,7 @@ class PaymentCapacityProofPersistenceTest {
         assertThat(read.bytes()).isEqualTo(PNG);
         assertThat(read.contentType()).isEqualTo("image/png");
         assertThat(read.sha256()).isEqualTo(ProofFile.of(PNG).sha256());
-        assertThat(proofs.read(UUID.randomUUID(), attempt)).isEmpty();
+        assertThat(proofs.read(other.tenant, attempt)).isEmpty();
         assertThat(proofs.read(fixture.tenant, UUID.randomUUID())).isEmpty();
     }
 
@@ -128,7 +150,44 @@ class PaymentCapacityProofPersistenceTest {
         assertThat(overdue.items().get(0).attempt().attemptId()).isEqualTo(old);
         assertThat(reader.countAtOrBefore(fixture.tenant, ValidationStatus.IN_VALIDATION, cutoff)).isEqualTo(1);
         assertThat(reader.find(fixture.tenant, ValidationStatus.APPROVED, null, 1, 10).total()).isZero();
-        assertThat(reader.find(UUID.randomUUID(), ValidationStatus.IN_VALIDATION, null, 1, 10).items()).isEmpty();
+        assertThat(reader.find(other.tenant, ValidationStatus.IN_VALIDATION, null, 1, 10).items()).isEmpty();
         assertThat(reader.find(fixture.tenant, ValidationStatus.IN_VALIDATION, null, 2, 1).items()).hasSize(1);
+    }
+
+    // Rows of two real tenants in the same tables: each reads, holds, releases and lists only its own (AC-10.17).
+    @Test
+    void twoTenantsWithProofsAndSeatsNeverSeeNorTouchEachOther() {
+        UUID mine = UUID.randomUUID(), theirs = UUID.randomUUID();
+        holder.hold(fixture.tenant, fixture.salida, 3);
+        holder.hold(other.tenant, other.salida, 3);
+        byte[] otherPng = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 9, 8, 7};
+        Reservation mineReservation = transferOf(fixture, mine, 100_000, ReservationPersistenceFixture.NOW);
+        Reservation theirReservation = transferOf(other, theirs, 100_000, ReservationPersistenceFixture.NOW);
+        proofs.save(fixture.tenant, mine, ProofFile.of(PNG));
+        proofs.save(other.tenant, theirs, ProofFile.of(otherPng));
+
+        assertThat(proofs.read(fixture.tenant, mine).orElseThrow().bytes()).isEqualTo(PNG);
+        assertThat(proofs.read(other.tenant, theirs).orElseThrow().bytes()).isEqualTo(otherPng);
+        assertThat(proofs.read(other.tenant, mine)).isEmpty();
+        assertThat(proofs.read(fixture.tenant, theirs)).isEmpty();
+        var mineList = reader.find(fixture.tenant, ValidationStatus.IN_VALIDATION, null, 1, 10);
+        var theirList = reader.find(other.tenant, ValidationStatus.IN_VALIDATION, null, 1, 10);
+        assertThat(mineList.total()).isEqualTo(1);
+        assertThat(mineList.items().get(0).attempt().attemptId()).isEqualTo(mine);
+        assertThat(theirList.total()).isEqualTo(1);
+        assertThat(theirList.items().get(0).attempt().attemptId()).isEqualTo(theirs);
+        assertThat(reader.countAtOrBefore(fixture.tenant, ValidationStatus.IN_VALIDATION, ReservationPersistenceFixture.NOW.plusSeconds(1))).isEqualTo(1);
+        assertThat(reader.countAtOrBefore(other.tenant, ValidationStatus.IN_VALIDATION, ReservationPersistenceFixture.NOW.plusSeconds(1))).isEqualTo(1);
+        assertThat(reservations.findByTenantAndAttempt(fixture.tenant, theirs)).isEmpty();
+        assertThat(reservations.findByTenantAndAttempt(other.tenant, mine)).isEmpty();
+        assertThat(reservations.findByTenantAndId(other.tenant, mineReservation.reservationId())).isEmpty();
+
+        assertThat(holder.release(fixture.tenant, theirReservation.reservationId())).isZero();
+        assertThat(holder.release(other.tenant, mineReservation.reservationId())).isZero();
+        assertThat(held(fixture)).isEqualTo(10);
+        assertThat(held(other)).isEqualTo(10);
+        assertThat(holder.release(other.tenant, theirReservation.reservationId())).isEqualTo(3);
+        assertThat(held(other)).isEqualTo(7);
+        assertThat(held(fixture)).isEqualTo(10);
     }
 }

@@ -312,4 +312,79 @@ class PaymentJdbcHttpTest {
         assertThat(java.time.Instant.parse(payment.get("paymentDeadline").asText())).isEqualTo(due.toInstant());
         assertThat(java.time.Instant.parse(read.get("paymentDeadline").asText())).isEqualTo(due.toInstant());
     }
+
+    // A second tenant with the same shape of rows as the one of seed(): its own status, tour, departure, customer and payment condition.
+    private record Other(UUID tenant, UUID tour, UUID departure, UUID customer) {}
+
+    private Other seedOtherTenant() throws Exception {
+        Other other = new Other(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        OffsetDateTime now = OffsetDateTime.ofInstant(TestJwtKeys.NOW, ZoneOffset.UTC);
+        jdbc.update("INSERT INTO commercial_reservation.tenant_status (tenant_id, identifier, status, time_zone, country, "
+                + "last_event_occurred_at, created_at, updated_at) VALUES (?, ?, 'ACTIVE', 'America/Bogota', 'CO', ?, ?, ?)",
+                other.tenant, "t-" + other.tenant, now, now, now);
+        catalog.save(CatalogService.register(other.tour, other.tenant, CatalogServiceType.TOUR, "Tour Ficticio Dos",
+                CommercialTerms.of(100_000L, 40_000L, 20, false, false), TestJwtKeys.NOW));
+        jdbc.update("INSERT INTO commercial_reservation.salida_capacity (salida_capacity_id, tenant_id, salida_id, service_id, "
+                + "hora_inicio, status, effective_capacity, held_seats) VALUES (?, ?, ?, ?, ?, 'SCHEDULED', 10, 4)",
+                UUID.randomUUID(), other.tenant, other.departure, other.tour, now.plusDays(1));
+        customers.save(Customer.registerLead(other.customer, other.tenant, "CC67890", "Persona Ficticia Dos", BirthDateOrAge.ofAge(35),
+                new ContactInfo("dos@example.invalid", "3000000001"), true, TestJwtKeys.NOW));
+        var row = Map.of("paymentType", "DEPOSIT", "initialWaitHours", 24, "additionalWaitHours", 48, "minimumDepositBp", 3000,
+                "transferEnabled", true, "cashEnabled", true);
+        exchange(put(BASE + "/payment-parameters").header("Idempotency-Key", "param-jdbc-0101").contentType(MediaType.APPLICATION_JSON)
+                .content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("reason", "Opening season", "parameters", List.of(row)))),
+                CatalogHttpTest.token(other.tenant.toString(), ADMIN), 200);
+        return other;
+    }
+
+    private String paymentOf(Other other, String keySuffix, byte[] proof) throws Exception {
+        String bearer = CatalogHttpTest.token(other.tenant.toString(), ADMIN);
+        var body = Map.of("serviceId", other.tour.toString(), "salidaId", other.departure.toString(), "people", 3,
+                "customerId", other.customer.toString(), "paymentType", "DEPOSIT", "paymentMethod", "TRANSFER");
+        String reservation = CatalogHttpTest.json(exchange(post(BASE + "/reservations").header("Idempotency-Key", "res-iso-" + keySuffix)
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(body)), bearer, 201)).get("reservationId").asText();
+        return CatalogHttpTest.json(exchange(multipart(BASE + "/reservations/" + reservation + "/payments")
+                .file(new MockMultipartFile("payment", "", "application/json",
+                        TestJwtKeys.JSON.writeValueAsBytes(Map.of("paymentMethod", "TRANSFER", "amountCents", 90_000L))))
+                .file(new MockMultipartFile("proof", "proof.png", "image/png", proof)).header("Idempotency-Key", "pay-iso-" + keySuffix),
+                bearer, 201)).get("paymentId").asText();
+    }
+
+    private String status(String paymentId) {
+        return jdbc.queryForObject("SELECT validation_status FROM commercial_reservation.payment_attempt WHERE payment_attempt_id = ?", String.class,
+                UUID.fromString(paymentId));
+    }
+
+    // AC-10.17 with rows of two real tenants: each reads, lists and decides only its own proofs; the other one looks missing.
+    @Test void eachTenantReadsListsAndDecidesOnlyItsOwnProofs() throws Exception {
+        Other other = seedOtherTenant();
+        byte[] otherPng = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 9, 8, 7};
+        String mine = paymentOf(new Other(tenant, tour, departure, customer), "a" + UUID.randomUUID().toString().substring(0, 8), PNG);
+        String theirs = paymentOf(other, "b" + UUID.randomUUID().toString().substring(0, 8), otherPng);
+        String otherAdmin = CatalogHttpTest.token(other.tenant.toString(), ADMIN);
+
+        JsonNode myList = CatalogHttpTest.json(exchange(get(BASE + "/payment-proofs"), admin(), 200));
+        JsonNode theirList = CatalogHttpTest.json(exchange(get(BASE + "/payment-proofs"), otherAdmin, 200));
+        assertThat(myList.at("/meta/total").asInt()).isEqualTo(1);
+        assertThat(myList.at("/data/0/paymentId").asText()).isEqualTo(mine);
+        assertThat(theirList.at("/meta/total").asInt()).isEqualTo(1);
+        assertThat(theirList.at("/data/0/paymentId").asText()).isEqualTo(theirs);
+        assertThat(exchange(get(BASE + "/payment-proofs/" + mine + "/file"), admin(), 200).getResponse().getContentAsByteArray()).isEqualTo(PNG);
+        assertThat(exchange(get(BASE + "/payment-proofs/" + theirs + "/file"), otherAdmin, 200).getResponse().getContentAsByteArray()).isEqualTo(otherPng);
+
+        exchange(get(BASE + "/payment-proofs/" + theirs), admin(), 404);
+        exchange(get(BASE + "/payment-proofs/" + theirs + "/file"), admin(), 404);
+        exchange(get(BASE + "/payment-proofs/" + mine), otherAdmin, 404);
+        exchange(post(BASE + "/payment-proofs/" + theirs + "/approve").header("Idempotency-Key", "iso-approve-" + UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 404);
+        exchange(post(BASE + "/payment-proofs/" + mine + "/reject").header("Idempotency-Key", "iso-reject-" + UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("reason", "Not mine to reject"))), otherAdmin, 404);
+        assertThat(status(mine)).isEqualTo("IN_VALIDATION");
+        assertThat(status(theirs)).isEqualTo("IN_VALIDATION");
+
+        exchange(post(BASE + "/payment-proofs/" + mine + "/approve").header("Idempotency-Key", "iso-own-" + UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 200);
+        assertThat(status(mine)).isEqualTo("APPROVED");
+        assertThat(status(theirs)).isEqualTo("IN_VALIDATION");
+    }
 }
