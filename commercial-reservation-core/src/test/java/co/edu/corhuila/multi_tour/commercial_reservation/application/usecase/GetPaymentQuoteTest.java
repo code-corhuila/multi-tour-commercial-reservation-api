@@ -38,7 +38,7 @@ class GetPaymentQuoteTest {
     private final PaymentFakes fakes = new PaymentFakes(departures);
     private final Set<String> enabled = new HashSet<>(Set.of("FULL_PAYMENT:TRANSFER", "DEPOSIT:TRANSFER", "DEPOSIT:CASH"));
     private final GetPaymentQuoteUseCase quote = new GetPaymentQuoteUseCase(fakes, (tenant, service, type, method) -> enabled.contains(type + ":" + method),
-            fakes, fakes);
+            fakes, fakes, departures);
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
     GetPaymentQuoteTest() {
@@ -120,5 +120,34 @@ class GetPaymentQuoteTest {
                 .isInstanceOf(ReservationNotFoundException.class);
         assertThatThrownBy(() -> quote.quote(new PaymentQuoteQuery(TENANT, new UUID(9, 0xff), null)))
                 .isInstanceOf(ReservationNotFoundException.class);
+    }
+
+    // RN-02, RN-17 (AC-09.3, AC-09.21): the quote shows the deadline in force, the instant the service judges.
+    private PaymentDeadline planted(Instant dueAt, Integer extensionHours, Instant frozenAt) {
+        PaymentDeadline deadline = new PaymentDeadline(DeadlineKind.INITIAL_PAYMENT, dueAt, extensionHours,
+                extensionHours == null ? null : NOW, extensionHours == null ? null : ACTOR, frozenAt, frozenAt == null ? null : 90);
+        fakes.deadlines.put(RESERVATION, deadline);
+        return deadline;
+    }
+
+    @Test
+    void theQuoteShowsTheExtendedDeadline() {
+        planted(NOW.plusSeconds(3_600), 2, null);
+
+        assertThat(quote.quote(new PaymentQuoteQuery(TENANT, RESERVATION, null)).paymentDeadline()).isEqualTo(NOW.plusSeconds(3_600 + 7_200));
+    }
+
+    @Test
+    void theExtendedDeadlineShownNeverPassesTheDepartureStart() {
+        planted(NOW.plusSeconds(3_600), 30, null);
+
+        assertThat(quote.quote(new PaymentQuoteQuery(TENANT, RESERVATION, null)).paymentDeadline()).isEqualTo(NOW.plusSeconds(86_400));
+    }
+
+    @Test
+    void aFrozenDeadlineShowsNoRunningInstant() {
+        planted(NOW.plusSeconds(3_600), null, NOW);
+
+        assertThat(quote.quote(new PaymentQuoteQuery(TENANT, RESERVATION, null)).paymentDeadline()).isNull();
     }
 }
