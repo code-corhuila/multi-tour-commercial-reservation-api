@@ -37,11 +37,13 @@ class PaymentAuthorizationTest {
     }
 
     @Test
-    void theParametersAreReadByTheOperatingRolesAndChangedByTheAdministratorOnly() {
-        for (Role role : Set.of(Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST)) {
+    void theParametersAreReadByEveryRoleAndChangedByTheAdministratorOnly() {
+        // PDR 1.9 and AC-RS.4: the Final Customer learns the enabled types and methods before the reservation exists (reduced projection).
+        for (Role role : Role.values()) {
             assertThatCode(() -> PaymentAuthorization.requireReadParameters(as(role))).doesNotThrowAnyException();
         }
-        assertThatThrownBy(() -> PaymentAuthorization.requireReadParameters(as(Role.FINAL_CUSTOMER))).isInstanceOf(PaymentAccessDeniedException.class);
+        assertThatThrownBy(() -> PaymentAuthorization.requireReadParameters(new PaymentActor(null, new UUID(12, 2), Role.FINAL_CUSTOMER)))
+                .isInstanceOf(PaymentAccessDeniedException.class);
         assertThatCode(() -> PaymentAuthorization.requireChangeParameters(as(Role.TENANT_ADMINISTRATOR))).doesNotThrowAnyException();
         for (Role role : Set.of(Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST, Role.FINAL_CUSTOMER)) {
             assertThatThrownBy(() -> PaymentAuthorization.requireChangeParameters(as(role))).isInstanceOf(PaymentAccessDeniedException.class);
