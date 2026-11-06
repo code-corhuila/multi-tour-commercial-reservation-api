@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentParameterOption;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentQuoteQuery;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetOwnReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetPaymentQuote;
@@ -61,10 +62,16 @@ public final class PaymentSettingsController {
     }
 
     @GetMapping("/payment-parameters")
-    public ReservationListResponses<PaymentParameterResponse> list(
+    public ReservationListResponses<?> list(
             @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal, @RequestParam Map<String, String> query) {
         var paging = new PageQuery(query, Set.of("page", "limit"));
-        List<PaymentParameter> rows = parameters.read(PaymentActors.of(principal));
+        PaymentActor actor = PaymentActors.of(principal);
+        if (actor.role() == PaymentActor.Role.FINAL_CUSTOMER) {
+            List<PaymentParameterOption> options = parameters.readOptions(actor);
+            var data = options.stream().skip((paging.page - 1L) * paging.limit).limit(paging.limit).map(PaymentOptionResponse::of).toList();
+            return new ReservationListResponses<>(data, paging.meta(options.size()));
+        }
+        List<PaymentParameter> rows = parameters.read(actor);
         var data = rows.stream().skip((paging.page - 1L) * paging.limit).limit(paging.limit).map(PaymentParameterResponse::of).toList();
         return new ReservationListResponses<>(data, paging.meta(rows.size()));
     }
