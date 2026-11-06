@@ -99,4 +99,36 @@ class PaymentConditionPersistenceTest {
         assertThat(found.dueAt()).isEqualTo(due.toInstant());
         assertThat(deadlines.openDeadline(UUID.randomUUID(), reservation.reservationId())).isEmpty();
     }
+
+    // PDR CA-016: the rows of tenant A and of tenant B are in the same tables, and each tenant reads only its own.
+    @Test
+    void theConditionAndTheDeadlineOfTenantBNeverAnswerTenantA() {
+        var other = new ReservationPersistenceFixture();
+        var otherParameters = new JdbcPaymentParameterRepository(other.jdbc);
+        Reservation mine = reservation();
+        UUID theirId = UUID.randomUUID();
+        new JdbcReservationRepository(other.jdbc, other.cipher, other.transactions, new JdbcReservationCreatedOutbox(other.jdbc))
+                .save(other.reservation(theirId, true));
+        Reservation theirs = new JdbcReservationRepository(other.jdbc, other.cipher, other.transactions, new JdbcReservationCreatedOutbox(other.jdbc))
+                .findByTenantAndId(other.tenant, theirId).orElseThrow();
+        parameters.save(fixture.tenant, deposit(null, 3_000, "Tenant A"));
+        otherParameters.save(other.tenant, new PaymentParameter(new PaymentParameterValues(PaymentType.DEPOSIT, null, 24, 48, 5_000, 72, true, false),
+                other.actor, "Tenant B", ReservationPersistenceFixture.NOW));
+        OffsetDateTime due = OffsetDateTime.ofInstant(ReservationPersistenceFixture.NOW, ZoneOffset.UTC).plusHours(24);
+        fixture.jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, "
+                + "deadline_kind, due_at) VALUES (?, ?, ?, 'INITIAL_PAYMENT', ?)", UUID.randomUUID(), fixture.tenant, mine.reservationId(), due);
+        other.jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, "
+                + "deadline_kind, due_at) VALUES (?, ?, ?, 'INITIAL_PAYMENT', ?)", UUID.randomUUID(), other.tenant, theirs.reservationId(), due.plusHours(5));
+
+        assertThat(parameters.findByTenant(fixture.tenant)).singleElement().satisfies(row -> assertThat(row.changeReason()).isEqualTo("Tenant A"));
+        assertThat(parameters.findByTenant(other.tenant)).singleElement().satisfies(row -> assertThat(row.changeReason()).isEqualTo("Tenant B"));
+        assertThat(conditions.minimumDepositFor(fixture.tenant, mine)).contains(new Cents(97_200));
+        assertThat(conditions.minimumDepositFor(other.tenant, theirs)).contains(new Cents(162_000));
+        // Tenant A has its own tenant-level row, so it answers with its 30 percent and never with the 50 percent of tenant B.
+        assertThat(conditions.minimumDepositFor(fixture.tenant, theirs)).contains(new Cents(97_200));
+        assertThat(deadlines.openDeadline(fixture.tenant, mine.reservationId()).orElseThrow().dueAt()).isEqualTo(due.toInstant());
+        assertThat(deadlines.openDeadline(other.tenant, theirs.reservationId()).orElseThrow().dueAt()).isEqualTo(due.plusHours(5).toInstant());
+        assertThat(deadlines.openDeadline(fixture.tenant, theirs.reservationId())).isEmpty();
+        assertThat(deadlines.openDeadline(other.tenant, mine.reservationId())).isEmpty();
+    }
 }
