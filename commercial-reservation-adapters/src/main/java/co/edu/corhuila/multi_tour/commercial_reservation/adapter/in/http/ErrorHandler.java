@@ -152,7 +152,7 @@ public class ErrorHandler {
         }
         int status = ex instanceof EstablishmentImageContent.Rejected image ? image.status
                 : ex instanceof RejectedRequest rejected ? rejected.status() : code.status();
-        if (ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException) status = 413;
+        if (ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException || ex instanceof co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProofTooLargeException) status = 413;
         return ResponseEntity.status(status).body(errors.body(request, code, message, details));
     }
 

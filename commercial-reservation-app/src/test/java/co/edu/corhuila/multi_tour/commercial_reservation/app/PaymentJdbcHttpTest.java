@@ -228,6 +228,68 @@ class PaymentJdbcHttpTest {
         }
     }
 
+    // HU-COM-009 AC-09.7: two different reservations for the last seats of one departure, at the same moment, through the real database.
+    // The first hold recorded keeps the seats, the other gets the no-availability answer, and the held seats never pass the capacity.
+    @Test void twoDifferentReservationsForTheLastSeatsLeaveExactlyOneWinner() throws Exception {
+        for (int round = 0; round < 6; round++) {
+            UUID salida = UUID.randomUUID();
+            jdbc.update("INSERT INTO commercial_reservation.salida_capacity (salida_capacity_id, tenant_id, salida_id, service_id, "
+                    + "hora_inicio, status, effective_capacity, held_seats) VALUES (?, ?, ?, ?, ?, 'SCHEDULED', 10, 5)", UUID.randomUUID(), tenant,
+                    salida, tour, OffsetDateTime.ofInstant(TestJwtKeys.NOW, ZoneOffset.UTC).plusDays(1));
+            String one = reservationOn(salida, "pay-last-" + round + "-0"), two = reservationOn(salida, "pay-last-" + round + "-9");
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+            try {
+                String keyOne = "pay-last-" + round + "-1", keyTwo = "pay-last-" + round + "-2";
+                var first = pool.submit(() -> paymentStatus(start, one, keyOne));
+                var second = pool.submit(() -> paymentStatus(start, two, keyTwo));
+                start.countDown();
+
+                assertThat(List.of(first.get(), second.get())).containsExactlyInAnyOrder(201, 422);
+            } finally {
+                pool.shutdownNow();
+            }
+            assertThat(jdbc.queryForObject("SELECT held_seats FROM commercial_reservation.salida_capacity WHERE tenant_id = ? AND salida_id = ?",
+                    Integer.class, tenant, salida)).isEqualTo(8);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? AND salida_id = ? "
+                    + "AND released_at IS NULL", Integer.class, tenant, salida)).isEqualTo(1);
+        }
+    }
+
+    private MockMultipartFile payment() throws Exception {
+        return new MockMultipartFile("payment", "", "application/json",
+                TestJwtKeys.JSON.writeValueAsBytes(Map.of("paymentMethod", "TRANSFER", "amountCents", 90_000L)));
+    }
+
+    // HU-COM-009 AC-09.4: a proof above 5 MB (5 242 880 bytes) is refused with 413 before storing; one of exactly 5 MB passes the size rule.
+    @Test void aProofOfFiveMegabytesPlusOneByteIsRefusedWith413AndNothingIsStored() throws Exception {
+        String id = reservation("pay-file-0001");
+        byte[] big = new byte[5 * 1024 * 1024 + 1];
+        System.arraycopy(PNG, 0, big, 0, PNG.length);
+
+        JsonNode error = CatalogHttpTest.json(exchange(multipart(BASE + "/reservations/" + id + "/payments").file(payment())
+                .file(new MockMultipartFile("proof", "proof.png", "image/png", big)).header("Idempotency-Key", "pay-file-0002"), admin(), 413));
+
+        assertThat(error.get("error").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(error.at("/details/0/field").asText()).isEqualTo("proof");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.payment_proof_file WHERE tenant_id = ?", Integer.class, tenant)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.payment_attempt WHERE tenant_id = ?", Integer.class, tenant)).isZero();
+    }
+
+    // The content decides, not the name: a text renamed .pdf is a 400 and leaves nothing in the tables.
+    @Test void aTextRenamedPdfIsRefusedWith400AndNothingIsStored() throws Exception {
+        String id = reservation("pay-file-0003");
+        byte[] text = "this is plain text, not a pdf".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        JsonNode error = CatalogHttpTest.json(exchange(multipart(BASE + "/reservations/" + id + "/payments").file(payment())
+                .file(new MockMultipartFile("proof", "proof.pdf", "application/pdf", text)).header("Idempotency-Key", "pay-file-0004"), admin(), 400));
+
+        assertThat(error.get("error").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(error.at("/details/0/field").asText()).isEqualTo("proof");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.payment_proof_file WHERE tenant_id = ?", Integer.class, tenant)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.payment_attempt WHERE tenant_id = ?", Integer.class, tenant)).isZero();
+    }
+
     private int paymentStatus(java.util.concurrent.CountDownLatch start, String reservation, String key) throws Exception {
         start.await();
         return mvc.perform(multipart(BASE + "/reservations/" + reservation + "/payments")
