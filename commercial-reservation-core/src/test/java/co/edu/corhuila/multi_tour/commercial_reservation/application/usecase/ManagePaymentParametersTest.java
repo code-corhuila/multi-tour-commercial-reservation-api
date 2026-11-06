@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ChangePaymentParametersCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentParameterOption;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
@@ -101,6 +102,22 @@ class ManagePaymentParametersTest {
         }
         assertThat(manage.read(new PaymentActor(OTHER_TENANT, ADMIN, Role.TENANT_ADMINISTRATOR))).isEmpty();
         assertThatThrownBy(() -> manage.read(actor(Role.FINAL_CUSTOMER))).isInstanceOf(PaymentAccessDeniedException.class);
+    }
+
+    @Test
+    void theFinalCustomerReadsOnlyTheTypeTheServiceAndTheTwoEnabledMethodsOfItsOwnTenant() {
+        UUID service = new UUID(9, 0xf4);
+        manage.change(new ChangePaymentParametersCommand(actor(Role.TENANT_ADMINISTRATOR), "new season",
+                List.of(deposit(3_000), new PaymentParameterValues(PaymentType.FULL_PAYMENT, service, 12, 36, null, null, true, false))));
+
+        assertThat(manage.readOptions(actor(Role.FINAL_CUSTOMER))).containsExactlyInAnyOrder(
+                new PaymentParameterOption(PaymentType.DEPOSIT, null, true, true),
+                new PaymentParameterOption(PaymentType.FULL_PAYMENT, service, true, false));
+        assertThat(manage.readOptions(new PaymentActor(OTHER_TENANT, ADMIN, Role.FINAL_CUSTOMER))).isEmpty();
+        for (Role reader : List.of(Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ANALYST, Role.ACCOUNTANT)) {
+            assertThat(manage.readOptions(actor(reader))).hasSize(2);
+        }
+        assertThatThrownBy(() -> manage.readOptions(new PaymentActor(null, ADMIN, Role.FINAL_CUSTOMER))).isInstanceOf(PaymentAccessDeniedException.class);
     }
 
     private record ImmediateTransaction(List<String> journal) implements co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction {
