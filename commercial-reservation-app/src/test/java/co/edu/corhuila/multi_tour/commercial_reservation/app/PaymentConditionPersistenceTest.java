@@ -124,7 +124,8 @@ class PaymentConditionPersistenceTest {
         assertThat(parameters.findByTenant(other.tenant)).singleElement().satisfies(row -> assertThat(row.changeReason()).isEqualTo("Tenant B"));
         assertThat(conditions.minimumDepositFor(fixture.tenant, mine)).contains(new Cents(97_200));
         assertThat(conditions.minimumDepositFor(other.tenant, theirs)).contains(new Cents(162_000));
-        assertThat(conditions.minimumDepositFor(fixture.tenant, theirs)).isEmpty();
+        // Tenant A has its own tenant-level row, so it answers with its 30 percent and never with the 50 percent of tenant B.
+        assertThat(conditions.minimumDepositFor(fixture.tenant, theirs)).contains(new Cents(97_200));
         assertThat(deadlines.openDeadline(fixture.tenant, mine.reservationId()).orElseThrow().dueAt()).isEqualTo(due.toInstant());
         assertThat(deadlines.openDeadline(other.tenant, theirs.reservationId()).orElseThrow().dueAt()).isEqualTo(due.plusHours(5).toInstant());
         assertThat(deadlines.openDeadline(fixture.tenant, theirs.reservationId())).isEmpty();
