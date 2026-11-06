@@ -18,7 +18,7 @@ public record ReservationListResponses<T>(List<T> data, Meta meta) {
     public record Departure(UUID departureId, String startsAt, int availableSeats, int totalSeats, boolean full) {
         static Departure of(DepartureState state) {
             int available = state.seats().available();
-            return new Departure(state.departureId(), state.startsAt().toString(), available, state.effectiveCapacity(), available == 0);
+            return new Departure(state.departureId(), state.startsAt().toString(), available, state.effectiveCapacity(), available <= 0);
         }
     }
 
