@@ -165,4 +165,30 @@ class PaymentReservationPersistenceTest {
         return fixture.jdbc.queryForList("SELECT event_type FROM commercial_reservation.outbox_event WHERE reservation_id = ?",
                 String.class, reservation.reservationId());
     }
+
+    // PDR CA-016: the attempts of tenant A and of tenant B share the table, and a tenant never reaches the other's reservation or attempt.
+    @Test
+    void theAttemptsOfTenantBNeverAnswerTenantA() {
+        var other = new ReservationPersistenceFixture();
+        var otherRepository = new JdbcReservationRepository(other.jdbc, other.cipher, other.transactions, new JdbcReservationCreatedOutbox(other.jdbc));
+        Reservation mine = stored();
+        UUID mineAttempt = UUID.randomUUID(), theirAttempt = UUID.randomUUID();
+        mine.registerTransfer(mineAttempt, new Cents(100_000), MINIMUM, fixture.actor, ReservationPersistenceFixture.NOW);
+        persist(mine);
+        UUID theirId = UUID.randomUUID();
+        otherRepository.save(other.reservation(theirId, true));
+        Reservation theirs = otherRepository.findByTenantAndId(other.tenant, theirId).orElseThrow();
+        theirs.registerTransfer(theirAttempt, new Cents(100_000), MINIMUM, other.actor, ReservationPersistenceFixture.NOW);
+        otherRepository.save(theirs);
+
+        assertThat(repository.findByTenantAndAttempt(fixture.tenant, mineAttempt)).isPresent();
+        assertThat(otherRepository.findByTenantAndAttempt(other.tenant, theirAttempt)).isPresent();
+        assertThat(repository.findByTenantAndAttempt(fixture.tenant, theirAttempt)).isEmpty();
+        assertThat(otherRepository.findByTenantAndAttempt(other.tenant, mineAttempt)).isEmpty();
+        assertThat(repository.findByTenantAndId(fixture.tenant, theirId)).isEmpty();
+        assertThat(repository.findByTenantAndId(fixture.tenant, mine.reservationId()).orElseThrow().attempts()).singleElement()
+                .satisfies(row -> assertThat(row.attemptId()).isEqualTo(mineAttempt));
+        assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.payment_attempt WHERE tenant_id = ? AND reservation_id = ?",
+                Integer.class, fixture.tenant, theirId)).isZero();
+    }
 }
