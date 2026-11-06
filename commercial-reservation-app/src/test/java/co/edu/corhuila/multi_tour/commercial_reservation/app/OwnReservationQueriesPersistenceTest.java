@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerAccountLink;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDepartureStateRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
@@ -99,6 +100,42 @@ class OwnReservationQueriesPersistenceTest {
         assertThat(queries.findByTenantCustomerAndId(fixture.tenant, fixture.customer, theirs)).isEmpty();
         assertThat(queries.findByTenantCustomerAndId(UUID.randomUUID(), fixture.customer, mine)).isEmpty();
         assertThat(queries.findByTenantCustomerAndId(fixture.tenant, fixture.customer, UUID.randomUUID())).isEmpty();
+    }
+
+    // A second REAL tenant (its own customer, tour and departure) with the same account linked to its customer: the own routes of the
+    // first tenant never see its reservations, with the page, with the detail, or with the customer or the id of the other tenant.
+    @Test
+    void aSecondRealTenantWithTheSameAccountIsNeverSeenByTheOwnRoutesOfTheFirst() {
+        var foreign = new ReservationPersistenceFixture();
+        var foreignRepository = new JdbcReservationRepository(foreign.jdbc, foreign.cipher, foreign.transactions,
+                new JdbcReservationCreatedOutbox(foreign.jdbc));
+        new JdbcDepartureStateRepository(foreign.jdbc).save(new DepartureState(foreign.salida, foreign.tenant, foreign.service,
+                Instant.now().truncatedTo(ChronoUnit.MICROS).plus(3, ChronoUnit.DAYS), DepartureStatus.SCHEDULED, 10, 0));
+        UUID foreignId = UUID.randomUUID();
+        foreignRepository.save(foreign.reservation(foreignId, true));
+        UUID mine = savedFor(fixture.customer);
+        UUID account = UUID.randomUUID();
+        var link = new JdbcCustomerAccountLink(fixture.jdbc);
+        assertThat(link.linkIfUnlinked(fixture.tenant, fixture.customer, account)).isTrue();
+        assertThat(link.linkIfUnlinked(foreign.tenant, foreign.customer, account)).isTrue();
+        // Each fixture seals with its own key, so a tenant is read back only with the queries built on its own cipher.
+        var customers = new JdbcCustomerRepository(fixture.jdbc, fixture.cipher);
+        var foreignCustomers = new JdbcCustomerRepository(foreign.jdbc, foreign.cipher);
+        var foreignQueries = new JdbcReservationQueries(foreign.jdbc, new JdbcReservationReader(foreign.jdbc, foreign.cipher));
+        assertThat(customers.findByTenantAndAccount(fixture.tenant, account).orElseThrow().customerId()).isEqualTo(fixture.customer);
+        assertThat(foreignCustomers.findByTenantAndAccount(foreign.tenant, account).orElseThrow().customerId()).isEqualTo(foreign.customer);
+
+        assertThat(queries.page(fixture.tenant, fixture.customer, true, 1, 20).items())
+                .extracting(ReservationListItem::reservationId).containsExactly(mine);
+        assertThat(queries.page(fixture.tenant, fixture.customer, true, 1, 20).total()).isEqualTo(1);
+        assertThat(foreignQueries.page(foreign.tenant, foreign.customer, true, 1, 20).items())
+                .extracting(ReservationListItem::reservationId).containsExactly(foreignId);
+        assertThat(queries.page(fixture.tenant, foreign.customer, true, 1, 20).items()).isEmpty();
+        assertThat(queries.page(foreign.tenant, fixture.customer, true, 1, 20).items()).isEmpty();
+        assertThat(queries.findByTenantCustomerAndId(fixture.tenant, fixture.customer, foreignId)).isEmpty();
+        assertThat(queries.findByTenantCustomerAndId(fixture.tenant, foreign.customer, foreignId)).isEmpty();
+        assertThat(queries.findByTenantCustomerAndId(foreign.tenant, foreign.customer, mine)).isEmpty();
+        assertThat(foreignQueries.findByTenantCustomerAndId(foreign.tenant, foreign.customer, foreignId)).isPresent();
     }
 
     @Test
