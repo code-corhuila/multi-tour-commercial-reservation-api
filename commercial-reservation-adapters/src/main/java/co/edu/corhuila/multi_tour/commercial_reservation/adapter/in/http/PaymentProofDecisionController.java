@@ -5,6 +5,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Decid
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RecordValidatedPaymentCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RejectProofCommand;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.DecidePaymentProofWithKey;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RecordValidatedPayment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadCustomerName;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
@@ -31,12 +32,12 @@ public final class PaymentProofDecisionController {
     public record Reject(String reason) {}
     public record ValidatedPayment(UUID approvedBy, Long verifiedAmountCents, String reason) {}
 
-    private final IdempotentProofDecision decisions;
+    private final DecidePaymentProofWithKey decisions;
     private final RecordValidatedPayment validated;
     private final ReadCustomerName customers;
     private final Clock clock;
 
-    public PaymentProofDecisionController(IdempotentProofDecision decisions, RecordValidatedPayment validated, ReadCustomerName customers,
+    public PaymentProofDecisionController(DecidePaymentProofWithKey decisions, RecordValidatedPayment validated, ReadCustomerName customers,
             Clock clock) {
         this.decisions = decisions;
         this.validated = validated;
