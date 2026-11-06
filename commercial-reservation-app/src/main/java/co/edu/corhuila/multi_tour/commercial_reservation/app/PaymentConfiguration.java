@@ -37,6 +37,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Dec
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetOwnReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetPaymentQuote;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListReservationPayments;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadCustomerName;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListPaymentProofs;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManagePaymentParameters;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadPaymentProofFile;
@@ -65,6 +67,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DecidePaymentProofUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetPaymentQuoteUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListReservationPaymentsUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReadCustomerNameUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManagePaymentParametersUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListPaymentProofsUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentProofQueriesUseCase;
@@ -112,9 +116,18 @@ class PaymentConfiguration {
     }
 
     @Bean
+    ListReservationPayments listReservationPayments(GetReservation get, GetOwnReservation getOwn) {
+        return new ListReservationPaymentsUseCase(get, getOwn);
+    }
+
+    @Bean
+    ReadCustomerName readCustomerName(CustomerRepository customers) {
+        return new ReadCustomerNameUseCase(customers);
+    }
+    @Bean
     PaymentController paymentController(IdempotentPaymentRegistration registration, GetReservation get, GetOwnReservation getOwn,
-            GetPaymentDeadline deadlines) {
-        return new PaymentController(registration, get, getOwn, deadlines);
+            GetPaymentDeadline deadlines, ListReservationPayments payments) {
+        return new PaymentController(registration, get, getOwn, deadlines, payments);
     }
 
     @Bean
@@ -185,7 +198,7 @@ class PaymentConfiguration {
 
     @Bean
     PaymentProofDecisionController paymentProofDecisionController(IdempotentProofDecision decisions, RecordValidatedPayment validated,
-            CustomerRepository customers, Clock clock) {
+            ReadCustomerName customers, Clock clock) {
         return new PaymentProofDecisionController(decisions, validated, customers, clock);
     }
 
