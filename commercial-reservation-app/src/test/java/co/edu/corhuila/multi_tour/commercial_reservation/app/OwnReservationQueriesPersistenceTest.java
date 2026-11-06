@@ -118,21 +118,24 @@ class OwnReservationQueriesPersistenceTest {
         var link = new JdbcCustomerAccountLink(fixture.jdbc);
         assertThat(link.linkIfUnlinked(fixture.tenant, fixture.customer, account)).isTrue();
         assertThat(link.linkIfUnlinked(foreign.tenant, foreign.customer, account)).isTrue();
+        // Each fixture seals with its own key, so a tenant is read back only with the queries built on its own cipher.
         var customers = new JdbcCustomerRepository(fixture.jdbc, fixture.cipher);
+        var foreignCustomers = new JdbcCustomerRepository(foreign.jdbc, foreign.cipher);
+        var foreignQueries = new JdbcReservationQueries(foreign.jdbc, new JdbcReservationReader(foreign.jdbc, foreign.cipher));
         assertThat(customers.findByTenantAndAccount(fixture.tenant, account).orElseThrow().customerId()).isEqualTo(fixture.customer);
-        assertThat(customers.findByTenantAndAccount(foreign.tenant, account).orElseThrow().customerId()).isEqualTo(foreign.customer);
+        assertThat(foreignCustomers.findByTenantAndAccount(foreign.tenant, account).orElseThrow().customerId()).isEqualTo(foreign.customer);
 
         assertThat(queries.page(fixture.tenant, fixture.customer, true, 1, 20).items())
                 .extracting(ReservationListItem::reservationId).containsExactly(mine);
         assertThat(queries.page(fixture.tenant, fixture.customer, true, 1, 20).total()).isEqualTo(1);
-        assertThat(queries.page(foreign.tenant, foreign.customer, true, 1, 20).items())
+        assertThat(foreignQueries.page(foreign.tenant, foreign.customer, true, 1, 20).items())
                 .extracting(ReservationListItem::reservationId).containsExactly(foreignId);
         assertThat(queries.page(fixture.tenant, foreign.customer, true, 1, 20).items()).isEmpty();
         assertThat(queries.page(foreign.tenant, fixture.customer, true, 1, 20).items()).isEmpty();
         assertThat(queries.findByTenantCustomerAndId(fixture.tenant, fixture.customer, foreignId)).isEmpty();
         assertThat(queries.findByTenantCustomerAndId(fixture.tenant, foreign.customer, foreignId)).isEmpty();
         assertThat(queries.findByTenantCustomerAndId(foreign.tenant, foreign.customer, mine)).isEmpty();
-        assertThat(queries.findByTenantCustomerAndId(foreign.tenant, foreign.customer, foreignId)).isPresent();
+        assertThat(foreignQueries.findByTenantCustomerAndId(foreign.tenant, foreign.customer, foreignId)).isPresent();
     }
 
     @Test
