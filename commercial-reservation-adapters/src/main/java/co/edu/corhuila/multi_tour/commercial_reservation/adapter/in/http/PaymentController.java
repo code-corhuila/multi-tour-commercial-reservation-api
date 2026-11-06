@@ -117,10 +117,11 @@ public final class PaymentController {
                 : get.get(actor.tenantId(), reservationId);
     }
 
-    // The same value the quote shows. A reservation with no open deadline row, or a role that cannot read deadlines, leaves it out.
+    // The deadline in force, the same value the quote shows (RN-02, RN-17). A reservation with no open deadline row, or a role that cannot read deadlines, leaves it out.
     private Instant dueAt(PaymentActor actor, UUID reservationId) {
         try {
-            return deadlines.get(actor, reservationId).deadline().dueAt();
+            var view = deadlines.get(actor, reservationId);
+            return view.deadline().inForce(view.departureStartsAt());
         } catch (ReservationNotFoundException | PaymentAccessDeniedException none) {
             return null;
         }
