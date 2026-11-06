@@ -38,7 +38,8 @@ final class JdbcPaymentAttempts {
                     + "ON CONFLICT (payment_attempt_id) DO UPDATE SET validation_status = EXCLUDED.validation_status, "
                     + "decided_by = EXCLUDED.decided_by, decided_at = EXCLUDED.decided_at, decision_reason = EXCLUDED.decision_reason, "
                     + "verified_amount_cents = EXCLUDED.verified_amount_cents, applied_amount_cents = EXCLUDED.applied_amount_cents, "
-                    + "excess_amount_cents = EXCLUDED.excess_amount_cents, treatment_amount_cents = EXCLUDED.treatment_amount_cents",
+                    + "excess_amount_cents = EXCLUDED.excess_amount_cents, treatment_amount_cents = EXCLUDED.treatment_amount_cents "
+                    + "WHERE payment_attempt.tenant_id = EXCLUDED.tenant_id",
                     a.attemptId(), reservation.tenantId(), reservation.reservationId(), a.method().name(), a.amount().amount(),
                     a.validationStatus() == null ? null : a.validationStatus().name(), a.paymentStatusSnapshot().name(), a.registeredBy(),
                     time(a.registeredAt()), a.decidedBy(), a.decidedAt() == null ? null : time(a.decidedAt()), a.decisionReason(),
