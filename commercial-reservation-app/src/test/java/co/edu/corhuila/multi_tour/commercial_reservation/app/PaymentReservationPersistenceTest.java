@@ -191,4 +191,33 @@ class PaymentReservationPersistenceTest {
         assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.payment_attempt WHERE tenant_id = ? AND reservation_id = ?",
                 Integer.class, fixture.tenant, theirId)).isZero();
     }
+
+    // Finding of the deep audit of HU-COM-009: the upsert of an attempt was keyed on the attempt id alone, so a tenant that saved an
+    // attempt with the id of another tenant rewrote the row of that tenant. The conflict update now needs the same tenant.
+    @Test
+    void anotherTenantCannotOverwriteTheAttemptOfThisOneByUsingItsId() {
+        Reservation mine = stored();
+        UUID attempt = UUID.randomUUID();
+        mine.registerTransfer(attempt, new Cents(100_000), MINIMUM, fixture.actor, ReservationPersistenceFixture.NOW);
+        mine.allocateSeat(ReservationPersistenceFixture.NOW);
+        persist(mine);
+        var otherFixture = new ReservationPersistenceFixture();
+        var otherRepository = new JdbcReservationRepository(otherFixture.jdbc, otherFixture.cipher, otherFixture.transactions,
+                new JdbcReservationCreatedOutbox(otherFixture.jdbc));
+        UUID otherId = UUID.randomUUID();
+        otherRepository.save(otherFixture.reservation(otherId, true));
+        Reservation theirs = otherRepository.findByTenantAndId(otherFixture.tenant, otherId).orElseThrow();
+        theirs.registerTransfer(attempt, new Cents(100_000), MINIMUM, otherFixture.actor, ReservationPersistenceFixture.NOW);
+        theirs.approve(attempt, new Cents(100_000), null, MINIMUM, otherFixture.actor, ReservationPersistenceFixture.NOW);
+
+        otherRepository.save(theirs);
+
+        var row = fixture.jdbc.queryForMap("SELECT tenant_id, reservation_id, validation_status, decided_by, applied_amount_cents "
+                + "FROM commercial_reservation.payment_attempt WHERE payment_attempt_id = ?", attempt);
+        assertThat(row.get("tenant_id")).isEqualTo(fixture.tenant);
+        assertThat(row.get("reservation_id")).isEqualTo(mine.reservationId());
+        assertThat(row.get("validation_status")).isEqualTo(ValidationStatus.IN_VALIDATION.name());
+        assertThat(row.get("decided_by")).isNull();
+        assertThat(row.get("applied_amount_cents")).isNull();
+    }
 }
