@@ -14,6 +14,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
@@ -73,7 +75,9 @@ class PaymentProofQueriesTest {
         }
     };
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-    private final ListPaymentProofsUseCase list = new ListPaymentProofsUseCase(reader, clock);
+    private TenantStatus tenantStatus = TenantStatus.ACTIVE;
+    private final TenantStatusReader statuses = tenant -> TENANT.equals(tenant) ? Optional.of(tenantStatus) : Optional.empty();
+    private final ListPaymentProofsUseCase list = new ListPaymentProofsUseCase(reader, statuses, clock);
     private final PaymentProofQueriesUseCase queries = new PaymentProofQueriesUseCase(fakes, clock);
     private static final UUID ACCOUNT = new UUID(10, 0xe1), OTHER_ACCOUNT = new UUID(10, 0xe2), UNLINKED_ACCOUNT = new UUID(10, 0xe3);
     // The token subject of a Final Customer is the account; the customer of the reservation is the one linked to it.
@@ -155,6 +159,41 @@ class PaymentProofQueriesTest {
 
         assertThat(page.items()).extracting(ProofView::attemptId).containsExactly(OLD);
         assertThat(list.overdueOf(OTHER_TENANT, 1, 20).items()).isEmpty();
+    }
+
+    // AC-20.1, DP-08: the alert is not raised on suspended time, so the overdue list of an inactive tenant is empty, with no count; the page
+    // asked is echoed. Active again, the same proofs come back.
+    @Test
+    void theOverdueListOfAnInactiveTenantIsEmptyAndComesBackWhenItIsActiveAgain() {
+        tenantStatus = TenantStatus.INACTIVE;
+
+        ProofPage page = list.overdueOf(TENANT, 2, 5);
+
+        assertThat(page.items()).isEmpty();
+        assertThat(page.total()).isZero();
+        assertThat(page.overdueCount()).isZero();
+        assertThat(page.page()).isEqualTo(2);
+        assertThat(page.limit()).isEqualTo(5);
+        tenantStatus = TenantStatus.ACTIVE;
+        assertThat(list.overdueOf(TENANT, 1, 20).items()).extracting(ProofView::attemptId).containsExactly(OLD);
+    }
+
+    @Test
+    void theOverdueListOfAnInactiveTenantStillRefusesAnInvalidPage() {
+        tenantStatus = TenantStatus.INACTIVE;
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> list.overdueOf(TENANT, 0, 20)).isInstanceOf(DomainException.class);
+    }
+
+    // Only job 2 is silenced: the panel list of the Tenant Administrator keeps listing the proofs of an inactive tenant (the review is
+    // suspended, the screen is not).
+    @Test
+    void thePanelListOfAnInactiveTenantStillListsItsProofs() {
+        tenantStatus = TenantStatus.INACTIVE;
+
+        ProofPage page = list.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), null, true, 1, 20));
+
+        assertThat(page.items()).extracting(ProofView::attemptId).containsExactly(OLD);
     }
 
     @Test
