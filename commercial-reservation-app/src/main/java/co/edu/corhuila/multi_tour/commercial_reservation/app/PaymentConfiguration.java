@@ -124,6 +124,7 @@ class PaymentConfiguration {
     ReadCustomerName readCustomerName(CustomerRepository customers) {
         return new ReadCustomerNameUseCase(customers);
     }
+
     @Bean
     PaymentController paymentController(IdempotentPaymentRegistration registration, GetReservation get, GetOwnReservation getOwn,
             GetPaymentDeadline deadlines, ListReservationPayments payments) {
