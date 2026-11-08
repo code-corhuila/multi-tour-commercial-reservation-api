@@ -166,8 +166,10 @@ class ApplyCreditBalanceUseCaseTest {
 
     @Test
     void applyingTheLastNeededValueConfirmsTheReservation() {
-        reservation(new UUID(17, 22), CUSTOMER, PaymentType.FULL_PAYMENT, 150_000);
-        apply.apply(command(new UUID(17, 22), 150_000, Role.TENANT_ADMINISTRATOR));
+        credits.put(CREDIT, new CreditBalance(CREDIT, TENANT, SOURCE, CreditOrigin.CUSTOMER_CANCELLATION, new Cents(300_000), new UUID(17, 50), null, NOW.minusSeconds(3_600),
+                ADMIN, new Cents(0), new Cents(0)));
+        reservation(new UUID(17, 22), CUSTOMER, PaymentType.FULL_PAYMENT, 300_000);
+        apply.apply(command(new UUID(17, 22), 300_000, Role.TENANT_ADMINISTRATOR));
 
         Reservation confirmed = fakes.reservations.get(new UUID(17, 22));
         assertThat(confirmed.reservationStatus()).isEqualTo(ReservationStatus.CONFIRMED);
