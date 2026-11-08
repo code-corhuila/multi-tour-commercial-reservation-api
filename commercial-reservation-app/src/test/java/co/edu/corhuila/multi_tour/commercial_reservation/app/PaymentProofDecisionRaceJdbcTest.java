@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -212,6 +213,23 @@ class PaymentProofDecisionRaceJdbcTest {
         return jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event e JOIN commercial_reservation.payment_attempt a "
                 + "ON a.reservation_id = e.reservation_id WHERE a.payment_attempt_id = ? AND e.event_type IN ('PaymentValidated', 'PaymentRejected')",
                 Long.class, UUID.fromString(proof));
+    }
+
+    // AC-20.1, DP-08, wiring only (the rule is proven in the core): job 2 reads the status of the path tenant through the local copy
+    // and answers 200 with an empty page for an inactive one. A second tenant is used because the status read is kept for a few seconds.
+    @Test void theOverdueListOfJob2AnswersAnEmptyPageForAnInactiveTenant() throws Exception {
+        UUID inactive = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.ofInstant(TestJwtKeys.NOW, ZoneOffset.UTC);
+        jdbc.update("INSERT INTO commercial_reservation.tenant_status (tenant_id, identifier, status, time_zone, country, "
+                + "last_event_occurred_at, created_at, updated_at) VALUES (?, ?, 'INACTIVE', 'America/Bogota', 'CO', ?, ?, ?)",
+                inactive, "t-" + inactive, now, now, now);
+
+        MockHttpServletResponse response = mvc.perform(get(BASE + "/internal/tenants/" + inactive + "/payment-proofs").param("overdue", "true")
+                .header("Authorization", "Bearer " + CustomerHttpTest.token(null, "SERVICE", List.of())).header("X-Correlation-Id", CatalogHttpTest.TRACE))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(TestJwtKeys.JSON.readTree(response.getContentAsString()).at("/meta/total").asInt()).isZero();
     }
 
     // The same key with the same proof but another body is refused, never answered with the stored decision.

@@ -62,6 +62,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
@@ -158,8 +159,8 @@ class PaymentConfiguration {
     }
 
     @Bean
-    ListPaymentProofs listPaymentProofs(@Lazy PaymentProofReader reader, Clock clock) {
-        return new ListPaymentProofsUseCase(reader, clock);
+    ListPaymentProofs listPaymentProofs(@Lazy PaymentProofReader reader, TenantStatusReader statuses, Clock clock) {
+        return new ListPaymentProofsUseCase(reader, statuses, clock);
     }
 
     @Bean
@@ -175,7 +176,7 @@ class PaymentConfiguration {
 
     @Bean
     PaymentProofController paymentProofController(ListPaymentProofs list, ReadPaymentProofs read, ReadPaymentProofFile file,
-            CustomerRepository customers) {
+            ReadCustomerName customers) {
         return new PaymentProofController(list, read, file, customers);
     }
 
