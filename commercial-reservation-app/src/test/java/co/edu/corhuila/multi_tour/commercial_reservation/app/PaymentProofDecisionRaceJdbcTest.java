@@ -225,7 +225,7 @@ class PaymentProofDecisionRaceJdbcTest {
                 inactive, "t-" + inactive, now, now, now);
 
         MockHttpServletResponse response = mvc.perform(get(BASE + "/internal/tenants/" + inactive + "/payment-proofs").param("overdue", "true")
-                .header("Authorization", "Bearer " + CatalogHttpTest.token(null, "SERVICE", List.of())).header("X-Correlation-Id", CatalogHttpTest.TRACE))
+                .header("Authorization", "Bearer " + CustomerHttpTest.token(null, "SERVICE", List.of())).header("X-Correlation-Id", CatalogHttpTest.TRACE))
                 .andReturn().getResponse();
 
         assertThat(response.getStatus()).isEqualTo(200);
