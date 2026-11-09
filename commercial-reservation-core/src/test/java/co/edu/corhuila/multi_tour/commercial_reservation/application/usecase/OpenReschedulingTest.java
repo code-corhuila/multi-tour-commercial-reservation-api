@@ -52,7 +52,7 @@ class OpenReschedulingTest {
         @Override public void save(ReschedulingEpisode episode) { stored.put(episode.id(), episode); }
     };
     private final EconomicDeadlineFreezer freezer = (tenantId, reservationId, at, cause) -> frozen.add(reservationId + "@" + at + "/" + cause);
-    private final OpenReschedulingUseCase open = new OpenReschedulingUseCase(episodes, fakes, fakes, freezer, fakes, () -> EPISODE, Clock.fixed(NOW, ZoneOffset.UTC));
+    private final OpenReschedulingUseCase open = new OpenReschedulingUseCase(episodes, fakes, fakes, freezer, fakes, fakes, () -> EPISODE, Clock.fixed(NOW, ZoneOffset.UTC));
 
     OpenReschedulingTest() {
         departures.plant(new DepartureState(DEPARTURE, TENANT, SERVICE, NOW.plus(Duration.ofDays(30)), DepartureStatus.CANCELLED, 10, 2));
@@ -80,6 +80,7 @@ class OpenReschedulingTest {
         assertThat(fakes.releaseCalls).isEqualTo(1);
         assertThat(departures.rows.get(DEPARTURE).heldSeats()).isZero();
         assertThat(fakes.reservations.get(RESERVATION).seatHeld()).isFalse();
+        assertThat(fakes.events).as("the release of the seat is in the outbox, once, in the same transaction").filteredOn(e -> e instanceof co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased).hasSize(1);
     }
 
     @Test
