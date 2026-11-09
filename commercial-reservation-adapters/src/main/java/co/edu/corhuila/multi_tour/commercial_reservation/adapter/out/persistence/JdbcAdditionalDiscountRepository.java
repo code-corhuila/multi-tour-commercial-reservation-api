@@ -14,7 +14,7 @@ import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-// Insert only: the writer role has no UPDATE on this table, so the record stays as it was registered.
+// Insert only: the writer role has no UPDATE on this table, so the record stays as it was registered. It lowers the value of its reservation.
 public final class JdbcAdditionalDiscountRepository implements AdditionalDiscountRepository {
     private final JdbcTemplate jdbc;
 
@@ -36,6 +36,12 @@ public final class JdbcAdditionalDiscountRepository implements AdditionalDiscoun
             // The unique key is the last guard when two registrations race past the existence check.
             throw new BusinessRuleViolation("the reservation already has an additional discount");
         }
+        // AC-04.4, DP-01: the value the charge reads is the one left by the discount. Same transaction as the insert (the
+        // registration is one); the final value and the pending balance fall together, so the paid part does not change.
+        int rows = jdbc.update("UPDATE commercial_reservation.reservation SET final_value_cents = final_value_cents - ?, "
+                + "pending_balance_cents = GREATEST(pending_balance_cents - ?, 0) WHERE tenant_id = ? AND reservation_id = ?",
+                discount.line().amount().amount(), discount.line().amount().amount(), discount.tenantId(), discount.reservationId());
+        if (rows != 1) throw new IllegalStateException("the reservation of the additional discount was not found");
     }
 
     // The order is not stored: it is the place after the fixed lines that took something, as the snapshot counts it.
