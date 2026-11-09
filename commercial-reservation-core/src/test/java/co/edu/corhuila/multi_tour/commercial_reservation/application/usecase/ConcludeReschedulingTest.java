@@ -147,7 +147,7 @@ class ConcludeReschedulingTest {
     }
 
     @Test
-    void anExpiryWithNothingDueChangesNothingAndAnAnsweredEpisodeIsRefused() {
+    void anExpiryWithNothingDueChangesNothingAndARepeatAnswersTheStoredEpisode() {
         clock.now = CANCELLED_AT.plus(Duration.ofHours(5));
 
         assertThatThrownBy(() -> conclude.expire(TENANT, EPISODE)).isInstanceOf(BusinessRuleViolation.class).hasMessageContaining("nothing is due");
@@ -156,7 +156,7 @@ class ConcludeReschedulingTest {
 
         clock.now = NOW;
         conclude.expire(TENANT, EPISODE);
-        assertThatThrownBy(() -> conclude.expire(TENANT, EPISODE)).isInstanceOf(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException.class);
+        assertThat(conclude.expire(TENANT, EPISODE).reason()).as("a repeat answers the stored episode").isEqualTo(ClosingReason.PROPOSAL_PERIOD_EXPIRED);
     }
 
     @Test
