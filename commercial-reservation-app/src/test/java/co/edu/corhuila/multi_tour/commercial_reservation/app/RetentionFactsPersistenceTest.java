@@ -11,6 +11,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureS
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationStatus;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,6 +54,7 @@ class RetentionFactsPersistenceTest {
         mirror("FINALIZED", ESTIMATED_END, FINALIZED_AT);
         RetentionFacts finalized = facts.factsOf(fixture.tenant, reservation).orElseThrow();
         assertThat(finalized.customerId()).isEqualTo(fixture.customer);
+        assertThat(finalized.zone()).isEqualTo(ZoneId.of("America/Bogota"));
         assertThat(finalized.departure().status()).isEqualTo(DepartureStatus.FINALIZED);
         assertThat(finalized.departure().estimatedEndsAt()).isEqualTo(ESTIMATED_END);
         assertThat(finalized.departure().finalizedAt()).isEqualTo(FINALIZED_AT);
@@ -85,6 +87,9 @@ class RetentionFactsPersistenceTest {
 
         mirror("SCHEDULED", null, null);
         assertThat(facts.factsOf(fixture.tenant, reservation).orElseThrow().departure().estimatedEndsAt()).isNull();
+        fixture.jdbc.update("INSERT INTO commercial_reservation.tenant_status (tenant_id, identifier, status, time_zone, country, last_event_occurred_at, "
+                + "created_at, updated_at) VALUES (?, ?, 'ACTIVE', 'America/Lima', 'PE', now(), now(), now())", fixture.tenant, "t-" + fixture.tenant);
+        assertThat(facts.factsOf(fixture.tenant, reservation).orElseThrow().zone()).isEqualTo(ZoneId.of("America/Lima"));
         assertThat(facts.factsOf(UUID.randomUUID(), reservation)).isEmpty();
         assertThat(facts.factsOf(fixture.tenant, UUID.randomUUID())).isEmpty();
     }
