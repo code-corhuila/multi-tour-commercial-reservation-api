@@ -257,6 +257,30 @@ class PaymentProofDecisionRaceJdbcTest {
         assertThat(List.of(other, approve)).allMatch(o -> o.status() == 422 && o.error().equals("BUSINESS_RULE_VIOLATION"));
     }
 
+    // HU-COM-010 debt (audit of 2026-11-06), db changeset 034: the decision events carry the proof id so a consumer can correlate and
+    // deduplicate, and the free-text reason never travels (it stays on the attempt row, readable on the proof routes).
+    @Test void theDecisionEventsCarryTheProofIdAndNeverTheReason() throws Exception {
+        String approved = proof("evt-appr"), rejected = proof("evt-rej");
+        assertThat(once(approved, "approve", Map.of("verifiedAmountCents", 90_000L), "evt-appr-key-1").status()).isEqualTo(200);
+        assertThat(once(rejected, "reject", Map.of("reason", "Illegible proof of Ana Perez"), "evt-rej-key-1").status()).isEqualTo(200);
+
+        var validated = decisionPayload(approved, "PaymentValidated");
+        var rejection = decisionPayload(rejected, "PaymentRejected");
+        assertThat(validated.get("attemptId").asText()).isEqualTo(approved);
+        assertThat(validated.has("reason")).isFalse();
+        assertThat(rejection.get("attemptId").asText()).isEqualTo(rejected);
+        assertThat(rejection.has("reason")).isFalse();
+        assertThat(rejection.toString()).doesNotContain("Ana Perez");
+        assertThat(jdbc.queryForObject("SELECT decision_reason FROM commercial_reservation.payment_attempt WHERE payment_attempt_id = ?",
+                String.class, UUID.fromString(rejected))).isEqualTo("Illegible proof of Ana Perez");
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode decisionPayload(String proof, String type) throws Exception {
+        String json = jdbc.queryForObject("SELECT e.payload::text FROM commercial_reservation.outbox_event e JOIN commercial_reservation.payment_attempt a "
+                + "ON a.reservation_id = e.reservation_id WHERE a.payment_attempt_id = ? AND e.event_type = ?", String.class, UUID.fromString(proof), type);
+        return TestJwtKeys.JSON.readTree(json);
+    }
+
     // A refused decision rolls its key back, so the key is not burned: the corrected request with the same key is accepted.
     @Test void aRefusedDecisionDoesNotBurnItsKey() throws Exception {
         String proof = proof("idem-burn");
