@@ -6,7 +6,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CreditW
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCreditWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceQueries;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditApplicationReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceApplications;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCreditBalances;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadCreditBalances;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceQueries;
@@ -47,7 +48,7 @@ class CreditBalanceConfiguration {
     }
 
     @Bean
-    ApplyCreditBalanceUseCase applyCreditBalance(@Lazy CreditBalanceRepository credits, @Lazy JdbcCreditBalanceRepository applications,
+    ApplyCreditBalanceUseCase applyCreditBalance(@Lazy CreditBalanceRepository credits, @Lazy CreditBalanceApplications applications,
             @Lazy ReservationRepository reservations, @Lazy DepartureReader departures, @Lazy PaymentDeadlineReader deadlines,
             @Lazy PaymentConditionReader conditions, @Lazy SalidaCapacityHolder holder, @Lazy PaymentEventOutbox outbox, @Lazy PaymentTransaction transaction,
             IdGenerator ids, Clock clock) {
@@ -56,13 +57,22 @@ class CreditBalanceConfiguration {
 
     @Bean
     ManageCreditBalances manageCreditBalances(RecordCreditBalanceUseCase record, ApplyCreditBalanceUseCase apply, @Lazy CreditBalanceRepository credits,
-            @Lazy JdbcCreditBalanceRepository applications, @Lazy CustomerByAccount accounts, @Lazy ReservationRepository reservations) {
+            @Lazy CreditApplicationReader applications, @Lazy CustomerByAccount accounts, @Lazy ReservationRepository reservations) {
         return new ManageCreditBalancesUseCase(record, apply, credits, applications, accounts, reservations);
     }
 
     @Bean
     IdempotentCreditWrites idempotentCreditWrites(ManageCreditBalances credits, IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentCreditWrites(credits, keys, new TransactionTemplate(manager));
+        IdempotentCreditWrites.Keys store = new IdempotentCreditWrites.Keys() {
+            @Override public boolean tryRegister(java.util.UUID tenantId, String key, String resourceType, java.util.UUID resourceId) {
+                return keys.tryRegister(tenantId, key, resourceType, resourceId);
+            }
+
+            @Override public java.util.Optional<java.util.UUID> findResourceId(java.util.UUID tenantId, String key) {
+                return keys.findResourceId(tenantId, key);
+            }
+        };
+        return new IdempotentCreditWrites(credits, store, new TransactionTemplate(manager));
     }
 
     @Bean
