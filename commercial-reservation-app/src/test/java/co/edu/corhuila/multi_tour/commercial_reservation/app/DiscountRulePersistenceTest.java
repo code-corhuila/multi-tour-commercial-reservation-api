@@ -22,6 +22,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountRu
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountRuleChanged;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountRuleState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ServiceCoverage;
 import java.time.Clock;
 import java.time.Instant;
@@ -125,7 +126,7 @@ class DiscountRulePersistenceTest {
         UUID foreign = catalogService(UUID.randomUUID());
         assertThatThrownBy(() -> create.create(admin,
                 command("Leak", 500, null, ServiceCoverage.of(Set.of(foreign)), null)))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(DomainException.class);
 
         assertThat(count("discount_rule", "tenant_id", tenant)).isZero();
         assertThat(count("outbox_event", "tenant_id", tenant)).isZero();
