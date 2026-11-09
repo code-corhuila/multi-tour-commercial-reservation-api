@@ -1,6 +1,5 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CreditBalanceView;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCreditBalances;
@@ -19,11 +18,18 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class IdempotentCreditWrites {
     public record Outcome<T>(T value, boolean created) {}
 
+    // The key store as this route sees it; the composition root binds it to the persisted keys, so no out adapter is imported here.
+    public interface Keys {
+        boolean tryRegister(UUID tenantId, String key, String resourceType, UUID resourceId);
+
+        Optional<UUID> findResourceId(UUID tenantId, String key);
+    }
+
     private final ManageCreditBalances credits;
-    private final IdempotencyKeys keys;
+    private final Keys keys;
     private final TransactionTemplate transactions;
 
-    public IdempotentCreditWrites(ManageCreditBalances credits, IdempotencyKeys keys, TransactionTemplate transactions) {
+    public IdempotentCreditWrites(ManageCreditBalances credits, Keys keys, TransactionTemplate transactions) {
         this.credits = credits;
         this.keys = keys;
         this.transactions = transactions;
