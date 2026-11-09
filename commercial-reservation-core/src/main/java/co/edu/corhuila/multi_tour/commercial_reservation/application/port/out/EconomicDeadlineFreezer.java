@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.application.port.out;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FreezeCause;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -7,5 +8,5 @@ import java.util.UUID;
 // transaction. Freezing a frozen row changes nothing. The adapter writes frozen_at and remaining_at_freeze_minutes of HU-COM-011 (and the cause of HU-COM-020).
 public interface EconomicDeadlineFreezer {
 
-    void freeze(UUID tenantId, UUID reservationId, Instant at, DeadlineFreezeCause cause);
+    void freeze(UUID tenantId, UUID reservationId, Instant at, FreezeCause cause);
 }
