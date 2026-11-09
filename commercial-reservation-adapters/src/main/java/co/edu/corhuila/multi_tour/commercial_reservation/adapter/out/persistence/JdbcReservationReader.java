@@ -21,7 +21,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -58,61 +63,81 @@ public final class JdbcReservationReader implements ReservationReader, CreatedRe
 
     @Override
     public Optional<Reservation> findAsCreated(UUID tenantId, UUID reservationId) {
-        return jdbc.query("SELECT r.customer_id, r.salida_id, r.service_id, r.party_size, r.projected_value_cents, "
+        return Optional.ofNullable(findAllAsCreated(tenantId, List.of(reservationId)).get(reservationId));
+    }
+
+    // The creation values of several reservations in three statements (the rows, the lines, the companions): a list that shows one row per
+    // proof must not read once per reservation. The id of another tenant is absent from the map, like a missing one.
+    Map<UUID, Reservation> findAllAsCreated(UUID tenantId, Collection<UUID> reservationIds) {
+        Map<UUID, Reservation> found = new LinkedHashMap<>();
+        if (reservationIds.isEmpty()) return found;
+        String ids = SqlUuidArray.of(reservationIds);
+        Map<UUID, List<FixedDiscount>> linesOf = lines(tenantId, ids);
+        Map<UUID, List<Companion>> companionsOf = companions(tenantId, ids);
+        jdbc.query("SELECT r.reservation_id, r.customer_id, r.salida_id, r.service_id, r.party_size, r.projected_value_cents, "
                 + "r.payment_type, r.payment_method, r.created_by, r.created_at, s.base_rate_cents, s.transport_rate_cents "
                 + "FROM commercial_reservation.reservation r JOIN commercial_reservation.reserved_service s "
                 + "ON s.tenant_id = r.tenant_id AND s.reservation_id = r.reservation_id "
-                + "WHERE r.tenant_id = ? AND r.reservation_id = ?", (row, index) -> {
+                + "WHERE r.tenant_id = ? AND r.reservation_id = ANY (?::uuid[])", (row, index) -> {
+                    UUID reservationId = row.getObject("reservation_id", UUID.class);
                     long transport = row.getLong("transport_rate_cents");
                     boolean noTransport = row.wasNull();
                     var service = new ReservedService(row.getObject("service_id", UUID.class),
                             new Cents(row.getLong("base_rate_cents")), noTransport ? null : new Cents(transport));
-                    List<FixedDiscount> lines = lines(tenantId, reservationId);
+                    List<FixedDiscount> lines = linesOf.getOrDefault(reservationId, List.of());
                     Cents projected = new Cents(row.getLong("projected_value_cents"));
-                    return Reservation.create(reservationId, tenantId, row.getObject("customer_id", UUID.class),
+                    found.put(reservationId, Reservation.create(reservationId, tenantId, row.getObject("customer_id", UUID.class),
                             row.getObject("salida_id", UUID.class), row.getObject("created_by", UUID.class),
                             row.getInt("party_size"), service, projected,
                             lines.isEmpty() ? projected : lines.get(lines.size() - 1).subtotal(), lines,
                             PaymentType.fromCode(row.getString("payment_type")),
                             PaymentMethod.fromCode(row.getString("payment_method")),
-                            row.getObject("created_at", OffsetDateTime.class).toInstant(), companions(tenantId, reservationId));
-                }, tenantId, reservationId).stream().findFirst();
+                            row.getObject("created_at", OffsetDateTime.class).toInstant(), companionsOf.getOrDefault(reservationId, List.of())));
+                    return reservationId;
+                }, tenantId, ids);
+        return found;
     }
 
-    private List<FixedDiscount> lines(UUID tenantId, UUID reservationId) {
-        return jdbc.query("SELECT line_order, discount_rule_id, rule_name, discount_type, discount_percentage_bp, "
+    private Map<UUID, List<FixedDiscount>> lines(UUID tenantId, String reservationIds) {
+        return grouped(jdbc.query("SELECT reservation_id, line_order, discount_rule_id, rule_name, discount_type, discount_percentage_bp, "
                 + "discount_amount_cents, calculation_base, base_cents, amount_cents, subtotal_cents, cap_cents "
-                + "FROM commercial_reservation.reservation_fixed_discount WHERE tenant_id = ? AND reservation_id = ? "
-                + "ORDER BY line_order", (row, index) -> {
+                + "FROM commercial_reservation.reservation_fixed_discount WHERE tenant_id = ? AND reservation_id = ANY (?::uuid[]) "
+                + "ORDER BY reservation_id, line_order", (row, index) -> {
                     int percentage = row.getInt("discount_percentage_bp");
                     Integer basisPoints = row.wasNull() ? null : percentage;
                     long amount = row.getLong("discount_amount_cents");
                     Long fixed = row.wasNull() ? null : amount;
                     long cap = row.getLong("cap_cents");
                     Long capCents = row.wasNull() ? null : cap;
-                    return new FixedDiscount(row.getInt("line_order"), row.getObject("discount_rule_id", UUID.class),
+                    return Map.entry(row.getObject("reservation_id", UUID.class), new FixedDiscount(row.getInt("line_order"), row.getObject("discount_rule_id", UUID.class),
                             row.getString("rule_name"), DiscountType.valueOf(row.getString("discount_type")), basisPoints,
                             fixed, DiscountBase.valueOf(row.getString("calculation_base")),
                             new Cents(row.getLong("base_cents")), new Cents(row.getLong("amount_cents")),
-                            new Cents(row.getLong("subtotal_cents")), capCents);
-                }, tenantId, reservationId);
+                            new Cents(row.getLong("subtotal_cents")), capCents));
+                }, tenantId, reservationIds));
+    }
+
+    private static <T> Map<UUID, List<T>> grouped(List<Map.Entry<UUID, T>> rows) {
+        Map<UUID, List<T>> byReservation = new HashMap<>();
+        rows.forEach(row -> byReservation.computeIfAbsent(row.getKey(), id -> new ArrayList<>()).add(row.getValue()));
+        return byReservation;
     }
 
     // No order was stored: the companions come back by document, which is unique in the reservation.
-    private List<Companion> companions(UUID tenantId, UUID reservationId) {
-        return jdbc.query("SELECT c.reservation_companion_id, c.full_name, c.document_number, c.birth_date_or_age, "
+    private Map<UUID, List<Companion>> companions(UUID tenantId, String reservationIds) {
+        return grouped(jdbc.query("SELECT c.reservation_id, c.reservation_companion_id, c.full_name, c.document_number, c.birth_date_or_age, "
                 + "s.activity_requirements ->> 'envelope' AS requirements "
                 + "FROM commercial_reservation.reservation_companion c LEFT JOIN "
                 + "commercial_reservation.reservation_companion_sensitive_data s "
                 + "ON s.reservation_companion_id = c.reservation_companion_id "
-                + "WHERE c.tenant_id = ? AND c.reservation_id = ? ORDER BY c.document_number", (row, index) -> {
+                + "WHERE c.tenant_id = ? AND c.reservation_id = ANY (?::uuid[]) ORDER BY c.reservation_id, c.document_number", (row, index) -> {
                     UUID id = row.getObject("reservation_companion_id", UUID.class);
                     String requirements = row.getString("requirements");
-                    return new Companion(row.getString("full_name"), DocumentNumber.of(row.getString("document_number")),
+                    return Map.entry(row.getObject("reservation_id", UUID.class), new Companion(row.getString("full_name"), DocumentNumber.of(row.getString("document_number")),
                             birth(cipher.decrypt(row.getString("birth_date_or_age"), aad(tenantId, id, "birth_date_or_age"))),
                             requirements == null ? null
-                                    : risk(cipher.decrypt(requirements, aad(tenantId, id, "activity_requirements"))));
-                }, tenantId, reservationId);
+                                    : risk(cipher.decrypt(requirements, aad(tenantId, id, "activity_requirements")))));
+                }, tenantId, reservationIds));
     }
 
     private static ReservationSnapshot.State state(String status) {
