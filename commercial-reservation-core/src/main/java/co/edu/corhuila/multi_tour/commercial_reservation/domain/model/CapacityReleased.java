@@ -10,4 +10,5 @@ public record CapacityReleased(UUID tenantId, UUID reservationId, UUID serviceId
     public static final String CANCELLED_FOR_NON_PAYMENT = "CANCELLED_FOR_NON_PAYMENT";
     public static final String CANCELLED_AT_CUSTOMER_REQUEST = "CANCELLED_AT_CUSTOMER_REQUEST";
     public static final String RESERVATION_MODIFIED = "RESERVATION_MODIFIED";
+    public static final String DEPARTURE_CANCELLED_OR_INTERRUPTED = "DEPARTURE_CANCELLED_OR_INTERRUPTED";
 }
