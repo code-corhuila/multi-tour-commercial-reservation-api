@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CashReportingSessionStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CurrentRequestToken;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashIncome;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashSession;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashIncomeRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashSessionStatus;
@@ -157,7 +158,7 @@ class PaymentPersistenceConfiguration {
     // the saga starts the step or the Project Lead decides otherwise, they stay refused with an explicit message (declared debt DD-2).
     @Bean
     CashIncomeRecorder cashIncomeRecorder() {
-        return new UnverifiedCashSession();
+        return new UnverifiedCashIncome();
     }
 
     // HU-COM-017: the credit balance is real (rows of the db, available value derived); the excess of a validated payment is recorded as one credit per attempt.
