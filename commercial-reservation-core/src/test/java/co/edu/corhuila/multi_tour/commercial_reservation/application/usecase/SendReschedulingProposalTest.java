@@ -65,7 +65,7 @@ class SendReschedulingProposalTest {
         departures.plant(new DepartureState(PROPOSED, TENANT, SERVICE, NOW.plus(Duration.ofDays(40)), DepartureStatus.SCHEDULED, 10, 7));
         departures.plant(new DepartureState(new UUID(18, 30), TENANT, OTHER_SERVICE, NOW.plus(Duration.ofDays(40)), DepartureStatus.SCHEDULED, 10, 0));
         fakes.reservations.put(RESERVATION, Reservation.create(RESERVATION, TENANT, CUSTOMER, ORIGINAL, ADMIN, 3, new ReservedService(SERVICE, new Cents(100_000), new Cents(50_000)),
-                new Cents(300_000), new Cents(300_000), List.of(), PaymentType.FULL_PAYMENT, PaymentMethod.TRANSFER, NOW.minus(Duration.ofDays(2))));
+                new Cents(450_000), new Cents(450_000), List.of(), PaymentType.FULL_PAYMENT, PaymentMethod.TRANSFER, NOW.minus(Duration.ofDays(2))));
         stored.put(EPISODE, ReschedulingEpisode.open(EPISODE, TENANT, RESERVATION, ORIGINAL, NOW.minus(Duration.ofHours(2)), NOW.minus(Duration.ofHours(2))));
     }
 
