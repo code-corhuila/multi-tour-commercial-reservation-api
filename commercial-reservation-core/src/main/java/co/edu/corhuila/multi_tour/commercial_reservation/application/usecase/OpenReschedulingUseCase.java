@@ -5,12 +5,14 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Ope
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DeadlineFreezeCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EconomicDeadlineFreezer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReschedulingRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReschedulingEpisode;
 import java.time.Clock;
@@ -25,16 +27,18 @@ public class OpenReschedulingUseCase implements OpenRescheduling {
     private final ReservationRepository reservations;
     private final SalidaCapacityHolder holder;
     private final EconomicDeadlineFreezer freezer;
+    private final PaymentEventOutbox outbox;
     private final PaymentTransaction transaction;
     private final IdGenerator ids;
     private final Clock clock;
 
-    public OpenReschedulingUseCase(ReschedulingRepository episodes, ReservationRepository reservations, SalidaCapacityHolder holder, EconomicDeadlineFreezer freezer,
+    public OpenReschedulingUseCase(ReschedulingRepository episodes, ReservationRepository reservations, SalidaCapacityHolder holder, EconomicDeadlineFreezer freezer, PaymentEventOutbox outbox,
             PaymentTransaction transaction, IdGenerator ids, Clock clock) {
         this.episodes = episodes;
         this.reservations = reservations;
         this.holder = holder;
         this.freezer = freezer;
+        this.outbox = outbox;
         this.transaction = transaction;
         this.ids = ids;
         this.clock = clock;
@@ -53,7 +57,8 @@ public class OpenReschedulingUseCase implements OpenRescheduling {
                 episodes.save(episode);
                 if (reservation.seatHeld()) {
                     holder.release(command.tenantId(), command.reservationId());
-                    reservation.releaseSeat("DEPARTURE_CANCELLED_OR_INTERRUPTED", now);
+                    reservation.releaseSeat(CapacityReleased.DEPARTURE_CANCELLED_OR_INTERRUPTED, now);
+                    reservation.pullEvents().forEach(outbox::append);
                     reservations.save(reservation);
                 }
                 freezer.freeze(command.tenantId(), command.reservationId(), now, DeadlineFreezeCause.DEPARTURE_CANCELLED_OR_INTERRUPTED);
