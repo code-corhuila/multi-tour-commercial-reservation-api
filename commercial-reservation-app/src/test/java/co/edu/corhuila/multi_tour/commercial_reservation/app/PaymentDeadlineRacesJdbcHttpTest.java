@@ -265,4 +265,27 @@ class PaymentDeadlineRacesJdbcHttpTest {
         assertThat(events(id, "CapacityReleased")).isEqualTo(1);
         assertThat(events(id, "ReservationCancelled")).isEqualTo(1);
     }
+
+    // Audit finding 2026-11-07: the due list reads every deadline row, the expiry reads the row with the latest due instant. Whatever the list
+    // offers to the job must be expirable, or the reservation comes back every minute as NOT_DUE.
+    @Test void aReservationOfferedByTheDueListIsExpirableWhenItHasABalanceAndALaterPendingDifferenceDeadline() throws Exception {
+        UUID id = reservation();
+        assertThat(transfer(id, 90_000)).isEqualTo(201);
+        UUID attempt = jdbc.queryForObject("SELECT payment_attempt_id FROM commercial_reservation.payment_attempt WHERE reservation_id = ?", UUID.class, id);
+        assertThat(send(post(BASE + "/payment-proofs/" + attempt + "/approve").header("Idempotency-Key", key())
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))))).isEqualTo(200);
+        for (var row : List.of(List.of("BALANCE", 30), List.of("PENDING_DIFFERENCE", 60))) {
+            jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, deadline_kind, due_at) "
+                    + "VALUES (?, ?, ?, ?, ?)", UUID.randomUUID(), tenant, id, row.get(0),
+                    OffsetDateTime.ofInstant(TestJwtKeys.NOW.plus(Duration.ofHours((Integer) row.get(1))), ZoneOffset.UTC));
+        }
+        Instant at = TestJwtKeys.NOW.plus(Duration.ofHours(31));
+
+        var listed = new co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDuePaymentQueries(jdbc).page(tenant, at, 1, 100);
+        boolean offered = listed.items().stream().anyMatch(view -> view.reservationId().equals(id));
+        ExpiryResult answer = expire(id, at);
+
+        assertThat(offered).as("the list offers the reservation").isTrue();
+        assertThat(answer.expired()).as("the expiry answered " + answer.reason()).isTrue();
+    }
 }

@@ -12,6 +12,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DeadlineKind;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
@@ -51,7 +52,9 @@ public class ExtendPaymentDeadlineUseCase implements ExtendPaymentDeadline {
                     .orElseThrow(() -> new ReservationNotFoundException(command.reservationId()));
             if (reservation.reservationStatus() != ReservationStatus.PENDING_PAYMENT)
                 throw new BusinessRuleViolation("only a reservation pending payment can have its deadline extended");
-            PaymentDeadline current = deadlines.openDeadline(reservation.tenantId(), reservation.reservationId())
+            // The single extension belongs to the initial payment row, whatever later rows the reservation has (spec DP-04).
+            PaymentDeadline current = deadlines.openDeadlines(reservation.tenantId(), reservation.reservationId()).stream()
+                    .filter(row -> row.kind() == DeadlineKind.INITIAL_PAYMENT).findFirst()
                     .orElseThrow(() -> new BusinessRuleViolation("the reservation has no payment deadline"));
             int maximum = policy.maximumHours(reservation.tenantId(), reservation)
                     .orElseThrow(() -> new BusinessRuleViolation("the maximum extension is not configured"));
