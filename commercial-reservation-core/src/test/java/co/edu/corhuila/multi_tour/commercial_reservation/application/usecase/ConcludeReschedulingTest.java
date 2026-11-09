@@ -114,7 +114,7 @@ class ConcludeReschedulingTest {
 
     @Test
     void noAlternativeIsAcceptedOnlyBeforeAProposalExists() {
-        withPendingProposal(NOW.minus(Duration.ofHours(1)));
+        withPendingProposal(CANCELLED_AT.plus(Duration.ofHours(2)));
 
         assertThatThrownBy(() -> conclude.declareNoAlternative(TENANT, ADMIN, Role.TENANT_ADMINISTRATOR, EPISODE)).isInstanceOf(BusinessRuleViolation.class);
         assertThat(fakes.reservations.get(RESERVATION).reservationStatus()).isEqualTo(ReservationStatus.CONFIRMED);
