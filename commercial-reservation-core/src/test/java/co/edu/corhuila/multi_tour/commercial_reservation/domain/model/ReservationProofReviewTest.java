@@ -62,7 +62,8 @@ class ReservationProofReviewTest {
         assertThat(reservation.paymentStatus()).isEqualTo(PaymentStatus.NO_PAYMENT);
         assertThat(reservation.pendingBalance()).isEqualTo(new Cents(300_000));
         assertThat(reservation.pullEvents()).singleElement().isInstanceOfSatisfying(PaymentRejected.class, e -> {
-            assertThat(e.reason()).isEqualTo("the amount does not match");
+            assertThat(e.attemptId()).isEqualTo(FIRST);
+            assertThat(e.getClass().getRecordComponents()).extracting(c -> c.getName()).doesNotContain("reason");
             assertThat(e.pendingBalance()).isEqualTo(new Cents(300_000));
             assertThat(e.validatorId()).isEqualTo(REVIEWER);
         });
@@ -128,6 +129,7 @@ class ReservationProofReviewTest {
         assertThat(reservation.paymentStatus()).isEqualTo(PaymentStatus.DEPOSIT_RECEIVED);
         assertThat(reservation.pendingBalance()).isEqualTo(new Cents(200_000));
         assertThat(attempt(reservation, FIRST).decidedBy()).isEqualTo(REVIEWER);
+        assertThat(reservation.pullEvents().get(0)).isInstanceOfSatisfying(PaymentValidated.class, e -> assertThat(e.attemptId()).isEqualTo(FIRST));
         assertThat(reservation.pullEvents()).extracting(e -> e.getClass().getSimpleName())
                 .containsExactly("PaymentValidated", "ReservationConfirmed");
     }
@@ -208,6 +210,7 @@ class ReservationProofReviewTest {
         assertThat(attempt(reservation, FIRST).treatmentAmount()).isEqualTo(new Cents(100_000));
         assertThat(reservation.reservationStatus()).isEqualTo(ReservationStatus.CANCELLED);
         assertThat(reservation.pendingBalance()).isEqualTo(new Cents(300_000));
+        assertThat(reservation.pullEvents().get(0)).isInstanceOfSatisfying(PaymentValidated.class, e -> assertThat(e.attemptId()).isEqualTo(FIRST));
         assertThat(reservation.pullEvents()).extracting(e -> e.getClass().getSimpleName()).containsExactly("PaymentValidated");
     }
 
