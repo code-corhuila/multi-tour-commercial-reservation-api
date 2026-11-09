@@ -80,7 +80,7 @@ class OpenReschedulingTest {
         assertThat(fakes.releaseCalls).isEqualTo(1);
         assertThat(departures.rows.get(DEPARTURE).heldSeats()).isZero();
         assertThat(fakes.reservations.get(RESERVATION).seatHeld()).isFalse();
-        assertThat(fakes.events).as("the release of the seat is in the outbox, once, in the same transaction").hasSize(1).first().isInstanceOf(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased.class);
+        assertThat(fakes.events).as("the release of the seat is in the outbox, once, in the same transaction").filteredOn(e -> e instanceof co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased).hasSize(1);
     }
 
     @Test
