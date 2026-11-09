@@ -133,6 +133,14 @@ public final class Reservation {
         return new CashReceipt(attempt, new Cents(applied), new Cents(amount.amount() - applied));
     }
 
+    // HU-COM-017 RN-04: a credit balance applied is a validated payment with no attempt, no proof and no cash; it never exceeds the pending balance.
+    public void applyCreditBalance(Cents amount, Cents minimumDeposit, UUID by, Instant now) {
+        requireOpenToPayment();
+        if (amount == null || amount.amount() <= 0) throw new DomainException("amountCents", "amountCents must be greater than zero");
+        if (amount.amount() > pendingBalance.amount()) throw new BusinessRuleViolation("the amount is above the pending balance of the reservation");
+        recordValidatedPayment(amount, minimumDeposit, by, now);
+    }
+
     // The one place that adds a validated amount (HU-COM-010 reuses it for an approved transfer): the balance goes down, the
     // situation is recomputed and the reservation is confirmed when the condition of its payment type is met.
     private void recordValidatedPayment(Cents applied, Cents minimumDeposit, UUID validator, Instant now) {
