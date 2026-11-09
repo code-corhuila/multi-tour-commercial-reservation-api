@@ -114,7 +114,7 @@ class CreditBalancePersistenceTest {
         UUID attempt = UUID.randomUUID();
         fixture.jdbc.update("INSERT INTO commercial_reservation.payment_attempt (payment_attempt_id, tenant_id, reservation_id, payment_method, "
                 + "received_amount_cents, validation_status, payment_status_snapshot, registered_by, registered_at) "
-                + "VALUES (?, ?, ?, 'TRANSFER', 100000, 'VALIDATED', 'NO_PAYMENT', ?, now())", attempt, fixture.tenant, reservationId, fixture.actor);
+                + "VALUES (?, ?, ?, 'TRANSFER', 100000, 'IN_VALIDATION', 'NO_PAYMENT', ?, now())", attempt, fixture.tenant, reservationId, fixture.actor);
         var recording = new CreditBalanceRecording(credits, new UuidGenerator(), Clock.fixed(NOW, ZoneOffset.UTC));
 
         recording.recordExcess(fixture.tenant, reservationId, attempt, new Cents(12_000));
