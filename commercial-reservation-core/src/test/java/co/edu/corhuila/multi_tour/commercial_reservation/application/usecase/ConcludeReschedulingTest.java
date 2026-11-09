@@ -160,6 +160,24 @@ class ConcludeReschedulingTest {
     }
 
     @Test
+    void aRepeatOfTheExpiryOrOfNoAlternativeAnswersTheStoredEpisodeAndChangesNothing() {
+        ReschedulingEpisode first = conclude.expire(TENANT, EPISODE);
+        journal.clear();
+
+        ReschedulingEpisode again = conclude.expire(TENANT, EPISODE);
+
+        assertThat(again).isEqualTo(first);
+        assertThat(journal).as("no second refund and no second release").isEmpty();
+
+        stored.put(EPISODE, ReschedulingEpisode.open(EPISODE, TENANT, RESERVATION, ORIGINAL, CANCELLED_AT, CANCELLED_AT));
+        reservation(ReservationStatus.CONFIRMED, new Cents(300_000));
+        ReschedulingEpisode none = conclude.declareNoAlternative(TENANT, ADMIN, Role.TENANT_ADMINISTRATOR, EPISODE);
+        journal.clear();
+        assertThat(conclude.declareNoAlternative(TENANT, ADMIN, Role.TENANT_ADMINISTRATOR, EPISODE)).isEqualTo(none);
+        assertThat(journal).isEmpty();
+    }
+
+    @Test
     void aReservationInExecutionIsCancelledToo() {
         reservation(ReservationStatus.IN_EXECUTION, new Cents(300_000));
 
