@@ -129,7 +129,7 @@ public final class Reservation {
         attempts.add(attempt);
         events.add(new PaymentEvidenceRegistered(tenantId, reservationId, attemptId, PaymentMethod.CASH, amount, null, now));
         long applied = Math.min(amount.amount(), pendingBalance.amount());
-        recordValidatedPayment(new Cents(applied), minimumDeposit, registeredBy, now);
+        recordValidatedPayment(attemptId, new Cents(applied), minimumDeposit, registeredBy, now);
         return new CashReceipt(attempt, new Cents(applied), new Cents(amount.amount() - applied));
     }
 
@@ -138,19 +138,19 @@ public final class Reservation {
         requireOpenToPayment();
         if (amount == null || amount.amount() <= 0) throw new DomainException("amountCents", "amountCents must be greater than zero");
         if (amount.amount() > pendingBalance.amount()) throw new BusinessRuleViolation("the amount is above the pending balance of the reservation");
-        recordValidatedPayment(amount, minimumDeposit, by, now);
+        recordValidatedPayment(null, amount, minimumDeposit, by, now);
     }
 
     // The one place that adds a validated amount (HU-COM-010 reuses it for an approved transfer): the balance goes down, the
     // situation is recomputed and the reservation is confirmed when the condition of its payment type is met.
-    private void recordValidatedPayment(Cents applied, Cents minimumDeposit, UUID validator, Instant now) {
+    private void recordValidatedPayment(UUID attemptId, Cents applied, Cents minimumDeposit, UUID validator, Instant now) {
         pendingBalance = new Cents(pendingBalance.amount() - applied.amount());
         Cents validated = new Cents(finalValue.amount() - pendingBalance.amount());
         boolean confirms = reservationStatus == ReservationStatus.PENDING_PAYMENT
                 && FinancialSituation.meetsConfirmation(finalValue, validated, expectedPaymentType, minimumDeposit);
         if (confirms) reservationStatus = ReservationStatus.CONFIRMED;
         paymentStatus = FinancialSituation.of(finalValue, validated, expectedPaymentType, minimumDeposit, reservationStatus);
-        events.add(new PaymentValidated(tenantId, reservationId, applied, paymentStatus, pendingBalance, validator, now));
+        events.add(new PaymentValidated(tenantId, reservationId, attemptId, applied, paymentStatus, pendingBalance, validator, now));
         if (confirms) events.add(new ReservationConfirmed(tenantId, reservationId, paymentStatus, people, now));
     }
 
@@ -181,8 +181,8 @@ public final class Reservation {
         long treatment = cancelled ? verified.amount() : 0;
         PaymentAttempt decided = attempt.approvedWith(reviewer, now, why, verified, new Cents(applied), new Cents(excess), new Cents(treatment));
         attempts.set(attempts.indexOf(attempt), decided);
-        if (cancelled) events.add(new PaymentValidated(tenantId, reservationId, verified, paymentStatus, pendingBalance, reviewer, now));
-        else recordValidatedPayment(new Cents(applied), minimumDeposit, reviewer, now);
+        if (cancelled) events.add(new PaymentValidated(tenantId, reservationId, attemptId, verified, paymentStatus, pendingBalance, reviewer, now));
+        else recordValidatedPayment(attemptId, new Cents(applied), minimumDeposit, reviewer, now);
         return new ProofDecision(decided, new Cents(applied), new Cents(excess), new Cents(treatment));
     }
 
@@ -192,7 +192,7 @@ public final class Reservation {
         if (reason == null || reason.isBlank()) throw new DomainException("reason", "a reason is required to reject a proof");
         PaymentAttempt decided = attempt.rejectedWith(reviewer, now, reason.strip());
         attempts.set(attempts.indexOf(attempt), decided);
-        events.add(new PaymentRejected(tenantId, reservationId, reason.strip(), pendingBalance, reviewer, now));
+        events.add(new PaymentRejected(tenantId, reservationId, attemptId, pendingBalance, reviewer, now));
         return decided;
     }
 

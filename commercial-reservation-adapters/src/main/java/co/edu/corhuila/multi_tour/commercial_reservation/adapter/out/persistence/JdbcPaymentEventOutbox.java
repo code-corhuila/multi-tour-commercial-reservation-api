@@ -60,13 +60,14 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
                 payload.put("allocationKind", e.allocationKind());
             }
             case PaymentValidated e -> {
+                if (e.attemptId() != null) payload.put("attemptId", e.attemptId().toString());
                 payload.put("amountCents", e.amount().amount());
                 payload.put("paymentStatus", e.paymentStatus().name());
                 payload.put("pendingBalanceCents", e.pendingBalance().amount());
                 payload.put("validatorId", e.validatorId().toString());
             }
             case PaymentRejected e -> {
-                payload.put("reason", e.reason());
+                payload.put("attemptId", e.attemptId().toString());
                 payload.put("pendingBalanceCents", e.pendingBalance().amount());
                 payload.put("validatorId", e.validatorId().toString());
             }
