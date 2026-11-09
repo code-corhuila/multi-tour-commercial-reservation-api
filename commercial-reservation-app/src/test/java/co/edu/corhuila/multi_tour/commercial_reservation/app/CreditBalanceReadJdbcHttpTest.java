@@ -30,10 +30,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
@@ -47,15 +44,10 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "TEST_DATABASE_URL", matches = ".+")
 @ContextConfiguration(initializers = ReservationJdbcHttpTest.Database.class)
-@Import(CreditBalanceReadJdbcHttpTest.FixedClock.class)
+@Import(CreditBalanceWriteJdbcHttpTest.FixedClock.class)
 class CreditBalanceReadJdbcHttpTest {
     static final String BASE = "/api/v1/commercial-reservation";
     static final String ADMIN = "TENANT_ADMINISTRATOR";
-
-    @TestConfiguration
-    static class FixedClock {
-        @Bean @Primary Clock creditJdbcClock() { return Clock.fixed(TestJwtKeys.NOW, ZoneOffset.UTC); }
-    }
 
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
