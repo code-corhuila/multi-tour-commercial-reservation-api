@@ -4,9 +4,11 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FinancialDecisionRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalance;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalanceRecorded;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import java.time.Clock;
 import java.time.Instant;
@@ -19,14 +21,16 @@ public class RecordCreditBalanceUseCase {
     private final FinancialDecisionRepository decisions;
     private final CreditBalanceRepository credits;
     private final IdGenerator ids;
+    private final PaymentEventOutbox outbox;
     private final PaymentTransaction transaction;
     private final Clock clock;
 
-    public RecordCreditBalanceUseCase(FinancialDecisionRepository decisions, CreditBalanceRepository credits, IdGenerator ids, PaymentTransaction transaction,
-            Clock clock) {
+    public RecordCreditBalanceUseCase(FinancialDecisionRepository decisions, CreditBalanceRepository credits, IdGenerator ids, PaymentEventOutbox outbox,
+            PaymentTransaction transaction, Clock clock) {
         this.decisions = decisions;
         this.credits = credits;
         this.ids = ids;
+        this.outbox = outbox;
         this.transaction = transaction;
         this.clock = clock;
     }
@@ -41,6 +45,7 @@ public class RecordCreditBalanceUseCase {
             CreditBalance credit = CreditBalance.ofDecision(ids.newId(), decided, actor.actorId(), now);
             decisions.save(decided);
             credits.save(credit);
+            outbox.append(new CreditBalanceRecorded(credit.tenantId(), credit.sourceReservationId(), now, credit.id(), credit.amount(), credit.origin(), actor.actorId()));
             return credit;
         });
     }
