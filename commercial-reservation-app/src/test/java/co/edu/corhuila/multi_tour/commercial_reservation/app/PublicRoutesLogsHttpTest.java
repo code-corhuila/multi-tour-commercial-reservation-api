@@ -87,4 +87,40 @@ class PublicRoutesLogsHttpTest {
             for (String marker : markers) assertThat(line).as("log line of " + event.getLoggerName()).doesNotContain(marker);
         }
     }
+
+    // RN-12 / AC-06.15 (T-08): the answers of the public refusals (400, 404) and the log lines they leave carry no personal datum and no search text,
+    // even when the request puts them in the query, in the headers or in the path. The answer is scanned whole: body, headers, error message.
+    @Test void theLogsAndTheErrorsCarryNoPersonalData() throws Exception {
+        String personal = "?search=" + SEARCH + "&name=" + NAME + "&contact=" + CONTACT + "&email=" + EMAIL;
+        String[] refused = {
+            IDENTIFIER + "/tours" + personal + "&limit=0",
+            IDENTIFIER + "/tours" + personal + "&page=0",
+            IDENTIFIER + "/tours/not-a-uuid" + personal,
+            IDENTIFIER + "/tours/" + new UUID(9, 9) + personal,
+            IDENTIFIER + "/associated-establishments" + personal,
+            "agencia-desconocida/tours" + personal,
+            "maria.perez%40example.com/tours" + personal,
+            "3105550199/associated-establishments" + personal};
+        List<String> markers = MARKER_OVERRIDE != null ? List.of(MARKER_OVERRIDE)
+                : List.of(SEARCH, "Maria", "Perez", "3105550199", "maria.perez", "example.com");
+        LoggerFactory.getLogger("co.edu.corhuila.control").info("capture-control");
+        int refusals = 0;
+        for (String path : refused) {
+            var response = mvc.perform(get(BASE + path).header("X-Correlation-Id", CatalogHttpTest.TRACE)
+                    .header("X-Customer-Name", "Maria Fernanda Perez").header("X-Customer-Contact", CONTACT)).andReturn().getResponse();
+            if (response.getStatus() < 400) continue;
+            refusals++;
+            String answer = response.getStatus() + " " + response.getContentAsString() + " " + response.getHeaderNames().stream()
+                    .map(name -> name + "=" + response.getHeaders(name)).toList() + " " + response.getErrorMessage();
+            for (String marker : markers) assertThat(answer).as("answer of " + path).doesNotContain(marker);
+        }
+        List<ILoggingEvent> events = List.copyOf(appender.list);
+        assertThat(events).as("the capture must see the control line").anyMatch(e -> e.getFormattedMessage().equals("capture-control"));
+        for (ILoggingEvent event : events) {
+            String line = event.getFormattedMessage() + " " + event.getMDCPropertyMap()
+                    + (event.getThrowableProxy() == null ? "" : " " + event.getThrowableProxy().getMessage());
+            for (String marker : markers) assertThat(line).as("log line of " + event.getLoggerName()).doesNotContain(marker);
+        }
+        assertThat(refusals).as("the scan must have seen refusals, not only successes").isGreaterThanOrEqualTo(refused.length - 1);
+    }
 }
