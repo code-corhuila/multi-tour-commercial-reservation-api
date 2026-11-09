@@ -253,7 +253,8 @@ public final class Reservation {
     public void cancel(CancellationCause cause, UUID by, Instant now, int releasedSeats) {
         if (cause == null || now == null) throw new MissingReservationDataException(List.of("cause", "cancelledAt"));
         if (reservationStatus == ReservationStatus.CANCELLED) throw new InvalidStatusTransitionException("the reservation is already cancelled");
-        if (reservationStatus != ReservationStatus.PENDING_PAYMENT && reservationStatus != ReservationStatus.CONFIRMED)
+        boolean interrupted = reservationStatus == ReservationStatus.IN_EXECUTION && cause == CancellationCause.NOT_ATTRIBUTABLE_TO_CUSTOMER; // HU-COM-018 AC-18.7: an interrupted service may end cancelled
+        if (reservationStatus != ReservationStatus.PENDING_PAYMENT && reservationStatus != ReservationStatus.CONFIRMED && !interrupted)
             throw new InvalidStatusTransitionException("a reservation in execution or completed cannot be cancelled");
         reservationStatus = ReservationStatus.CANCELLED;
         cancellationCause = cause; cancelledAt = now; cancelledBy = by;
