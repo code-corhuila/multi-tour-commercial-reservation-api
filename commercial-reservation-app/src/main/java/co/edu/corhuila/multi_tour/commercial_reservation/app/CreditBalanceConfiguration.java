@@ -1,12 +1,16 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CreditHttpAccess;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CreditReadController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CreditWriteController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCreditWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditApplicationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceApplications;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCreditBalances;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadCreditBalances;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
@@ -21,10 +25,12 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Sa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ApplyCreditBalanceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManageCreditBalancesUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RecordCreditBalanceUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReadCreditBalancesUseCase;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -82,5 +88,20 @@ class CreditBalanceConfiguration {
                         "/api/v1/commercial-reservation/credit-balance-summary");
             }
         };
+    }
+
+    @Bean
+    CreditBalanceQueries creditBalanceQueries(JdbcTemplate jdbc) {
+        return new JdbcCreditBalanceQueries(jdbc);
+    }
+
+    @Bean
+    ReadCreditBalances readCreditBalances(CreditBalanceQueries queries, @Lazy CustomerByAccount accounts) {
+        return new ReadCreditBalancesUseCase(queries, accounts);
+    }
+
+    @Bean
+    CreditReadController creditReadController(ReadCreditBalances read) {
+        return new CreditReadController(read);
     }
 }
