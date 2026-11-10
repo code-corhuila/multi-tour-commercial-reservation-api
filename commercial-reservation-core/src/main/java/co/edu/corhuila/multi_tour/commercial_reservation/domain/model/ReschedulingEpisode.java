@@ -68,6 +68,38 @@ public record ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UU
                 periodStart, frozen, next);
     }
 
+    // RN-06, AC-18.7: the operator declares there is no alternative, only before any proposal exists (a voided proposal is still a proposal): the episode closes cancelled.
+    public ReschedulingEpisode declareNoAlternative(Instant now) {
+        requireOpen();
+        if (!proposals.isEmpty()) throw new BusinessRuleViolation("no alternative can be declared once a proposal exists");
+        return closedAs(ClosingReason.NO_ALTERNATIVE, now, proposals);
+    }
+
+    // RN-09, AC-18.10, AC-18.11: applies exactly one outcome of what is due: the 96-hour limit, the response deadline of the pending proposal (which expires) or the 24 hours to propose. When
+    // nothing is due it answers that nothing is due. The episode limit wins over a response deadline that is the episode remainder.
+    public ReschedulingEpisode expire(Instant now) {
+        requireOpen();
+        Optional<ReschedulingProposal> pending = pendingProposal();
+        if (!now.isBefore(episodeLimit())) return closedAs(ClosingReason.EPISODE_LIMIT_REACHED, now, expiredWith(pending, now));
+        if (pending.isPresent() && !now.isBefore(pending.get().responseDeadlineAt())) return closedAs(ClosingReason.RESPONSE_DEADLINE_EXPIRED, now, expiredWith(pending, now));
+        if (pending.isEmpty() && !now.isBefore(proposalPeriodEnd())) return closedAs(ClosingReason.PROPOSAL_PERIOD_EXPIRED, now, proposals);
+        throw new BusinessRuleViolation("nothing is due: no clock of the episode has run out");
+    }
+
+    private void requireOpen() {
+        if (state != EpisodeState.OPEN) throw new InvalidStatusTransitionException("the episode is already closed");
+    }
+
+    private List<ReschedulingProposal> expiredWith(Optional<ReschedulingProposal> pending, Instant now) {
+        List<ReschedulingProposal> next = new ArrayList<>(proposals);
+        pending.ifPresent(p -> next.set(next.indexOf(p), p.closed(ProposalState.EXPIRED, now, null)));
+        return next;
+    }
+
+    private ReschedulingEpisode closedAs(ClosingReason why, Instant now, List<ReschedulingProposal> next) {
+        return new ReschedulingEpisode(id, tenantId, reservationId, originalSalidaId, cancelledAt, openedAt, EpisodeState.CANCELLED, why, now, periodStart, frozen, next);
+    }
+
     // The proposed departure was cancelled: the proposal is void (not a rejection) and a new period of the lowest of 24 hours and the remainder starts at that instant.
     public ReschedulingEpisode voidPending(Instant now) {
         ReschedulingProposal pending = pendingProposal().orElseThrow(() -> new InvalidStatusTransitionException("the episode has no pending proposal"));
