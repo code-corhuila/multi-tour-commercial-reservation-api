@@ -9,6 +9,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Reten
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RetentionDeletions;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RetentionFactsReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AnchorBasis;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureFacts;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
@@ -59,8 +60,12 @@ class DeleteSensitiveDataUseCaseTest {
     private final PaymentTransaction transaction = new PaymentTransaction() {
         @Override public <T> T inTransaction(Supplier<T> work) { transactions++; return work.get(); }
     };
+    private final RetentionFactsReader readerOfTheFacts = new RetentionFactsReader() {
+        @Override public Optional<RetentionFacts> factsOf(UUID tenantId, UUID reservationId) { return Optional.ofNullable(facts.get(reservationId)); }
+        @Override public List<UUID> dueCandidates(UUID tenantId, Instant now, int limit, UUID after) { return List.of(); }
+    };
     private final DeleteSensitiveDataUseCase useCase = new DeleteSensitiveDataUseCase(
-            (tenant, id) -> Optional.ofNullable(facts.get(id)), (tenant, id) -> Optional.empty(), deletions, transaction, Clock.fixed(NOW, ZoneOffset.UTC));
+            readerOfTheFacts, (tenant, id) -> Optional.empty(), deletions, transaction, Clock.fixed(NOW, ZoneOffset.UTC));
 
     private void reservation(UUID id, Instant serviceEnd) {
         facts.put(id, new RetentionFacts(CUSTOMER, BOGOTA, serviceEnd == null ? new DepartureFacts(DepartureStatus.SCHEDULED, null, null)
