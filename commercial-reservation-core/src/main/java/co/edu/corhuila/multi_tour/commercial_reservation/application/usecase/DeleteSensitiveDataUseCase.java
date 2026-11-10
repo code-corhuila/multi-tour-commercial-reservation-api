@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DeletionResult;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DeletionResult.Outcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RetentionFacts;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.DeleteSensitiveData;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationClosingReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
@@ -18,7 +19,7 @@ import java.util.UUID;
 // HU-COM-019 plan D-04: the deletion of the sensitive data of one reservation, one use case, one transaction. The service rechecks the year at the call (never trusts the
 // caller), so a reservation without anchor or not yet due deletes nothing; a second call finds the record and changes nothing. The risk rows of the companions go with their
 // own reservation; the risk row of the customer goes only when no other reservation of the customer still waits (RN-05), decided under a lock on the customer.
-public class DeleteSensitiveDataUseCase {
+public class DeleteSensitiveDataUseCase implements DeleteSensitiveData {
 
     private final RetentionFactsReader facts;
     private final ReservationClosingReader closings;
@@ -34,6 +35,7 @@ public class DeleteSensitiveDataUseCase {
         this.clock = clock;
     }
 
+    @Override
     public DeletionResult delete(UUID tenantId, UUID reservationId) {
         RetentionFacts own = facts.factsOf(tenantId, reservationId).orElseThrow(() -> new ReservationNotFoundException(reservationId));
         if (deletions.isDeleted(tenantId, reservationId)) return new DeletionResult(Outcome.ALREADY_DELETED, 0, false);
