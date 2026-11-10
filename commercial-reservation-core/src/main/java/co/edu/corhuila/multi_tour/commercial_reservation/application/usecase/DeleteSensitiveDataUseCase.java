@@ -8,6 +8,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationClosingReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RetentionDeletions;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RetentionEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RetentionFactsReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RetentionAnchor;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SensitiveDataDeletion;
@@ -24,13 +25,16 @@ public class DeleteSensitiveDataUseCase implements DeleteSensitiveData {
     private final RetentionFactsReader facts;
     private final ReservationClosingReader closings;
     private final RetentionDeletions deletions;
+    private final RetentionEventOutbox outbox;
     private final PaymentTransaction transaction;
     private final Clock clock;
 
-    public DeleteSensitiveDataUseCase(RetentionFactsReader facts, ReservationClosingReader closings, RetentionDeletions deletions, PaymentTransaction transaction, Clock clock) {
+    public DeleteSensitiveDataUseCase(RetentionFactsReader facts, ReservationClosingReader closings, RetentionDeletions deletions, RetentionEventOutbox outbox,
+            PaymentTransaction transaction, Clock clock) {
         this.facts = facts;
         this.closings = closings;
         this.deletions = deletions;
+        this.outbox = outbox;
         this.transaction = transaction;
         this.clock = clock;
     }
@@ -48,7 +52,9 @@ public class DeleteSensitiveDataUseCase implements DeleteSensitiveData {
             int companionRows = deletions.deleteCompanionRiskData(tenantId, reservationId);
             boolean customerData = deletions.otherReservationsOf(tenantId, own.customerId(), reservationId).stream().allMatch(other -> settled(tenantId, other, now));
             if (customerData) deletions.deleteCustomerRiskData(tenantId, own.customerId());
-            deletions.record(new SensitiveDataDeletion(reservationId, tenantId, own.customerId(), anchor.get().at(), anchor.get().basis(), now, customerData, companionRows));
+            SensitiveDataDeletion record = new SensitiveDataDeletion(reservationId, tenantId, own.customerId(), anchor.get().at(), anchor.get().basis(), now, customerData, companionRows);
+            deletions.record(record);
+            outbox.append(record);
             return new DeletionResult(Outcome.DELETED, companionRows, customerData);
         });
     }
