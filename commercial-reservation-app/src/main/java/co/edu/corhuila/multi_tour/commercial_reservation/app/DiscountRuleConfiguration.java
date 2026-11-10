@@ -2,9 +2,9 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentDiscountRuleCreation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentDiscountRuleCreation;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDiscountRules;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateDiscountRule;
@@ -65,8 +65,8 @@ class DiscountRuleConfiguration {
     }
 
     @Bean IdempotentDiscountRuleCreation idempotentDiscountRuleCreation(CreateDiscountRule create, GetDiscountRule get,
-            IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentDiscountRuleCreation(create, get, keys, new TransactionTemplate(manager));
+            IdempotentWrites writes) {
+        return new IdempotentDiscountRuleCreation(create, get, writes);
     }
 
     @Bean DiscountRuleController discountRuleController(IdempotentDiscountRuleCreation creation, GetDiscountRule get,
