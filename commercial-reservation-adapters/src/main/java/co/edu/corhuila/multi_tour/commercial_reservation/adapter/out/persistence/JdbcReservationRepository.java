@@ -135,7 +135,7 @@ public final class JdbcReservationRepository implements ReservationRepository {
                 + "subtotal_cents = ? WHERE tenant_id = ? AND reservation_id = ? AND line_order = ?", line.base().amount(), line.amount().amount(),
                 line.subtotal().amount(), r.tenantId(), r.reservationId(), line.order()));
         jdbc.update("UPDATE commercial_reservation.capacity_allocation SET party_size = ?, salida_id = ? WHERE tenant_id = ? AND reservation_id = ? "
-                + "AND released_at IS NULL", r.people(), r.departureId(), r.tenantId(), r.reservationId());
+                + "AND released_at IS NULL AND allocation_kind = 'RESERVATION'", r.people(), r.departureId(), r.tenantId(), r.reservationId());
         if (companionsChanged) {
             jdbc.update("DELETE FROM commercial_reservation.reservation_companion_sensitive_data WHERE tenant_id = ? AND reservation_companion_id IN "
                     + "(SELECT reservation_companion_id FROM commercial_reservation.reservation_companion WHERE tenant_id = ? AND reservation_id = ?)",
