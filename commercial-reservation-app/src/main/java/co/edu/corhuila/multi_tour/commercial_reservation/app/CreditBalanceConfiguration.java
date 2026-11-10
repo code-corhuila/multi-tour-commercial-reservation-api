@@ -43,8 +43,8 @@ class CreditBalanceConfiguration {
 
     @Bean
     RecordCreditBalanceUseCase recordCreditBalance(@Lazy FinancialDecisionRepository decisions, @Lazy CreditBalanceRepository credits, IdGenerator ids,
-            @Lazy PaymentTransaction transaction, Clock clock) {
-        return new RecordCreditBalanceUseCase(decisions, credits, ids, transaction, clock);
+            @Lazy PaymentEventOutbox outbox, @Lazy PaymentTransaction transaction, Clock clock) {
+        return new RecordCreditBalanceUseCase(decisions, credits, ids, outbox, transaction, clock);
     }
 
     @Bean
