@@ -19,6 +19,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ProcessedEvents;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantDirectory;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantEventTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantInactivityEffects;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ApplyTenantEventUseCase;
@@ -49,9 +50,14 @@ class TenantStatusConfiguration {
     }
 
     @Bean
-    ApplyTenantEvent applyTenantEvent(TenantStatusStore store, ProcessedEvents processed, TenantEventTransaction transaction, JdbcTemplate jdbc) {
+    TenantInactivityEffects tenantInactivityEffects(JdbcTemplate jdbc) {
         // HU-COM-020: the inactivation freezes the deadlines of the tenant and the reactivation resumes them, in the transaction of the copy.
-        return new ApplyTenantEventUseCase(store, processed, transaction, new TenantInactivityUseCase(new JdbcTenantSuspensions(jdbc), new JdbcTenantDeadlines(jdbc), new UuidGenerator()));
+        return new TenantInactivityUseCase(new JdbcTenantSuspensions(jdbc), new JdbcTenantDeadlines(jdbc), new UuidGenerator());
+    }
+
+    @Bean
+    ApplyTenantEvent applyTenantEvent(TenantStatusStore store, ProcessedEvents processed, TenantEventTransaction transaction, TenantInactivityEffects effects) {
+        return new ApplyTenantEventUseCase(store, processed, transaction, effects);
     }
 
     @Bean
