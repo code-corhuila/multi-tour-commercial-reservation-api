@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRetentionEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRetentionDeletions;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AnchorBasis;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SensitiveDataDeletion;
@@ -95,6 +96,19 @@ class SensitiveDataDeletionPersistenceTest {
         assertThat(deletions.isDeleted(fixture.tenant, reservation)).isTrue();
         assertThat(deletions.isDeleted(fixture.tenant, other)).isFalse();
         assertThatThrownBy(() -> deletions.record(record(reservation))).isInstanceOf(RuntimeException.class);
+    }
+
+    // T-06 / AC-19.8: the event has the closed payload of the db (ids, anchor, basis, a flag and a count), no actor (the job acts for the system) and no value.
+    @Test
+    void theEventIsWrittenWithTheClosedPayloadAndNoActor() {
+        new JdbcRetentionEventOutbox(fixture.jdbc).append(record(reservation));
+
+        var event = fixture.jdbc.queryForMap("SELECT actor_id, reservation_id, payload::text AS payload FROM commercial_reservation.outbox_event WHERE tenant_id = ? "
+                + "AND event_type = 'SensitiveDataDeleted'", fixture.tenant);
+        assertThat(event.get("actor_id")).isNull();
+        assertThat(event.get("reservation_id")).isEqualTo(reservation);
+        assertThat((String) event.get("payload")).contains("reservationId", "customerId", "anchorBasis", "anchorAt", "customerDataDeleted", "companionRowsDeleted").contains("SERVICE_END")
+                .doesNotContain("name", "document", "contact", "emergency");
     }
 
     @Test
