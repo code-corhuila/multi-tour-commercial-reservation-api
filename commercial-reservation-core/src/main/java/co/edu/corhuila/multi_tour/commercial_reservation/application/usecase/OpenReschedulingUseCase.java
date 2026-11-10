@@ -2,7 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.OpenReschedulingCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.OpenRescheduling;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DeadlineFreezeCause;
+
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EconomicDeadlineFreezer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
@@ -13,6 +13,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FreezeCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReschedulingEpisode;
 import java.time.Clock;
@@ -61,7 +62,7 @@ public class OpenReschedulingUseCase implements OpenRescheduling {
                     reservation.pullEvents().forEach(outbox::append);
                     reservations.save(reservation);
                 }
-                freezer.freeze(command.tenantId(), command.reservationId(), now, DeadlineFreezeCause.DEPARTURE_CANCELLED_OR_INTERRUPTED);
+                freezer.freeze(command.tenantId(), command.reservationId(), now, FreezeCause.DEPARTURE_CANCELLED_OR_INTERRUPTED);
                 return episode;
             });
         });
