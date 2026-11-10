@@ -44,7 +44,7 @@ class RequestCreditRefundUseCaseTest {
 
     RequestCreditRefundUseCaseTest() {
         payments.reservations.put(SOURCE, Reservation.create(SOURCE, RefundFakes.TENANT, CUSTOMER, new UUID(17, 6), new UUID(17, 2), 2,
-                new ReservedService(new UUID(17, 5), new Cents(100_000), new Cents(50_000)), new Cents(100_000), new Cents(100_000), List.of(), PaymentType.FULL_PAYMENT,
+                new ReservedService(new UUID(17, 5), new Cents(100_000), new Cents(50_000)), new Cents(300_000), new Cents(300_000), List.of(), PaymentType.FULL_PAYMENT,
                 PaymentMethod.TRANSFER, RefundFakes.NOW.minusSeconds(7_200)));
     }
 
