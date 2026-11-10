@@ -168,7 +168,7 @@ class PaymentPersistenceConfiguration {
     }
 
     @Bean
-    CreditBalanceRecorder creditBalanceRecorder(CreditBalanceRepository credits, IdGenerator ids, Clock clock) {
-        return new CreditBalanceRecording(credits, ids, clock);
+    CreditBalanceRecorder creditBalanceRecorder(CreditBalanceRepository credits, IdGenerator ids, @Lazy PaymentEventOutbox outbox, Clock clock) {
+        return new CreditBalanceRecording(credits, ids, outbox, clock);
     }
 }
