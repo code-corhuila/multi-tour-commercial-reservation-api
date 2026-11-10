@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RetentionInternalController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRetentionDeletions;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRetentionFactsReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.retention.DeferredReservationClosing;
@@ -7,7 +8,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationClosingReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RetentionDeletions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RetentionFactsReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.DeleteSensitiveData;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDueSensitiveData;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DeleteSensitiveDataUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListDueSensitiveDataUseCase;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -35,8 +39,18 @@ class RetentionConfiguration {
     }
 
     @Bean
-    DeleteSensitiveDataUseCase deleteSensitiveData(RetentionFactsReader facts, ReservationClosingReader closings, RetentionDeletions deletions,
+    DeleteSensitiveData deleteSensitiveData(RetentionFactsReader facts, ReservationClosingReader closings, RetentionDeletions deletions,
             @Lazy PaymentTransaction transaction, Clock clock) {
         return new DeleteSensitiveDataUseCase(facts, closings, deletions, transaction, clock);
+    }
+
+    @Bean
+    ListDueSensitiveData listDueSensitiveData(RetentionFactsReader facts, ReservationClosingReader closings, RetentionDeletions deletions, Clock clock) {
+        return new ListDueSensitiveDataUseCase(facts, closings, deletions, clock);
+    }
+
+    @Bean
+    RetentionInternalController retentionInternalController(ListDueSensitiveData list, DeleteSensitiveData deletion) {
+        return new RetentionInternalController(list, deletion);
     }
 }
