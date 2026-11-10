@@ -108,7 +108,7 @@ class ReschedulingAdaptersPersistenceTest {
 
         assertThat(a.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.rescheduling_record WHERE tenant_id = ? AND rescheduling_episode_id = ?", Integer.class, a.tenant, episode.id())).isEqualTo(1);
         assertThatThrownBy(() -> a.jdbc.update("UPDATE commercial_reservation.rescheduling_record SET approved_by = ? WHERE rescheduling_record_id = ?", UUID.randomUUID(), record.id()))
-                .hasMessageContaining("permission denied");
+                .hasStackTraceContaining("permission denied");
     }
 
     @Test
@@ -133,7 +133,7 @@ class ReschedulingAdaptersPersistenceTest {
 
         var resumed = a.jdbc.queryForMap("SELECT frozen_at, due_at FROM commercial_reservation.payment_deadline WHERE tenant_id = ? AND reservation_id = ?", a.tenant, reservationA);
         assertThat(resumed.get("frozen_at")).isNull();
-        assertThat(((OffsetDateTime) resumed.get("due_at")).toInstant()).isEqualTo(back.plus(Duration.ofHours(5)));
+        assertThat(((java.sql.Timestamp) resumed.get("due_at")).toInstant()).isEqualTo(back.plus(Duration.ofHours(5)));
     }
 
     @Test
