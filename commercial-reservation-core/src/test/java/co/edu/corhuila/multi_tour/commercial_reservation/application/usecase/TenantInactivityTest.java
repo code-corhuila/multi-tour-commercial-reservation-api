@@ -173,7 +173,7 @@ class TenantInactivityTest {
         apply.apply(event(TENANT, TenantEventType.TENANT_INACTIVATED, T0));
 
         assertThat(TenantInactivityUseCase.class.getDeclaredFields()).extracting(field -> field.getType().getSimpleName())
-                .containsExactlyInAnyOrder("SuspensionStore", "TenantDeadlineStore", "IdGenerator");
+                .containsExactlyInAnyOrder("SuspensionStore", "TenantDeadlineStore", "TenantDecisionStore", "IdGenerator");
     }
 
     @Test
