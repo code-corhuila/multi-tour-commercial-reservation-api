@@ -49,6 +49,22 @@ public final class CreditWriteController {
         return ResponseEntity.status(outcome.created() ? HttpStatus.CREATED : HttpStatus.OK).body(CreditApplicationResponse.of(outcome.value()));
     }
 
+    @PostMapping("/credit-balances/{creditBalanceId}/refund-requests")
+    public ResponseEntity<FinancialDecisionResponse> requestRefund(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @PathVariable("creditBalanceId") UUID creditId, @RequestHeader(value = "Idempotency-Key", required = false) String key,
+            @RequestBody(required = false) Map<String, Object> body) {
+        if (body == null) throw new DomainException("amountCents", "amountCents is required");
+        for (String field : body.keySet()) {
+            if (!field.equals("amountCents") && !field.equals("reason")) throw new DomainException(field, field + " is not accepted");
+        }
+        if (!(body.get("amountCents") instanceof Number amount) || amount.longValue() != amount.doubleValue() || amount.longValue() <= 0) {
+            throw new DomainException("amountCents", "amountCents must be a whole number above zero");
+        }
+        String reason = body.get("reason") == null ? null : String.valueOf(body.get("reason"));
+        var outcome = writes.requestRefund(PaymentActors.of(principal), key(key), creditId, amount.longValue(), reason);
+        return ResponseEntity.status(outcome.created() ? HttpStatus.CREATED : HttpStatus.OK).body(FinancialDecisionResponse.of(outcome.value()));
+    }
+
     private static String key(String key) {
         if (key == null || key.length() < 8 || key.length() > 128) throw new DomainException("Idempotency-Key", "header required, 8 to 128 characters");
         return key;
