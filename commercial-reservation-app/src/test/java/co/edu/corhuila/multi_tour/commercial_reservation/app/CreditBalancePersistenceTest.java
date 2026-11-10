@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcFinancialDecisionRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundAuthorizationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundAuthorizedOutbox;
@@ -55,7 +56,8 @@ class CreditBalancePersistenceTest {
         decisions = new JdbcFinancialDecisionRepository(fixture.jdbc);
         var ids = new UuidGenerator();
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-        record = new RecordCreditBalanceUseCase(decisions, credits, ids, new JdbcPaymentTransaction(fixture.transactions), clock);
+        record = new RecordCreditBalanceUseCase(decisions, credits, ids, new JdbcPaymentEventOutbox(fixture.jdbc),
+                new JdbcPaymentTransaction(fixture.transactions), clock);
         opening = new FinancialDecisionOpening(decisions, new JdbcRefundAuthorizationRepository(fixture.jdbc), new WeekdayBusinessCalendar(),
                 new JdbcRefundAuthorizedOutbox(fixture.jdbc), ids, clock);
         admin = new PaymentActor(fixture.tenant, fixture.actor, Role.TENANT_ADMINISTRATOR);
@@ -115,7 +117,7 @@ class CreditBalancePersistenceTest {
         fixture.jdbc.update("INSERT INTO commercial_reservation.payment_attempt (payment_attempt_id, tenant_id, reservation_id, payment_method, "
                 + "received_amount_cents, validation_status, payment_status_snapshot, registered_by, registered_at) "
                 + "VALUES (?, ?, ?, 'TRANSFER', 100000, 'IN_VALIDATION', 'NO_PAYMENT', ?, now())", attempt, fixture.tenant, reservationId, fixture.actor);
-        var recording = new CreditBalanceRecording(credits, new UuidGenerator(), Clock.fixed(NOW, ZoneOffset.UTC));
+        var recording = new CreditBalanceRecording(credits, new UuidGenerator(), new JdbcPaymentEventOutbox(fixture.jdbc), Clock.fixed(NOW, ZoneOffset.UTC));
 
         recording.recordExcess(fixture.tenant, reservationId, attempt, new Cents(12_000));
         recording.recordExcess(fixture.tenant, reservationId, attempt, new Cents(12_000));
@@ -125,5 +127,26 @@ class CreditBalancePersistenceTest {
         assertThat(stored.available()).isEqualTo(new Cents(12_000));
         assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.credit_balance WHERE source_payment_attempt_id = ?",
                 Integer.class, attempt)).isEqualTo(1);
+    }
+
+    // T-06 / AC-17.17, AC-17.18: the credit events are written to the outbox with the closed payload of the db (identifiers, amount, origin), never a name or a reason.
+    @Test
+    void theRecordingWritesOneEventWithTheClosedPayloadAndARepeatOfTheExcessWritesNone() {
+        CreditBalance credit = creditOfADecision();
+        UUID attempt = UUID.randomUUID();
+        fixture.jdbc.update("INSERT INTO commercial_reservation.payment_attempt (payment_attempt_id, tenant_id, reservation_id, payment_method, "
+                + "received_amount_cents, validation_status, payment_status_snapshot, registered_by, registered_at) "
+                + "VALUES (?, ?, ?, 'TRANSFER', 100000, 'IN_VALIDATION', 'NO_PAYMENT', ?, now())", attempt, fixture.tenant, reservationId, fixture.actor);
+        var recording = new CreditBalanceRecording(credits, new UuidGenerator(), new JdbcPaymentEventOutbox(fixture.jdbc), Clock.fixed(NOW, ZoneOffset.UTC));
+
+        recording.recordExcess(fixture.tenant, reservationId, attempt, new Cents(12_000));
+        recording.recordExcess(fixture.tenant, reservationId, attempt, new Cents(12_000));
+
+        var payloads = fixture.jdbc.queryForList("SELECT payload::text FROM commercial_reservation.outbox_event WHERE tenant_id = ? AND reservation_id = ? "
+                + "AND event_type = 'CreditBalanceRecorded' ORDER BY occurred_at, outbox_event_id", String.class, fixture.tenant, reservationId);
+        assertThat(payloads).hasSize(2);
+        assertThat(payloads).anySatisfy(payload -> assertThat(payload).contains(credit.id().toString()).contains("80000").contains("CUSTOMER_CANCELLATION"));
+        assertThat(payloads).anySatisfy(payload -> assertThat(payload).contains("12000").contains("PAYMENT_EXCESS"));
+        assertThat(payloads).allSatisfy(payload -> assertThat(payload).contains("customerId").doesNotContain("reason"));
     }
 }
