@@ -8,12 +8,16 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalance;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalanceRecorded;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditOrigin;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKind;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -38,9 +42,10 @@ class CreditBalanceRecordingTest {
         }
         @Override public void save(CreditBalance credit) { credits.put(credit.id(), credit); }
     };
-    private final RecordCreditBalanceUseCase useCase = new RecordCreditBalanceUseCase(fakes.decisionRepository, repository, fakes.ids, fakes.transaction,
-            RefundFakes.CLOCK);
-    private final CreditBalanceRecording excess = new CreditBalanceRecording(repository, fakes.ids, RefundFakes.CLOCK);
+    private final List<PaymentEvent> events = new ArrayList<>();
+    private final RecordCreditBalanceUseCase useCase = new RecordCreditBalanceUseCase(fakes.decisionRepository, repository, fakes.ids, events::add,
+            fakes.transaction, RefundFakes.CLOCK);
+    private final CreditBalanceRecording excess = new CreditBalanceRecording(repository, fakes.ids, events::add, RefundFakes.CLOCK);
 
     @Test
     void onlyTheAdministratorDecidesTheCreditAndOnlyOnce() {
@@ -86,6 +91,38 @@ class CreditBalanceRecordingTest {
         assertThat(credits.values()).allSatisfy(credit -> {
             assertThat(credit.applied()).isEqualTo(new Cents(0));
             assertThat(credit.available()).isEqualTo(credit.amount());
+        });
+    }
+
+    // T-06 / AC-17.17, RNF-06: one event per recording, in the same transaction, with identifiers, the amount and the origin; a repeat of the excess emits nothing.
+    @Test
+    void recordingEmitsOneEventWithoutPersonalData() {
+        FinancialDecision open = fakes.open(DecisionKind.CUSTOMER_CANCELLATION, 80_000);
+        PaymentActor admin = RefundFakes.actor(Role.TENANT_ADMINISTRATOR);
+
+        CreditBalance credit = useCase.recordCreditDecision(admin, open.id());
+
+        assertThat(events).singleElement().isInstanceOfSatisfying(CreditBalanceRecorded.class, event -> {
+            assertThat(event.creditBalanceId()).isEqualTo(credit.id());
+            assertThat(event.reservationId()).isEqualTo(credit.sourceReservationId());
+            assertThat(event.amount()).isEqualTo(new Cents(80_000));
+            assertThat(event.origin()).isEqualTo(CreditOrigin.CUSTOMER_CANCELLATION);
+            assertThat(event.actorId()).isEqualTo(admin.actorId());
+            assertThat(event.occurredAt()).isEqualTo(RefundFakes.NOW);
+        });
+    }
+
+    @Test
+    void theExcessEmitsOneEventAndARepeatEmitsNothingMore() {
+        UUID reservation = UUID.randomUUID(), attempt = UUID.randomUUID();
+
+        excess.recordExcess(RefundFakes.TENANT, reservation, attempt, new Cents(15_000));
+        excess.recordExcess(RefundFakes.TENANT, reservation, attempt, new Cents(15_000));
+
+        assertThat(events).singleElement().isInstanceOfSatisfying(CreditBalanceRecorded.class, event -> {
+            assertThat(event.reservationId()).isEqualTo(reservation);
+            assertThat(event.origin()).isEqualTo(CreditOrigin.PAYMENT_EXCESS);
+            assertThat(event.actorId()).isNull();
         });
     }
 }
