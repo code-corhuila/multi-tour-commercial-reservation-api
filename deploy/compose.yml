@@ -1,68 +1,28 @@
-# The api with the database it needs, to run and demonstrate it in containers.
-# Siblings: the db repository must be cloned next to this one (override the path with DB_REPO_PATH); its
-# Liquibase runner applies the schema, so no migration is copied here (norm 5.2.1, Annex J.7).
-# In the full platform multi-tour-infra-postgres provides the postgres service; this file is the
-# local stand-in with the same names. Credentials: .env only, never in this file.
-#   docker compose --env-file .env -f deploy/compose.yml up -d --build
-name: multi-tour-commercial-reservation
-
+# This service only. multi-tour-infra-postgres includes this file to compose the platform (Annex J, J.7).
+# It defines no database and no volume: the instance and the migration runner (multi-tour-commercial-reservation-db) belong to the
+# platform. `expose`, not `ports`: only the gateway is reachable from the host (norm 5.6.1). To run the api alone with its own
+# database use deploy/compose.standalone.yml. Credentials come from the environment file of the platform, never from this file.
 services:
-  postgres:
-    image: postgres:18
-    environment:
-      POSTGRES_DB: ${PG_DATABASE:-multitour}
-      POSTGRES_USER: ${PG_ADMIN_USER:-multitour_admin}
-      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD:?set PG_ADMIN_PASSWORD in .env}
-      COMMERCIAL_RESERVATION_APP_PASSWORD: ${COMMERCIAL_RESERVATION_APP_PASSWORD:?set COMMERCIAL_RESERVATION_APP_PASSWORD in .env}
-    volumes:
-      - postgres-data:/var/lib/postgresql
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  # Same runner and service name as multi-tour-commercial-reservation-db/deploy/compose.yml.
-  commercial-reservation-db-migrate:
-    build:
-      context: ${DB_REPO_PATH:-../../multi-tour-commercial-reservation-db}
-      dockerfile: deploy/Dockerfile
-    image: multi-tour-commercial-reservation-db-migrate:dev
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:-multitour}
-      LIQUIBASE_COMMAND_USERNAME: ${PG_ADMIN_USER:-multitour_admin}
-      LIQUIBASE_COMMAND_PASSWORD: ${PG_ADMIN_PASSWORD:?set PG_ADMIN_PASSWORD in .env}
-    command:
-      - --changelog-file=changelog/changelog-master.yaml
-      - --database-changelog-table-name=databasechangelog_commercial_reservation
-      - --database-changelog-lock-table-name=databasechangeloglock_commercial_reservation
-      - update
-    restart: "no"
-
   commercial-reservation-api:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
     image: multi-tour-commercial-reservation-api:dev
-    depends_on:
-      commercial-reservation-db-migrate:
-        condition: service_completed_successfully
     environment:
-      SERVER_PORT: "8080"
-      DB_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:-multitour}
+      # the port the gateway and the other services use (their COMMERCIAL_RESERVATION_BASE_URL)
+      SERVER_PORT: "8083"
+      # the user commercial_reservation_app (never the administrator) of the instance that multi-tour-infra-postgres defines
+      DB_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:?PG_DATABASE is required, set it in the infrastructure environment file}
       DB_USER: commercial_reservation_app
-      DB_PASSWORD: ${COMMERCIAL_RESERVATION_APP_PASSWORD:?set COMMERCIAL_RESERVATION_APP_PASSWORD in .env}
-      # Public key of the identity service: PEM in one line with \n escapes.
-      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY in .env}
-      FIELD_ENCRYPTION_CURRENT_KEY_ID: ${FIELD_ENCRYPTION_CURRENT_KEY_ID:?set FIELD_ENCRYPTION_CURRENT_KEY_ID in .env}
-      FIELD_ENCRYPTION_KEYS: ${FIELD_ENCRYPTION_KEYS:?set FIELD_ENCRYPTION_KEYS in .env}
-    # Published on the host only for this local demo; behind the gateway use expose.
-    ports:
-      - "${API_HOST_PORT:-8083}:8080"
+      DB_PASSWORD: ${COMMERCIAL_RESERVATION_APP_PASSWORD:?COMMERCIAL_RESERVATION_APP_PASSWORD is required, set it in the infrastructure environment file}
+      # the public key of the security microservice, one line with \n escapes; the service stops at start without it
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY is required, set it in the infrastructure environment file}
+      FIELD_ENCRYPTION_CURRENT_KEY_ID: ${FIELD_ENCRYPTION_CURRENT_KEY_ID:?FIELD_ENCRYPTION_CURRENT_KEY_ID is required, set it in the infrastructure environment file}
+      FIELD_ENCRYPTION_KEYS: ${FIELD_ENCRYPTION_KEYS:?FIELD_ENCRYPTION_KEYS is required, set it in the infrastructure environment file}
+    expose: ["8083"]
+    restart: unless-stopped
+    networks: [platform]
 
-volumes:
-  postgres-data:
+networks:
+  platform:
+    external: true
