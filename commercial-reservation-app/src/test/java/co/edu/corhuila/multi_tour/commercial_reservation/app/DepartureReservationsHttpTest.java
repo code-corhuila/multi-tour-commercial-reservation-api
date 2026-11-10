@@ -31,7 +31,7 @@ import org.springframework.test.web.servlet.MvcResult;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ContextConfiguration(initializers = TestJwtKeys.class)
-@Import(DepartureReservationsHttpTest.Fixture.class)
+@Import({CatalogHttpFixture.class, DepartureReservationsHttpTest.Fixture.class})
 class DepartureReservationsHttpTest {
     @TestConfiguration
     static class Fixture {
