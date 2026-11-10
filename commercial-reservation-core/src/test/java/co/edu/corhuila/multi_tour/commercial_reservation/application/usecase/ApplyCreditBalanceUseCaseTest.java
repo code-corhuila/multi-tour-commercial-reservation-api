@@ -13,6 +13,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditApplication;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditApplication.AppliedBy;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalance;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalanceApplied;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditOrigin;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
@@ -88,6 +89,22 @@ class ApplyCreditBalanceUseCaseTest {
         assertThat(applied.kind()).isEqualTo(AppliedBy.STAFF);
         assertThat(applications).containsExactly(applied);
         assertThat(fakes.events).hasAtLeastOneElementOfType(PaymentValidated.class);
+    }
+
+    // T-06 / AC-17.18, RNF-06: the application emits one event on the target reservation, with identifiers, the amount and who applied it, never a name or a reason.
+    @Test
+    void applyingEmitsOneEventWithoutPersonalData() {
+        CreditApplication applied = apply.apply(command(TARGET, 100_000, Role.TENANT_ADMINISTRATOR));
+
+        assertThat(fakes.events).filteredOn(event -> event instanceof CreditBalanceApplied).singleElement().isInstanceOfSatisfying(CreditBalanceApplied.class, event -> {
+            assertThat(event.creditBalanceId()).isEqualTo(CREDIT);
+            assertThat(event.reservationId()).isEqualTo(TARGET);
+            assertThat(event.sourceReservationId()).isEqualTo(SOURCE);
+            assertThat(event.appliedAmount()).isEqualTo(applied.amount());
+            assertThat(event.appliedBy()).isEqualTo(AppliedBy.STAFF);
+            assertThat(event.actorId()).isEqualTo(ADMIN);
+            assertThat(event.occurredAt()).isEqualTo(NOW);
+        });
     }
 
     @Test
