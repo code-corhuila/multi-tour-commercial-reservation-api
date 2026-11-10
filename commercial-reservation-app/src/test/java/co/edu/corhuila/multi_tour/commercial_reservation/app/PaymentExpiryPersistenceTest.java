@@ -92,7 +92,7 @@ class PaymentExpiryPersistenceTest {
         Reservation due = stored(NOW.plusSeconds(60));
         Reservation future = stored(NOW.plusSeconds(7_200));
         Reservation frozen = stored(NOW.plusSeconds(60));
-        fixture.jdbc.update("UPDATE commercial_reservation.payment_deadline SET frozen_at = ?, remaining_at_freeze_minutes = 5 WHERE reservation_id = ?",
+        fixture.jdbc.update("UPDATE commercial_reservation.payment_deadline SET frozen_at = ?, remaining_at_freeze_minutes = 5, freeze_cause = 'TENANT_INACTIVE' WHERE reservation_id = ?",
                 OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC), frozen.reservationId());
         var queries = new JdbcDuePaymentQueries(fixture.jdbc);
 
