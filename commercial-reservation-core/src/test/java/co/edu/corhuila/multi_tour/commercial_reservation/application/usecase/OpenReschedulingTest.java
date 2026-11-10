@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.OpenReschedulingCommand;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DeadlineFreezeCause;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FreezeCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EconomicDeadlineFreezer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReschedulingRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
@@ -76,7 +76,7 @@ class OpenReschedulingTest {
         assertThat(episode.proposalPeriodEnd()).isEqualTo(CANCELLED_AT.plus(Duration.ofHours(24)));
         assertThat(episode.openedAt()).isEqualTo(NOW);
         assertThat(stored).containsOnlyKeys(EPISODE);
-        assertThat(frozen).containsExactly(RESERVATION + "@" + NOW + "/" + DeadlineFreezeCause.DEPARTURE_CANCELLED_OR_INTERRUPTED);
+        assertThat(frozen).containsExactly(RESERVATION + "@" + NOW + "/" + FreezeCause.DEPARTURE_CANCELLED_OR_INTERRUPTED);
         assertThat(fakes.releaseCalls).isEqualTo(1);
         assertThat(departures.rows.get(DEPARTURE).heldSeats()).isZero();
         assertThat(fakes.reservations.get(RESERVATION).seatHeld()).isFalse();

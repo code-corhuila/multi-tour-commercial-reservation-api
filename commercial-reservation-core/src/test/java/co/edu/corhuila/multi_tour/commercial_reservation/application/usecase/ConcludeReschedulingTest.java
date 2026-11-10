@@ -147,7 +147,7 @@ class ConcludeReschedulingTest {
     }
 
     @Test
-    void anExpiryWithNothingDueChangesNothingAndAnAnsweredEpisodeIsRefused() {
+    void anExpiryWithNothingDueChangesNothingAndARepeatAnswersTheStoredEpisode() {
         clock.now = CANCELLED_AT.plus(Duration.ofHours(5));
 
         assertThatThrownBy(() -> conclude.expire(TENANT, EPISODE)).isInstanceOf(BusinessRuleViolation.class).hasMessageContaining("nothing is due");
@@ -156,7 +156,25 @@ class ConcludeReschedulingTest {
 
         clock.now = NOW;
         conclude.expire(TENANT, EPISODE);
-        assertThatThrownBy(() -> conclude.expire(TENANT, EPISODE)).isInstanceOf(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException.class);
+        assertThat(conclude.expire(TENANT, EPISODE).reason()).as("a repeat answers the stored episode").isEqualTo(ClosingReason.PROPOSAL_PERIOD_EXPIRED);
+    }
+
+    @Test
+    void aRepeatOfTheExpiryOrOfNoAlternativeAnswersTheStoredEpisodeAndChangesNothing() {
+        ReschedulingEpisode first = conclude.expire(TENANT, EPISODE);
+        journal.clear();
+
+        ReschedulingEpisode again = conclude.expire(TENANT, EPISODE);
+
+        assertThat(again).isEqualTo(first);
+        assertThat(journal).as("no second refund and no second release").isEmpty();
+
+        stored.put(EPISODE, ReschedulingEpisode.open(EPISODE, TENANT, RESERVATION, ORIGINAL, CANCELLED_AT, CANCELLED_AT));
+        reservation(ReservationStatus.CONFIRMED, new Cents(300_000));
+        ReschedulingEpisode none = conclude.declareNoAlternative(TENANT, ADMIN, Role.TENANT_ADMINISTRATOR, EPISODE);
+        journal.clear();
+        assertThat(conclude.declareNoAlternative(TENANT, ADMIN, Role.TENANT_ADMINISTRATOR, EPISODE)).isEqualTo(none);
+        assertThat(journal).isEmpty();
     }
 
     @Test

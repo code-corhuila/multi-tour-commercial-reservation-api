@@ -12,7 +12,11 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -55,6 +59,22 @@ final class JdbcPaymentAttempts {
     boolean openSeat(UUID tenantId, UUID reservationId) {
         return jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? "
                 + "AND reservation_id = ? AND released_at IS NULL", Integer.class, tenantId, reservationId) > 0;
+    }
+
+    // The batch of openSeat: the reservations, among the ones named, that hold an open seat. One statement.
+    Set<UUID> openSeats(UUID tenantId, String reservationIds) {
+        return new HashSet<>(jdbc.query("SELECT DISTINCT reservation_id FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? "
+                + "AND reservation_id = ANY (?::uuid[]) AND released_at IS NULL", (row, index) -> row.getObject(1, UUID.class), tenantId,
+                reservationIds));
+    }
+
+    // The batch of read: the attempts of the reservations named, each list in the order of the single read. One statement.
+    Map<UUID, List<PaymentAttempt>> readAll(UUID tenantId, String reservationIds) {
+        Map<UUID, List<PaymentAttempt>> byReservation = new HashMap<>();
+        jdbc.query("SELECT * FROM commercial_reservation.payment_attempt WHERE tenant_id = ? AND reservation_id = ANY (?::uuid[]) "
+                + "ORDER BY registered_at, payment_attempt_id", (row, index) -> byReservation.computeIfAbsent(
+                        row.getObject("reservation_id", UUID.class), id -> new java.util.ArrayList<>()).add(attempt(row)), tenantId, reservationIds);
+        return byReservation;
     }
 
     List<PaymentAttempt> read(UUID tenantId, UUID reservationId) {
