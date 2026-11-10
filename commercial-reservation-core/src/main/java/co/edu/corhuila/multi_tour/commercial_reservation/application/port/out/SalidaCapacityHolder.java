@@ -26,4 +26,15 @@ public interface SalidaCapacityHolder {
     default boolean holdForRescheduling(UUID tenantId, UUID reservationId, UUID salidaId, int seats) {
         throw new UnsupportedOperationException("the rescheduling hold needs the adapter override");
     }
+
+    // HU-COM-018 D-04, AC-18.1: the customer accepted; the hold of the proposal becomes the seat of the reservation (allocation kind RESERVATION) in the same transaction, without holding twice.
+    default void acceptReschedulingHold(UUID tenantId, UUID reservationId, UUID salidaId) {
+        throw new UnsupportedOperationException("the rescheduling acceptance needs the adapter override");
+    }
+
+    // HU-COM-018 D-04, AC-18.7: the seats held in a proposed departure go back by conditional update when the proposal is rejected, void or expired; returns the seats released, zero when nothing
+    // was held (safe to repeat).
+    default int releaseReschedulingHold(UUID tenantId, UUID reservationId) {
+        throw new UnsupportedOperationException("the rescheduling release needs the adapter override");
+    }
 }
