@@ -75,6 +75,7 @@ class RegisterCashPaymentTest {
         assertThat(fakes.events).extracting(e -> e.getClass().getSimpleName())
                 .containsExactly("PaymentEvidenceRegistered", "PaymentValidated", "ReservationConfirmed", "CapacityAllocated");
         assertThat(fakes.events.get(1)).isInstanceOfSatisfying(PaymentValidated.class, e -> {
+            assertThat(e.attemptId()).isEqualTo(ATTEMPT);
             assertThat(e.amount()).isEqualTo(new Cents(100_000));
             assertThat(e.validatorId()).isEqualTo(ACTOR);
             assertThat(e.pendingBalance()).isEqualTo(new Cents(200_000));
