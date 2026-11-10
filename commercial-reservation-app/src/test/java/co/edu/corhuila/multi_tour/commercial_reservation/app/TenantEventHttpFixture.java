@@ -19,6 +19,13 @@ import org.springframework.context.annotation.Primary;
 @TestConfiguration
 class TenantEventHttpFixture {
     @Bean @Primary MemoryTenants memoryTenants() { return new MemoryTenants(); }
+    // HU-COM-020: the effects of the inactivation (suspension and deadlines) have their own persistence test; the HTTP tests of the route use none.
+    @Bean @Primary co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantInactivityEffects noTenantInactivityEffects() {
+        return new co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantInactivityEffects() {
+            @Override public void inactivated(UUID tenantId, UUID eventId, java.time.Instant at) { }
+            @Override public void reactivated(UUID tenantId, UUID eventId, java.time.Instant at) { }
+        };
+    }
 
 
 
