@@ -21,7 +21,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 // HU-COM-018 plan D-02, D-03 of the db (-db 035, 036, guards 011, 012): the episode and its proposals. A row only moves forward and the guards of the engine refuse the rest, so saving writes
-// what is new (insert, nothing on conflict) and then the forward move of a row that is still open or pending; a closed row is never written again, which makes a repeat of a save a no-op.
+// what is new (insert, nothing when the row itself exists; any other unique key of the engine still refuses) and then the forward move of a row that is still open or pending; a closed row is never written again, which makes a repeat of a save a no-op.
 // The start of the current proposal period is derived from the stored due instant (24 hours before it); the current freeze pair of the db is not read here (HU-COM-020, next slice). Every
 // query leads with the tenant, so an episode of another tenant looks missing.
 public final class JdbcReschedulingRepository implements ReschedulingRepository {
@@ -46,12 +46,12 @@ public final class JdbcReschedulingRepository implements ReschedulingRepository 
     @Override
     public void save(ReschedulingEpisode e) {
         jdbc.update("INSERT INTO commercial_reservation.rescheduling_episode (rescheduling_episode_id, tenant_id, reservation_id, original_salida_id, episode_started_at, "
-                + "proposal_due_at, episode_state, closed_at, closed_reason, opened_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                + "proposal_due_at, episode_state, closed_at, closed_reason, opened_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (rescheduling_episode_id) DO NOTHING",
                 e.id(), e.tenantId(), e.reservationId(), e.originalSalidaId(), time(e.cancelledAt()), time(e.proposalPeriodEnd()), e.state().name(), time(e.closedAt()),
                 e.reason() == null ? null : e.reason().name(), time(e.openedAt()));
         for (ReschedulingProposal p : e.proposals()) {
             jdbc.update("INSERT INTO commercial_reservation.rescheduling_proposal (rescheduling_proposal_id, tenant_id, rescheduling_episode_id, reservation_id, proposed_salida_id, "
-                    + "party_size, proposed_by, proposed_at, response_deadline_at, proposal_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING') ON CONFLICT DO NOTHING",
+                    + "party_size, proposed_by, proposed_at, response_deadline_at, proposal_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING') ON CONFLICT (rescheduling_proposal_id) DO NOTHING",
                     p.id(), e.tenantId(), e.id(), e.reservationId(), p.salidaId(), p.partySize(), p.proposedBy(), time(p.proposedAt()), time(p.responseDeadlineAt()));
             if (!p.pending()) closeProposal(e, p);
         }
