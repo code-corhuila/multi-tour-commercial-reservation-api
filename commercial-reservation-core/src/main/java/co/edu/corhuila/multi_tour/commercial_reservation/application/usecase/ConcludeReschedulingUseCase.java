@@ -12,12 +12,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ClosingReason;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EpisodeState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProposalAnswer;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundOrigin;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReschedulingEpisode;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import java.time.Clock;
@@ -35,9 +32,7 @@ public class ConcludeReschedulingUseCase implements ConcludeRescheduling {
 
     private final ReschedulingRepository episodes;
     private final ReservationRepository reservations;
-    private final SalidaCapacityHolder holder;
-    private final DetermineRefund refunds;
-    private final PaymentEventOutbox outbox;
+    private final ReschedulingCancellation cancellation;
     private final PaymentTransaction transaction;
     private final Clock clock;
 
@@ -45,9 +40,7 @@ public class ConcludeReschedulingUseCase implements ConcludeRescheduling {
             PaymentTransaction transaction, Clock clock) {
         this.episodes = episodes;
         this.reservations = reservations;
-        this.holder = holder;
-        this.refunds = refunds;
-        this.outbox = outbox;
+        this.cancellation = new ReschedulingCancellation(reservations, holder, refunds, outbox);
         this.transaction = transaction;
         this.clock = clock;
     }
@@ -86,14 +79,7 @@ public class ConcludeReschedulingUseCase implements ConcludeRescheduling {
             if (repeated.test(episode)) return episode;
             check.apply(reservation);
             ReschedulingEpisode closed = move.apply(episode, now);
-            if (episode.pendingProposal().isPresent()) holder.releaseReschedulingHold(tenantId, reservation.reservationId());
-            int seats = reservation.seatHeld() ? holder.release(tenantId, reservation.reservationId()) : 0;
-            if (seats > 0) reservation.releaseSeat(CapacityReleased.DEPARTURE_CANCELLED_OR_INTERRUPTED, now);
-            long paid = reservation.finalValue().amount() - reservation.pendingBalance().amount();
-            reservation.cancel(CancellationCause.NOT_ATTRIBUTABLE_TO_CUSTOMER, by, now, seats);
-            reservations.save(reservation);
-            reservation.pullEvents().forEach(outbox::append);
-            if (paid > 0) refunds.determine(tenantId, reservation.reservationId(), RefundOrigin.NOT_ATTRIBUTABLE_TO_CUSTOMER, null);
+            cancellation.cancel(tenantId, reservation, by, now, episode.pendingProposal().isPresent());
             episodes.save(closed);
             return closed;
         });

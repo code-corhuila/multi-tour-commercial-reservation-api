@@ -86,6 +86,15 @@ public record ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UU
         throw new BusinessRuleViolation("nothing is due: no clock of the episode has run out");
     }
 
+    // AC-18.13 (I1): the proposed departure was cancelled while the tenant is inactive: the proposal is void and the episode is cancelled at once, with no new period.
+    public ReschedulingEpisode voidAndCancel(Instant now) {
+        requireOpen();
+        ReschedulingProposal pending = pendingProposal().orElseThrow(() -> new InvalidStatusTransitionException("the episode has no pending proposal"));
+        List<ReschedulingProposal> next = new ArrayList<>(proposals);
+        next.set(next.indexOf(pending), pending.closed(ProposalState.VOID, now, null));
+        return closedAs(ClosingReason.PROPOSED_DEPARTURE_CANCELLED_WHILE_INACTIVE, now, next);
+    }
+
     private void requireOpen() {
         if (state != EpisodeState.OPEN) throw new InvalidStatusTransitionException("the episode is already closed");
     }
