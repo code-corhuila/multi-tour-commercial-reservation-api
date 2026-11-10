@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 class AesGcmFieldCipherTest {
 
     private static final String AAD = "tenant-1|document";
-    private static final String PLAIN = "CC-1075234567";
+    private static final String PLAIN = "DEMO-0001";
 
     private static String key(long seed) {
         byte[] bytes = new byte[32];
