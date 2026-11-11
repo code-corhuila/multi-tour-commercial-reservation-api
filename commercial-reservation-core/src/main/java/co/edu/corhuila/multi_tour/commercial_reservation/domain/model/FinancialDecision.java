@@ -55,6 +55,15 @@ public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID
         return decide(DecisionOutcome.REFUND_FULL, false, by, at, null);
     }
 
+    // HU-COM-017 RN-02: the Administrator decides the 100 % credit instead of the refund, for the three decision kinds that are not a credit request.
+    public FinancialDecision recordCreditFull(UUID by, Instant at) {
+        requireOpen();
+        if (kind == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST)
+            throw new BusinessRuleViolation("a credit-balance refund request is authorized, not credited");
+        if (by == null) throw new DomainException("decidedBy", "the person is required");
+        return decide(DecisionOutcome.CREDIT_FULL, false, by, at, null);
+    }
+
     public FinancialDecision reject(UUID by, String justification, Instant at) {
         requireOpen();
         if (kind != DecisionKind.CREDIT_BALANCE_REFUND_REQUEST)

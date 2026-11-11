@@ -50,11 +50,20 @@ final class PaymentPreconditions {
 
     // Another tenant's reservation looks missing (AC-09.18). It runs inside the transaction of the caller, because it locks the row.
     Reservation requireOpenFor(UUID tenantId, UUID reservationId, PaymentMethod method) {
+        return requireOpen(tenantId, reservationId, method);
+    }
+
+    // HU-COM-017: applying a credit balance is a validated payment with no method, so the enabled-method check does not apply; every other precondition does.
+    Reservation requireOpenForCredit(UUID tenantId, UUID reservationId) {
+        return requireOpen(tenantId, reservationId, null);
+    }
+
+    private Reservation requireOpen(UUID tenantId, UUID reservationId, PaymentMethod method) {
         // The row lock (F1): a second payment of the same reservation waits here and then reads the state the first one left.
         Reservation reservation = reservations.lockByTenantAndId(tenantId, reservationId)
                 .filter(found -> found.tenantId().equals(tenantId))
                 .orElseThrow(() -> new ReservationNotFoundException(reservationId));
-        if (!options.isEnabled(tenantId, reservation.service().serviceId(), reservation.expectedPaymentType(), method)) {
+        if (method != null && !options.isEnabled(tenantId, reservation.service().serviceId(), reservation.expectedPaymentType(), method)) {
             throw new DomainException("paymentMethod", "the payment type or method is not enabled");
         }
         DepartureState departure = departures.find(tenantId, reservation.departureId())
