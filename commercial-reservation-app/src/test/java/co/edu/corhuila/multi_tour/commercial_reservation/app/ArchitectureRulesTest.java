@@ -29,10 +29,8 @@ class ArchitectureRulesTest {
     private static final Map<String, Set<String>> KNOWN_HTTP_EXCEPTIONS = Map.ofEntries(
             Map.entry("IdempotentAdditionalDiscountRegistration", Set.of(KEYS)),
             Map.entry("IdempotentDeadlineWrites", Set.of(KEYS)),
-            Map.entry("IdempotentPaymentRegistration", Set.of(KEYS, RESERVATIONS)),
             Map.entry("IdempotentRefundDetermination", Set.of(KEYS)),
-            Map.entry("IdempotentRefundWrites", Set.of(KEYS)),
-            Map.entry("IdempotentReservationCreation", Set.of(KEYS, CUSTOMERS)));
+            Map.entry("IdempotentRefundWrites", Set.of(KEYS)));
 
     private static final List<String> FORBIDDEN_IN_CORE = List.of("org.springframework.", "java.sql.", "javax.sql.", "com.fasterxml.jackson.",
             "jakarta.", "org.postgresql.", "tools.jackson.");
