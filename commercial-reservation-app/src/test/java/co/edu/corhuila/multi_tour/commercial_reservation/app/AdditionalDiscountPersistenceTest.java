@@ -20,7 +20,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Authorizab
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BasisPoints;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountLine;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -100,7 +100,26 @@ class AdditionalDiscountPersistenceTest {
         discounts.save(discount(tenant, reservation, 500, 100_000));
 
         assertThatThrownBy(() -> discounts.save(discount(tenant, reservation, 700, 100_000)))
-                .isInstanceOf(DomainException.class).hasMessageContaining("already has an additional discount");
+                .isInstanceOf(BusinessRuleViolation.class).hasMessageContaining("already has an additional discount");
+    }
+
+    @Test
+    void theStoredDiscountIsReadBackPerTenantWithItsValuesAndOrder() {
+        var saved = discount(tenant, reservation, 1_000, 200_000);
+        discounts.save(saved);
+
+        var found = discounts.findByReservation(tenant, reservation).orElseThrow();
+        assertThat(found.rate()).isEqualTo(saved.rate());
+        assertThat(found.line()).isEqualTo(saved.line());
+        assertThat(found.reason()).isEqualTo("Customer loyalty");
+        assertThat(found.authorizerId()).isEqualTo(actor);
+        assertThat(found.registeredAt()).isEqualTo(NOW);
+        // The order is not stored: it is the place after the fixed lines that took something (as the snapshot counts it).
+        assertThat(found.order()).isEqualTo(1 + jdbc.queryForObject("SELECT count(*) FROM "
+                + "commercial_reservation.reservation_fixed_discount WHERE reservation_id = ? AND amount_cents > 0",
+                Integer.class, reservation));
+        assertThat(discounts.findByReservation(UUID.randomUUID(), reservation)).isEmpty();
+        assertThat(discounts.findByReservation(tenant, UUID.randomUUID())).isEmpty();
     }
 
     @Test

@@ -24,8 +24,22 @@ class AdditionalDiscountTest {
     }
 
     @Test void theSubtotalNeverGoesBelowZero() {
-        var line = AdditionalDiscount.preview(new Cents(0), new BasisPoints(10_000));
+        var line = AdditionalDiscount.preview(new Cents(500), new BasisPoints(10_000));
         assertThat(line.subtotal()).isEqualTo(new Cents(0));
+    }
+
+    // The table refuses amount_cents = 0, so a discount that takes nothing is a business rule and never a technical error.
+    @Test void aPercentageThatRoundsToZeroCentsIsABusinessRuleViolation() {
+        assertThatThrownBy(() -> AdditionalDiscount.preview(new Cents(49), new BasisPoints(100)))
+                .isInstanceOf(BusinessRuleViolation.class).hasMessageContaining("at least one cent");
+        assertThatThrownBy(() -> AdditionalDiscount.preview(new Cents(0), new BasisPoints(10_000)))
+                .isInstanceOf(BusinessRuleViolation.class);
+    }
+
+    @Test void theSmallestSubtotalWhereOnePercentTakesACentIsAccepted() {
+        var line = AdditionalDiscount.preview(new Cents(50), new BasisPoints(100));
+        assertThat(line.amount()).isEqualTo(new Cents(1));
+        assertThat(line.subtotal()).isEqualTo(new Cents(49));
     }
 
     @Test void aReasonMustNotBeBlank() {

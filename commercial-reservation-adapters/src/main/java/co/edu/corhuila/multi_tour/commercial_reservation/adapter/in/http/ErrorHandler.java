@@ -52,7 +52,7 @@ public class ErrorHandler {
             message = "PATCH".equals(request.getMethod())
                     ? "The capacity cannot be lower than the seats already held in a scheduled departure"
                     : "The item cannot be reactivated while a restriction applies";
-            // The quote and the creation say which rule refused them (the seats left, the group, the tenant), never a value.
+            // The quote, the creation and the additional discount say which rule refused them (the seats left, the group, the tenant), never a value.
             if (reservationRule(request)) message = ex.getMessage();
         } else if (ex instanceof IncompleteLeadCustomerException lead) {
             // AC-07.21: the fields the lead customer lacks, never their values.
@@ -128,7 +128,8 @@ public class ErrorHandler {
 
     private static boolean reservationRule(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && path.endsWith("/reservations");
+        return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && path.endsWith("/reservations")
+                || path.contains("/additional-discount");
     }
 
     private static String jsonField(Throwable error) {
