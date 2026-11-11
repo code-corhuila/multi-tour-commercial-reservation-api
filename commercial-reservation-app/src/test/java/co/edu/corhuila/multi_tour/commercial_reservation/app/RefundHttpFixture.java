@@ -2,10 +2,14 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FinancialDecisionRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizationRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RefundPage;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationSnapshot;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKind;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ExecutionState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
 import java.util.ArrayList;
@@ -27,6 +31,39 @@ class RefundHttpFixture {
     @Bean @Primary MemoryRefunds memoryRefunds() { return new MemoryRefunds(); }
 
     @Bean @Primary MemorySnapshots memorySnapshots() { return new MemorySnapshots(); }
+
+    @Bean @Primary MemoryQueries memoryQueries(MemoryDecisions decisions, MemoryRefunds refunds) { return new MemoryQueries(decisions, refunds, TestJwtKeys.NOW); }
+
+    // The same filters as the SQL of the JDBC queries, over the planted rows: pending is an open decision or a REFUND_FULL without refund; attention is pending
+    // and not frozen (DP-09); overdue is past the due instant and not executed.
+    static final class MemoryQueries implements RefundQueries {
+        private final MemoryDecisions decisions;
+        private final MemoryRefunds refunds;
+        private final java.time.Instant now;
+
+        MemoryQueries(MemoryDecisions decisions, MemoryRefunds refunds, java.time.Instant now) { this.decisions = decisions; this.refunds = refunds; this.now = now; }
+
+        private boolean pending(FinancialDecision d) {
+            return d.outcome() == null || (d.outcome() == DecisionOutcome.REFUND_FULL && refunds.findByDecision(d.tenantId(), d.id()).isEmpty());
+        }
+        private static <T> RefundPage<T> page(List<T> all, int page, int limit) {
+            return new RefundPage<>(all.stream().skip((long) (page - 1) * limit).limit(limit).toList(), all.size());
+        }
+        public RefundPage<FinancialDecision> decisions(UUID tenantId, DecisionKind kind, boolean pending, boolean attention, int page, int limit) {
+            return page(decisions.decisions.values().stream().filter(d -> d.tenantId().equals(tenantId) && (kind == null || d.kind() == kind)
+                    && (!pending || pending(d)) && (!attention || (pending(d) && !d.isFrozen()))).toList(), page, limit);
+        }
+        public RefundPage<FinancialDecision> dueDecisions(UUID tenantId, java.time.Instant at, int page, int limit) {
+            return page(decisions.decisions.values().stream().filter(d -> d.tenantId().equals(tenantId) && d.isDue(at)).toList(), page, limit);
+        }
+        public RefundPage<RefundAuthorization> refunds(UUID tenantId, ExecutionState state, boolean overdue, java.time.Instant at, UUID decisionId, int page, int limit) {
+            return page(refunds.refunds.values().stream().filter(r -> r.tenantId().equals(tenantId) && (state == null || r.state() == state)
+                    && (!overdue || r.isOverdue(at)) && (decisionId == null || decisionId.equals(r.financialDecisionId()))).toList(), page, limit);
+        }
+        public RefundPage<RefundAuthorization> dueRefunds(UUID tenantId, java.time.Instant at, int page, int limit) {
+            return page(refunds.refunds.values().stream().filter(r -> r.tenantId().equals(tenantId) && r.overdueMarkedAt() == null && r.isOverdue(at)).toList(), page, limit);
+        }
+    }
 
     static final class MemorySnapshots implements ReservationReader {
         final Map<UUID, ReservationSnapshot> snapshots = new LinkedHashMap<>();
