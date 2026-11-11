@@ -16,27 +16,15 @@ import org.junit.jupiter.api.Test;
 
 // Hexagonal layers by a scan of the imports of the sources (HU-COM-010 audit, 2026-11-06; ADR-004, norm 5.2). No library: a class of
 // adapter.in.http does not import adapter.out nor the ports ReservationRepository and CustomerRepository, and the core imports no
-// Spring, JDBC or Jackson. The known exceptions are listed here, by class and by import: a new violation fails the test, and so does an
-// exception that no longer applies, so the list only shrinks. Each Idempotent* class of the http package still takes the key table of the
-// adapter and a Spring transaction template; they move to the core one by one, as IdempotentDecidePaymentProofUseCase did.
+// Spring, JDBC or Jackson. The list of known exceptions is empty since 2026-11-11 (the Idempotent* writes live in the core over IdempotentWrites):
+// a new violation fails the test, and so does an exception that is added to the list without a violation behind it.
 class ArchitectureRulesTest {
     private static final String ROOT = "co.edu.corhuila.multi_tour.commercial_reservation.";
-    private static final String KEYS = ROOT + "adapter.out.persistence.IdempotencyKeys";
     private static final String RESERVATIONS = ROOT + "application.port.out.ReservationRepository";
     private static final String CUSTOMERS = ROOT + "application.port.out.CustomerRepository";
-    private static final String REASON_TIMES = ROOT + "adapter.out.persistence.AuthorizableReasonTimes";
 
     // class (simple name, in adapter.in.http) -> the forbidden imports it is still allowed to have
-    private static final Map<String, Set<String>> KNOWN_HTTP_EXCEPTIONS = Map.ofEntries(
-            Map.entry("IdempotentAdditionalDiscountRegistration", Set.of(KEYS)),
-            Map.entry("IdempotentCancellation", Set.of(KEYS)),
-            Map.entry("IdempotentDeadlineWrites", Set.of(KEYS)),
-            Map.entry("IdempotentExpiry", Set.of(KEYS)),
-            Map.entry("IdempotentModification", Set.of(KEYS)),
-            Map.entry("IdempotentPaymentParameterChange", Set.of(KEYS)),
-            Map.entry("IdempotentRefundDetermination", Set.of(KEYS)),
-            Map.entry("IdempotentRefundWrites", Set.of(KEYS)),
-            Map.entry("TransactionalAuthorizableReasons", Set.of(KEYS, REASON_TIMES, REASON_TIMES + ".Times")));
+    private static final Map<String, Set<String>> KNOWN_HTTP_EXCEPTIONS = Map.of();
 
     private static final List<String> FORBIDDEN_IN_CORE = List.of("org.springframework.", "java.sql.", "javax.sql.", "com.fasterxml.jackson.",
             "jakarta.", "org.postgresql.", "tools.jackson.");
