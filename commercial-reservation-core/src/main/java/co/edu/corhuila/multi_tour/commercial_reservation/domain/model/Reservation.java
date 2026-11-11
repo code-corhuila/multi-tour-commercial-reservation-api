@@ -234,6 +234,17 @@ public final class Reservation {
         events.add(new CapacityAllocated(tenantId, reservationId, service.serviceId(), departureId, CapacityAllocated.RESERVATION_KIND, now));
     }
 
+    // HU-COM-018 RN-01, AC-18.1: a date-only rescheduling keeps the same reservation, its payments and its history; only the departure changes, the seats are held there (the hold of the
+    // proposal became the seat) and an IN_EXECUTION reservation returns to CONFIRMED. A reservation that is not alive cannot be rescheduled.
+    public void rescheduledTo(UUID newDeparture) {
+        if (reservationStatus != ReservationStatus.PENDING_PAYMENT && reservationStatus != ReservationStatus.CONFIRMED && reservationStatus != ReservationStatus.IN_EXECUTION)
+            throw new InvalidStatusTransitionException("only a pending-payment, confirmed or in-execution reservation can be rescheduled");
+        if (newDeparture == null) throw new DomainException("salidaId", "the new departure is required");
+        departureId = newDeparture;
+        seatHeld = true;
+        if (reservationStatus == ReservationStatus.IN_EXECUTION) reservationStatus = ReservationStatus.CONFIRMED;
+    }
+
     // The stored cause of a cancelled reservation, for the persistence adapter that reads it back (HU-COM-014 AC-14.9).
     public Reservation restoredCancellation(CancellationCause cause) {
         cancellationCause = cause;
