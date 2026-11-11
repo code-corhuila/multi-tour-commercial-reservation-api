@@ -27,10 +27,6 @@ class ArchitectureRulesTest {
 
     // class (simple name, in adapter.in.http) -> the forbidden imports it is still allowed to have
     private static final Map<String, Set<String>> KNOWN_HTTP_EXCEPTIONS = Map.ofEntries(
-            Map.entry("IdempotentCancellation", Set.of(KEYS)),
-            Map.entry("IdempotentExpiry", Set.of(KEYS)),
-            Map.entry("IdempotentModification", Set.of(KEYS)),
-            Map.entry("IdempotentPaymentParameterChange", Set.of(KEYS)),
             Map.entry("IdempotentPaymentRegistration", Set.of(KEYS, RESERVATIONS)),
             Map.entry("IdempotentReservationCreation", Set.of(KEYS, CUSTOMERS)));
 

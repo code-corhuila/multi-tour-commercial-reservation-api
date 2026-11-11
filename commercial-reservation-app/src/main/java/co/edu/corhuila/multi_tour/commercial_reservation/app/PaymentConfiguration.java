@@ -17,14 +17,14 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentExtensionPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentFollowupRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PendingPaymentQueries;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentExpiry;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentExpiry;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentExpiryController;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExpireReservationUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListDuePaymentDeadlinesUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExpireReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDuePaymentDeadlines;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentParameterChange;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentPaymentParameterChange;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentHttpAccess;
@@ -148,9 +148,8 @@ class PaymentConfiguration {
     }
 
     @Bean
-    IdempotentPaymentParameterChange idempotentPaymentParameterChange(ManagePaymentParameters parameters, IdempotencyKeys keys,
-            PlatformTransactionManager manager) {
-        return new IdempotentPaymentParameterChange(parameters, keys, new TransactionTemplate(manager));
+    IdempotentPaymentParameterChange idempotentPaymentParameterChange(ManagePaymentParameters parameters, IdempotentWrites writes) {
+        return new IdempotentPaymentParameterChange(parameters, writes);
     }
 
     @Bean
@@ -265,8 +264,8 @@ class PaymentConfiguration {
     }
 
     @Bean
-    IdempotentExpiry idempotentExpiry(ExpireReservation expiry, IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentExpiry(expiry, keys, new TransactionTemplate(manager));
+    IdempotentExpiry idempotentExpiry(ExpireReservation expiry, IdempotentWrites writes) {
+        return new IdempotentExpiry(expiry, writes);
     }
 
     @Bean
