@@ -23,6 +23,10 @@ public final class PaymentAuthorization {
         require(actor, Role.values());
     }
 
+    // HU-COM-011 (RF-015): the Administrator and the Collaborator follow up and extend; the reading roles only read.
+    public static void requireExtend(PaymentActor actor) {
+        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR);
+    }
     public static void requireReadParameters(PaymentActor actor) {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST);
     }
