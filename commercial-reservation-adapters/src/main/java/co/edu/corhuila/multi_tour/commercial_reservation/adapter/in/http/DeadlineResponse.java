@@ -11,9 +11,14 @@ public record DeadlineResponse(UUID reservationId, String kind, String dueAt, In
         UUID extensionGrantedBy, String departureStartsAt, String effectiveDeadline, boolean frozen) {
 
     static DeadlineResponse of(DeadlineView view) {
+        return of(view, true);
+    }
+
+    // The Final Customer sees that the deadline was extended, never which collaborator granted it.
+    static DeadlineResponse of(DeadlineView view, boolean showGrantor) {
         var d = view.deadline();
         return new DeadlineResponse(view.reservationId(), d.kind().name(), d.dueAt().toString(), d.extensionHours(),
-                d.extensionGrantedAt() == null ? null : d.extensionGrantedAt().toString(), d.extensionGrantedBy(),
+                d.extensionGrantedAt() == null ? null : d.extensionGrantedAt().toString(), showGrantor ? d.extensionGrantedBy() : null,
                 view.departureStartsAt() == null ? null : view.departureStartsAt().toString(), view.effective().toString(), d.frozen());
     }
 }
