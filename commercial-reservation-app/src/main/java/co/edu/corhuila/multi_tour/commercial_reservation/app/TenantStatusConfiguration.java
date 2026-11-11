@@ -1,7 +1,9 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ActiveTenantsController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TenantEventController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.memory.CachedTenantStatusReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcActiveTenantQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerAccountLink;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantEventTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantDeadlines;
@@ -11,6 +13,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantSuspensions;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.UuidGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyTenantEvent;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListActiveTenants;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ActiveTenantQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListActiveTenantsUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.LinkAccountOnEmailVerified;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.MirrorSalidaState;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerAccountLink;
@@ -87,5 +92,21 @@ class TenantStatusConfiguration {
     @Bean
     TenantStatusReader tenantStatusReader(JdbcTemplate jdbc, Clock clock) {
         return new CachedTenantStatusReader(new JdbcTenantStatusReader(jdbc), clock, Duration.ofSeconds(5));
+    }
+
+    // HU-WRK-001 DP-08: the jobs read the active tenants of this copy through an internal route, instead of a provisional variable.
+    @Bean
+    ActiveTenantQueries activeTenantQueries(JdbcTemplate jdbc) {
+        return new JdbcActiveTenantQueries(jdbc);
+    }
+
+    @Bean
+    ListActiveTenants listActiveTenants(ActiveTenantQueries queries) {
+        return new ListActiveTenantsUseCase(queries);
+    }
+
+    @Bean
+    ActiveTenantsController activeTenantsController(ListActiveTenants tenants) {
+        return new ActiveTenantsController(tenants);
     }
 }
