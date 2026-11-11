@@ -9,6 +9,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Dec
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancelledValueRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancelledValueRecorder.Origin;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentConditionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
@@ -21,6 +22,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRu
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DeadlineKind;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingPaymentDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProofDecision;
@@ -38,6 +40,7 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
 
     private final ReservationRepository reservations;
     private final PaymentDeadlineReader deadlines;
+    private final DepartureReader departures;
     private final PaymentConditionReader conditions;
     private final SalidaCapacityHolder holder;
     private final ReservationCancellation cancellation;
@@ -47,11 +50,12 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
     private final PaymentTransaction transaction;
     private final Clock clock;
 
-    public DecidePaymentProofUseCase(ReservationRepository reservations, PaymentDeadlineReader deadlines, PaymentConditionReader conditions,
+    public DecidePaymentProofUseCase(ReservationRepository reservations, PaymentDeadlineReader deadlines, DepartureReader departures, PaymentConditionReader conditions,
             SalidaCapacityHolder holder, ReservationCancellation cancellation, CancelledValueRecorder cancelledValues,
             CreditBalanceRecorder credit, PaymentEventOutbox outbox, PaymentTransaction transaction, Clock clock) {
         this.reservations = reservations;
         this.deadlines = deadlines;
+        this.departures = departures;
         this.conditions = conditions;
         this.holder = holder;
         this.cancellation = cancellation;
@@ -76,7 +80,7 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
         Reservation reservation = load(tenantId, attemptId);
         Instant now = Instant.now(clock);
         Optional<PaymentDeadline> deadline = deadlines.openDeadline(tenantId, reservation.reservationId());
-        boolean expired = deadline.map(found -> !now.isBefore(found.dueAt())).orElse(false);
+        boolean expired = expired(deadline, reservation, now);
         Cents minimum = minimumFor(reservation);
         return transaction.inTransaction(() -> {
             ProofDecision decision = reservation.approve(attemptId, verified, reason, minimum, reviewer, now);
@@ -103,8 +107,7 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
         PaymentActor actor = command.actor();
         Reservation reservation = load(actor, command.attemptId());
         Instant now = Instant.now(clock);
-        boolean expired = deadlines.openDeadline(actor.tenantId(), reservation.reservationId())
-                .map(found -> !now.isBefore(found.dueAt())).orElse(false);
+        boolean expired = expired(deadlines.openDeadline(actor.tenantId(), reservation.reservationId()), reservation, now);
         return transaction.inTransaction(() -> {
             var rejected = reservation.reject(command.attemptId(), command.reason(), actor.actorId(), now);
             if (expired) releaseSeat(reservation, CapacityReleased.CANCELLED_FOR_NON_PAYMENT, now);
@@ -113,6 +116,15 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
             if (expired) cancellation.cancelForNonPayment(actor.tenantId(), reservation.reservationId(), now);
             return new DecidedProof(reload(reservation), rejected, new Cents(0), new Cents(0));
         });
+    }
+
+    // The deadline in force (RN-02: the extension counts, never past the departure start); a frozen one does not expire (RN-17), as in the expiry job.
+    private boolean expired(Optional<PaymentDeadline> deadline, Reservation reservation, Instant now) {
+        return deadline.map(found -> {
+            if (found.frozen()) return false;
+            Instant start = departures.find(reservation.tenantId(), reservation.departureId()).map(DepartureState::startsAt).orElse(null);
+            return !now.isBefore(found.effective(start));
+        }).orElse(false);
     }
 
     // Another tenant's proof looks missing (AC-10.17).

@@ -109,6 +109,20 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
         exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-012", token(ADMIN)), 422);
     }
 
+    // AC-10.20: a decision after the deadline cancels the reservation; while that cancellation is not built the refusal says so, not
+    // a sentence about reactivating an item.
+    @Test void aDecisionAfterTheDeadlineSaysWhyItIsRefused() throws Exception {
+        payments.deadline = new co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentDeadline(
+                co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DeadlineKind.INITIAL_PAYMENT, NOW.minus(Duration.ofHours(1)));
+        payments.cancellationAvailable = false;
+
+        var refused = CatalogHttpTest.json(exchange(decide("reject", Map.of("reason", "Late"), "decision-key-020", token(ADMIN)), 422));
+
+        assertThat(refused.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(refused.get("message").asText()).contains("cancellation for non-payment").doesNotContain("reactivated");
+        assertThat(payments.cancelled).isEmpty();
+    }
+
     @Test void aProofOfAnotherTenantOrAnUnknownOneLooksMissing() throws Exception {
         exchange(post(BASE + "/payment-proofs/" + new UUID(21, 99) + "/approve").header("Authorization", "Bearer " + token(ADMIN))
                 .header("Idempotency-Key", "decision-key-013").header("X-Correlation-Id", TRACE).contentType(MediaType.APPLICATION_JSON)

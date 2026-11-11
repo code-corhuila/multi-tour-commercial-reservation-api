@@ -87,6 +87,37 @@ class PaymentProofReadHttpTest extends ReservationHttpBase {
         exchange(granted, 200);
     }
 
+    // AC-10.19: the Final Customer who owns the reservation reads the file of their proof; the token subject is the account, and the
+    // customer of the reservation is the one linked to it.
+    @Test void theCustomerLinkedToTheAccountReadsTheFileOfTheirOwnProofAndNoOneElseDoes() throws Exception {
+        UUID account = UUID.fromString(TestJwtKeys.ACCOUNT);
+        exchange(withToken(get(BASE + "/payment-proofs/" + recent + "/file"), FINAL_CUSTOMER), 403); // not linked yet
+        customers.save(customers.customers.get(customer).linkedTo(account));
+
+        var own = exchange(withToken(get(BASE + "/payment-proofs/" + recent + "/file"), FINAL_CUSTOMER), 200);
+
+        assertThat(own.getResponse().getContentAsByteArray()).isEqualTo(PNG);
+        assertThat(own.getResponse().getHeader("Cache-Control")).contains("no-store");
+        UUID stranger = new UUID(20, 77);
+        Reservation other = Reservation.create(stranger, tenant, new UUID(1, 77), departure, customer, 3,
+                new ReservedService(tour, new Cents(100_000), new Cents(0)), new Cents(300_000), new Cents(300_000), List.of(),
+                PaymentType.DEPOSIT, PaymentMethod.TRANSFER, NOW.minus(Duration.ofHours(2)));
+        UUID strangerProof = new UUID(20, 78);
+        other.registerTransfer(strangerProof, new Cents(90_000), new Cents(90_000), customer, NOW.minus(Duration.ofHours(2)));
+        other.pullEvents();
+        store.reservations.put(stranger, other);
+        payments.proofs.put(strangerProof, co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProofFile.of(PNG));
+        exchange(withToken(get(BASE + "/payment-proofs/" + strangerProof + "/file"), FINAL_CUSTOMER), 403);
+    }
+
+    // DP-14-02 (PROPOSED): the file is a download that the browser must not sniff or render.
+    @Test void theFileIsAnAttachmentTheBrowserDoesNotSniff() throws Exception {
+        var result = exchange(withToken(get(BASE + "/payment-proofs/" + recent + "/file"), ADMIN), 200);
+
+        assertThat(result.getResponse().getHeader("Content-Disposition")).isEqualTo("attachment; filename=receipt-" + recent + ".png");
+        assertThat(result.getResponse().getHeader("X-Content-Type-Options")).isEqualTo("nosniff");
+    }
+
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder internal(UUID forTenant, String bearer, String overdue) {
         var request = get(BASE + "/internal/tenants/" + forTenant + "/payment-proofs").header("Authorization", "Bearer " + bearer)
                 .header("X-Correlation-Id", TRACE);

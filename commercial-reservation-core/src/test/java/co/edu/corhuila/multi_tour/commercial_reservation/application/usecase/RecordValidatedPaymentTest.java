@@ -43,7 +43,7 @@ class RecordValidatedPaymentTest {
     private final PaymentFakes fakes = new PaymentFakes(departures);
     private final ReviewFakes review = new ReviewFakes(fakes);
     private final CashFakes cash = new CashFakes();
-    private final DecidePaymentProofUseCase decide = new DecidePaymentProofUseCase(fakes, fakes, fakes, fakes, review, review, cash, fakes, fakes,
+    private final DecidePaymentProofUseCase decide = new DecidePaymentProofUseCase(fakes, fakes, departures, fakes, fakes, review, review, cash, fakes, fakes,
             Clock.fixed(NOW, ZoneOffset.UTC));
     private final RecordValidatedPaymentUseCase record = new RecordValidatedPaymentUseCase(decide, fakes);
 

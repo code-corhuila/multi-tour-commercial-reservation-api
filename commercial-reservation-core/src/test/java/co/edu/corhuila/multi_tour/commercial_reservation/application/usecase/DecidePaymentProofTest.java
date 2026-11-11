@@ -48,7 +48,7 @@ class DecidePaymentProofTest {
     private final PaymentFakes fakes = new PaymentFakes(departures);
     private final ReviewFakes review = new ReviewFakes(fakes);
     private final CashFakes cash = new CashFakes();
-    private final DecidePaymentProofUseCase decide = new DecidePaymentProofUseCase(fakes, fakes, fakes, fakes, review, review, cash, fakes, fakes,
+    private final DecidePaymentProofUseCase decide = new DecidePaymentProofUseCase(fakes, fakes, departures, fakes, fakes, review, review, cash, fakes, fakes,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     DecidePaymentProofTest() {
@@ -292,5 +292,80 @@ class DecidePaymentProofTest {
                 .isInstanceOf(PaymentProofNotFoundException.class);
         assertThatThrownBy(() -> decide.reject(new RejectProofCommand(admin(), new UUID(10, 0xff), "no")))
                 .isInstanceOf(PaymentProofNotFoundException.class);
+    }
+
+    private PaymentDeadline initialDeadline(Instant dueAt, Integer extensionHours, Instant frozenAt) {
+        return new PaymentDeadline(DeadlineKind.INITIAL_PAYMENT, dueAt, extensionHours, extensionHours == null ? null : REGISTERED,
+                extensionHours == null ? null : ADMIN, frozenAt, frozenAt == null ? null : 90);
+    }
+
+    // RN-02, RN-17 (AC-10.20, AC-10.21): the decision judges the deadline in force, as the expiry job and the payment preconditions do.
+    @Test
+    void rejectingInsideTheExtensionDoesNotCancelForNonPayment() {
+        planted(PaymentType.DEPOSIT, 100_000);
+        fakes.deadlines.put(RESERVATION, initialDeadline(NOW.minusSeconds(60), 2, null));
+
+        DecidedProof decided = decide.reject(new RejectProofCommand(admin(), FIRST, "illegible"));
+
+        assertThat(review.cancelled).isEmpty();
+        assertThat(decided.reservation().reservationStatus()).isNotEqualTo(ReservationStatus.CANCELLED);
+        assertThat(names(fakes.events)).containsExactly("PaymentRejected", "CapacityReleased");
+    }
+
+    @Test
+    void approvingInsideTheExtensionForTooLittleDoesNotCancel() {
+        planted(PaymentType.DEPOSIT, 100_000);
+        fakes.deadlines.put(RESERVATION, initialDeadline(NOW.minusSeconds(60), 2, null));
+
+        DecidedProof decided = approve(60_000, "only 60.000 arrived");
+
+        assertThat(review.cancelled).isEmpty();
+        assertThat(review.values).isEmpty();
+        assertThat(decided.reservation().reservationStatus()).isNotEqualTo(ReservationStatus.CANCELLED);
+        assertThat(fakes.heldSeats(DEPARTURE)).isEqualTo(2);
+    }
+
+    @Test
+    void afterTheExtendedInstantTheDecisionCancelsAsBefore() {
+        planted(PaymentType.DEPOSIT, 100_000);
+        fakes.deadlines.put(RESERVATION, initialDeadline(NOW.minus(Duration.ofHours(3)), 2, null));
+
+        decide.reject(new RejectProofCommand(admin(), FIRST, "illegible"));
+
+        assertThat(review.cancelled).containsExactly(RESERVATION);
+        assertThat(fakes.heldSeats(DEPARTURE)).isZero();
+    }
+
+    @Test
+    void aFrozenDeadlineNeverCancelsOnApproval() {
+        planted(PaymentType.DEPOSIT, 100_000);
+        fakes.deadlines.put(RESERVATION, initialDeadline(NOW.minus(Duration.ofHours(5)), null, NOW.minus(Duration.ofHours(4))));
+
+        approve(60_000, "only 60.000 arrived");
+
+        assertThat(review.cancelled).isEmpty();
+        assertThat(review.values).isEmpty();
+        assertThat(fakes.heldSeats(DEPARTURE)).isEqualTo(2);
+    }
+
+    @Test
+    void aFrozenDeadlineNeverCancelsOnRejection() {
+        planted(PaymentType.DEPOSIT, 100_000);
+        fakes.deadlines.put(RESERVATION, initialDeadline(NOW.minus(Duration.ofHours(5)), null, NOW.minus(Duration.ofHours(4))));
+
+        decide.reject(new RejectProofCommand(admin(), FIRST, "illegible"));
+
+        assertThat(review.cancelled).isEmpty();
+    }
+
+    @Test
+    void theExtensionNeverGoesPastTheDepartureStart() {
+        departures.plant(new DepartureState(DEPARTURE, TENANT, SERVICE, NOW.minus(Duration.ofMinutes(10)), DepartureStatus.SCHEDULED, 10, 2));
+        planted(PaymentType.DEPOSIT, 100_000);
+        fakes.deadlines.put(RESERVATION, initialDeadline(NOW.minus(Duration.ofHours(3)), 10, null));
+
+        decide.reject(new RejectProofCommand(admin(), FIRST, "illegible"));
+
+        assertThat(review.cancelled).containsExactly(RESERVATION);
     }
 }

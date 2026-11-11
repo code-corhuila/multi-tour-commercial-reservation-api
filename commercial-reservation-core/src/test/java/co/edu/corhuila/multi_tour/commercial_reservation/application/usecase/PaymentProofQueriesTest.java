@@ -10,10 +10,14 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Proof
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ProofSource;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ProofSourcePage;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ProofView;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
@@ -29,6 +33,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -70,7 +75,17 @@ class PaymentProofQueriesTest {
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
     private final ListPaymentProofsUseCase list = new ListPaymentProofsUseCase(reader, clock);
     private final PaymentProofQueriesUseCase queries = new PaymentProofQueriesUseCase(fakes, clock);
-    private final ReadPaymentProofFileUseCase file = new ReadPaymentProofFileUseCase(fakes, fakes);
+    private static final UUID ACCOUNT = new UUID(10, 0xe1), OTHER_ACCOUNT = new UUID(10, 0xe2), UNLINKED_ACCOUNT = new UUID(10, 0xe3);
+    // The token subject of a Final Customer is the account; the customer of the reservation is the one linked to it.
+    private final CustomerByAccount accounts = (tenant, account) -> TENANT.equals(tenant) && ACCOUNT.equals(account)
+            ? Optional.of(customer(CUSTOMER, ACCOUNT)) : TENANT.equals(tenant) && OTHER_ACCOUNT.equals(account)
+            ? Optional.of(customer(OTHER_CUSTOMER, OTHER_ACCOUNT)) : Optional.empty();
+    private final ReadPaymentProofFileUseCase file = new ReadPaymentProofFileUseCase(fakes, fakes, accounts);
+
+    private static Customer customer(UUID id, UUID account) {
+        return Customer.registerLead(id, TENANT, "CC" + id.getLeastSignificantBits(), "Persona Ficticia", BirthDateOrAge.ofAge(30),
+                new ContactInfo("persona@example.invalid", "3000000000"), true, NOW).linkedTo(account);
+    }
 
     PaymentProofQueriesTest() {
         // 300.000 pay in full: a proof 24 hours old, one 23 hours 59 minutes old and one rejected.
@@ -177,10 +192,11 @@ class PaymentProofQueriesTest {
     void theProofFileIsReadOnlyByTheHolderOrTheOwner() {
         assertThat(file.read(actor(Role.TENANT_ADMINISTRATOR), OLD).contentType()).isEqualTo("image/png");
         assertThat(file.read(new PaymentActor(TENANT, ADMIN, Role.OPERATIONAL_COLLABORATOR, Set.of("VALIDATE_PAYMENT_PROOFS")), OLD)).isNotNull();
-        assertThat(file.read(new PaymentActor(TENANT, CUSTOMER, Role.FINAL_CUSTOMER), OLD)).isNotNull();
+        assertThat(file.read(new PaymentActor(TENANT, ACCOUNT, Role.FINAL_CUSTOMER), OLD)).isNotNull();
 
         for (PaymentActor refused : List.of(actor(Role.OPERATIONAL_COLLABORATOR), actor(Role.MANAGER), actor(Role.ACCOUNTANT),
-                actor(Role.ANALYST), new PaymentActor(TENANT, OTHER_CUSTOMER, Role.FINAL_CUSTOMER))) {
+                actor(Role.ANALYST), new PaymentActor(TENANT, OTHER_ACCOUNT, Role.FINAL_CUSTOMER),
+                new PaymentActor(TENANT, UNLINKED_ACCOUNT, Role.FINAL_CUSTOMER), new PaymentActor(TENANT, CUSTOMER, Role.FINAL_CUSTOMER))) {
             assertThatThrownBy(() -> file.read(refused, OLD)).isInstanceOf(PaymentAccessDeniedException.class);
         }
     }

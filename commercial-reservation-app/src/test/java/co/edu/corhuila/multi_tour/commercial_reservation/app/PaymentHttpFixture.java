@@ -45,12 +45,12 @@ class PaymentHttpFixture {
         final List<String> income = new ArrayList<>();
         final List<UUID> cancelled = new ArrayList<>();
         Cents minimumDeposit = new Cents(90_000);
-        boolean sessionOpen = true, availability = true;
+        boolean sessionOpen = true, availability = true, cancellationAvailable = true;
         PaymentDeadline deadline;
 
         void clear() {
             proofs.clear(); events.clear(); parameters.clear(); income.clear(); cancelled.clear();
-            minimumDeposit = new Cents(90_000); sessionOpen = true; availability = true; deadline = null;
+            minimumDeposit = new Cents(90_000); sessionOpen = true; availability = true; cancellationAvailable = true; deadline = null;
         }
         public Optional<PaymentDeadline> openDeadline(UUID tenant, UUID reservation) { return Optional.ofNullable(deadline); }
         public Optional<Cents> minimumDepositFor(UUID tenant, Reservation reservation) { return Optional.ofNullable(minimumDeposit); }
@@ -69,7 +69,11 @@ class PaymentHttpFixture {
         public void reverse(UUID tenant, UUID movement) { income.removeIf(row -> row.startsWith(movement.toString())); }
         public void recordExcess(UUID tenant, UUID reservation, UUID attempt, Cents amount) { income.add("excess:" + amount.amount()); }
         public void record(UUID tenant, UUID reservation, Cents value, Origin origin) { income.add(origin + ":" + value.amount()); }
-        public void cancelForNonPayment(UUID tenant, UUID reservation, Instant now) { cancelled.add(reservation); }
+        public void cancelForNonPayment(UUID tenant, UUID reservation, Instant now) {
+            if (!cancellationAvailable) throw new co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation(
+                    "the cancellation for non-payment is not available yet");
+            cancelled.add(reservation);
+        }
         public List<PaymentParameter> findByTenant(UUID tenant) { return List.copyOf(parameters); }
         public void save(UUID tenant, PaymentParameter parameter) { parameters.add(parameter); }
     }
