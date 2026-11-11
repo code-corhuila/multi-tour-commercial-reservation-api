@@ -1,6 +1,5 @@
-package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
+package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CreateReservationCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
@@ -15,7 +14,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.springframework.transaction.support.TransactionTemplate;
 
 // Same mechanism as the customer registration (AC-07.14): a known key answers the original and writes nothing.
 public final class IdempotentReservationCreation {
@@ -24,32 +22,21 @@ public final class IdempotentReservationCreation {
     private final ReservationQueries queries;
     private final CustomerByAccount accounts;
     private final CustomerRepository customers;
-    private final IdempotencyKeys keys;
-    private final TransactionTemplate transactions;
+    private final IdempotentWrites writes;
 
     public IdempotentReservationCreation(CreateReservation create, ReservationQueries queries, CustomerByAccount accounts,
-            CustomerRepository customers, IdempotencyKeys keys, TransactionTemplate transactions) {
+            CustomerRepository customers, IdempotentWrites writes) {
         this.create = create;
         this.queries = queries;
         this.accounts = accounts;
         this.customers = customers;
-        this.keys = keys;
-        this.transactions = transactions;
+        this.writes = writes;
     }
 
     public Result create(CreateReservationCommand command, String key) {
-        UUID tenant = command.tenantId();
-        var known = keys.findResourceId(tenant, key);
-        if (known.isPresent()) return new Result(original(command, known.get()), false);
-        Result result = transactions.execute(status -> {
-            Reservation reservation = create.create(command);
-            if (keys.tryRegister(tenant, key, "reservation", reservation.reservationId())) return new Result(reservation, true);
-            status.setRollbackOnly(); // lost a race with the same key: discard this reservation and its event
-            return new Result(reservation, false);
-        });
-        if (result.created()) return result;
-        var id = keys.findResourceId(tenant, key).orElseThrow(() -> new IllegalStateException("registered key has no resource"));
-        return new Result(original(command, id), false);
+        var done = writes.run(command.tenantId(), key, "reservation", () -> create.create(command), Reservation::reservationId,
+                id -> original(command, id));
+        return new Result(done.value(), done.created());
     }
 
     // The customer of the command: the named one, or for a Final Customer the one linked to their account (AC-08.17).

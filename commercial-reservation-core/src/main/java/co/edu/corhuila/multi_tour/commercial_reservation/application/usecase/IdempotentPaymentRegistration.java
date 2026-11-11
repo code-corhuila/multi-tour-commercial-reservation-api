@@ -1,6 +1,5 @@
-package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
+package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RegisterCashCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RegisterTransferCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RegisteredPayment;
@@ -13,7 +12,6 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMet
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import java.util.UUID;
 import java.util.function.Supplier;
-import org.springframework.transaction.support.TransactionTemplate;
 
 // Same mechanism as the creation of a reservation: a known key answers the payment already registered and writes nothing; a
 // key lost in a race discards the second attempt, its proof and its events with the transaction (AC-09.1, AC-09.2).
@@ -23,16 +21,14 @@ public final class IdempotentPaymentRegistration {
     private final RegisterTransfer transfers;
     private final RegisterCashPayment cash;
     private final ReservationRepository reservations;
-    private final IdempotencyKeys keys;
-    private final TransactionTemplate transactions;
+    private final IdempotentWrites writes;
 
     public IdempotentPaymentRegistration(RegisterTransfer transfers, RegisterCashPayment cash, ReservationRepository reservations,
-            IdempotencyKeys keys, TransactionTemplate transactions) {
+            IdempotentWrites writes) {
         this.transfers = transfers;
         this.cash = cash;
         this.reservations = reservations;
-        this.keys = keys;
-        this.transactions = transactions;
+        this.writes = writes;
     }
 
     public Result transfer(RegisterTransferCommand command, String key) {
@@ -47,20 +43,12 @@ public final class IdempotentPaymentRegistration {
 
     private Result run(UUID tenant, UUID reservationId, String key, PaymentMethod method, Long amountCents,
             Supplier<RegisteredPayment> work) {
-        var known = keys.findResourceId(tenant, key);
-        if (known.isPresent()) return replay(tenant, reservationId, known.get(), method, amountCents);
-        Result result = transactions.execute(status -> {
-            RegisteredPayment registered = work.get();
-            if (keys.tryRegister(tenant, key, "payment", registered.attempt().attemptId())) {
-                return new Result(registered.reservation(), registered.attempt(), true);
-            }
-            status.setRollbackOnly(); // lost a race with the same key: discard this attempt, its proof and its events
-            return new Result(registered.reservation(), registered.attempt(), false);
-        });
-        if (result.created()) return result;
-        return replay(tenant, reservationId,
-                keys.findResourceId(tenant, key).orElseThrow(() -> new IllegalStateException("registered key has no resource")),
-                method, amountCents);
+        var done = writes.run(tenant, key, "payment", work, registered -> registered.attempt().attemptId(),
+                id -> {
+                    Result stored = replay(tenant, reservationId, id, method, amountCents);
+                    return new RegisteredPayment(stored.reservation(), stored.attempt());
+                });
+        return new Result(done.value().reservation(), done.value().attempt(), done.created());
     }
 
     // A key belongs to one payment of one reservation: used anywhere else, or with another medium or amount, it is a rule violation,

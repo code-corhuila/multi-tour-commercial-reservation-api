@@ -34,10 +34,8 @@ class ArchitectureRulesTest {
             Map.entry("IdempotentExpiry", Set.of(KEYS)),
             Map.entry("IdempotentModification", Set.of(KEYS)),
             Map.entry("IdempotentPaymentParameterChange", Set.of(KEYS)),
-            Map.entry("IdempotentPaymentRegistration", Set.of(KEYS, RESERVATIONS)),
             Map.entry("IdempotentRefundDetermination", Set.of(KEYS)),
             Map.entry("IdempotentRefundWrites", Set.of(KEYS)),
-            Map.entry("IdempotentReservationCreation", Set.of(KEYS, CUSTOMERS)),
             Map.entry("TransactionalAuthorizableReasons", Set.of(KEYS, REASON_TIMES, REASON_TIMES + ".Times")));
 
     private static final List<String> FORBIDDEN_IN_CORE = List.of("org.springframework.", "java.sql.", "javax.sql.", "com.fasterxml.jackson.",
