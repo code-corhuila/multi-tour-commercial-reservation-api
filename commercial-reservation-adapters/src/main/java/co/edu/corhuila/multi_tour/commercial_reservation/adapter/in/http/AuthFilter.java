@@ -84,7 +84,8 @@ public class AuthFilter extends OncePerRequestFilter {
     // The receiving route is checked by its SERVICE role alone, because it must work for an inactive tenant.
     private boolean inactive(HttpServletRequest request, AuthenticatedPrincipal principal) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        if (principal.tenantId() == null || principal.restricted()
+        // The exceptional or emergency access reads only, so an inactive tenant does not close it (HU-SEC-007, Project Lead 2026-11-11).
+        if (principal.tenantId() == null || principal.restricted() || principal.exceptional() != null
                 || path.matches("/api/v1/commercial-reservation/internal/tenants/[^/]+/events")) {
             return false;
         }

@@ -72,10 +72,19 @@ class ExceptionalAccessHttpTest {
     }
 
     @Test void aReadInsideTheScopeIsLetThroughAndAudited() throws Exception {
-        // What the route answers to the role PLATFORM_ADMINISTRATOR is the controller's rule (it has no read role today); the gate lets the read reach it and writes the use.
-        mvc.perform(get(BASE + "/catalog/services").header("Authorization", "Bearer " + token("exceptional", List.of("CATALOG")))).andReturn();
+        // The mark of the token makes the actor read only (PLATFORM_SUPPORT): the route answers the read, and the use is audited.
+        assertThat(status(get(BASE + "/catalog/services"), token("exceptional", List.of("CATALOG")))).isEqualTo(200);
 
         assertThat(uses.recorded).containsExactly(AUTHORIZATION + "|exceptional|CATALOG|GET|" + BASE + "/catalog/services");
+    }
+
+    @Test void thePlatformAdministratorWithoutTheMarkIsStillRefusedByRole() throws Exception {
+        Map<String, Object> claims = TestJwtKeys.claims();
+        claims.put("roles", List.of("PLATFORM_ADMINISTRATOR"));
+        String bearer = TestJwtKeys.token(Map.of("alg", "RS256"), claims, TestJwtKeys.TRUSTED);
+
+        assertThat(status(get(BASE + "/catalog/services"), bearer)).isEqualTo(403);
+        assertThat(uses.recorded).isEmpty();
     }
 
     @Test void aReadOutsideTheScopeIsRefusedAndNotRecordedAsAUse() throws Exception {
