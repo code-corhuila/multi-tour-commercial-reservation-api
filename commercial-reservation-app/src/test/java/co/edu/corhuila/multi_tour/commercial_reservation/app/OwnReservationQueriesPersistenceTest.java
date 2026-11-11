@@ -12,6 +12,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationListItem;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationPage;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
@@ -166,6 +167,24 @@ class OwnReservationQueriesPersistenceTest {
         assertThat(later.latestProof()).contains(ValidationStatus.IN_VALIDATION);
         assertThat(later.validatedValue().amount()).isEqualTo(1000);
         assertThat(queries.page(fixture.tenant, other, false, 1, 20).items()).isEmpty();
+    }
+
+    // HU-COM-014 AC-14.9: the cause of a cancellation is returned when it is stored, in the row and in the detail, and is absent otherwise.
+    @Test
+    void theCancellationCauseIsReturnedInTheRowAndInTheDetailOnlyWhenStored() {
+        UUID open = savedFor(fixture.customer);
+        UUID cancelled = savedFor(fixture.customer);
+        fixture.jdbc.update("UPDATE commercial_reservation.reservation SET reservation_status = 'CANCELLED', "
+                + "cancellation_cause = 'CUSTOMER_REQUEST', cancelled_at = now() WHERE reservation_id = ?", cancelled);
+
+        var rows = queries.page(fixture.tenant, fixture.customer, true, 1, 20).items();
+        assertThat(rows).filteredOn(row -> row.reservationId().equals(cancelled)).singleElement()
+                .satisfies(row -> assertThat(row.cancellationCause()).contains(CancellationCause.CUSTOMER_REQUEST));
+        assertThat(rows).filteredOn(row -> row.reservationId().equals(open)).singleElement()
+                .satisfies(row -> assertThat(row.cancellationCause()).isEmpty());
+        assertThat(queries.findByTenantCustomerAndId(fixture.tenant, fixture.customer, cancelled).orElseThrow().cancellationCause())
+                .isEqualTo(CancellationCause.CUSTOMER_REQUEST);
+        assertThat(queries.findByTenantCustomerAndId(fixture.tenant, fixture.customer, open).orElseThrow().cancellationCause()).isNull();
     }
 
     private void attempt(UUID reservation, String status, String registeredAt) {

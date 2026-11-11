@@ -54,7 +54,7 @@ class ReservationHttpFixture {
                             found.pendingBalance(), found.expectedPaymentType(), found.expectedPaymentMethod(),
                             new Cents(found.finalValue().amount() - found.pendingBalance().amount()),
                             found.attempts().stream().max(Comparator.comparing(PaymentAttempt::registeredAt))
-                                    .flatMap(last -> Optional.ofNullable(last.validationStatus())))).toList());
+                                    .flatMap(last -> Optional.ofNullable(last.validationStatus())), Optional.ofNullable(found.cancellationCause()))).toList());
             return new ReservationPage(rows.stream().skip((page - 1L) * limit).limit(limit).toList(), rows.size());
         }
         public ReservationPage page(UUID tenant, UUID customer, boolean includeArchived, int page, int limit) {

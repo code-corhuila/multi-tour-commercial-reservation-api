@@ -219,6 +219,12 @@ public final class Reservation {
         events.add(new CapacityAllocated(tenantId, reservationId, service.serviceId(), departureId, CapacityAllocated.RESERVATION_KIND, now));
     }
 
+    // The stored cause of a cancelled reservation, for the persistence adapter that reads it back (HU-COM-014 AC-14.9).
+    public Reservation restoredCancellation(CancellationCause cause) {
+        cancellationCause = cause;
+        return this;
+    }
+
     public CancellationCause cancellationCause() { return cancellationCause; }
     public Instant cancelledAt() { return cancelledAt; }
     public UUID cancelledBy() { return cancelledBy; }
