@@ -24,7 +24,7 @@ public final class JdbcOutboxDeliveryStore implements OutboxDeliveryStore {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int EVENT_VERSION = 1;
     private static final String COLUMNS = "outbox_event_id, event_type, tenant_id, COALESCE(service_id, association_id, discount_rule_id, reservation_id, "
-            + "customer_id) AS aggregate_id, COALESCE(payload, jsonb_strip_nulls(jsonb_build_object('previousCatalogStatus', previous_catalog_status, "
+            + "customer_id, authorization_id) AS aggregate_id, COALESCE(payload, jsonb_strip_nulls(jsonb_build_object('previousCatalogStatus', previous_catalog_status, "
             + "'newCatalogStatus', new_catalog_status)))::text AS payload, COALESCE(correlation_id, outbox_event_id::text) AS correlation_id, occurred_at, "
             + "published_at, failed_at, attempts, last_error, next_attempt_at";
     private static final String PENDING = " FROM commercial_reservation.outbox_event WHERE published_at IS NULL AND failed_at IS NULL "

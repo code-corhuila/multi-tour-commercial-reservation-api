@@ -5,7 +5,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ExceptionalAccessAudit;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ExceptionalAccessUse;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExceptionalAccessAudit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -44,8 +45,13 @@ class ExceptionalAccessHttpTest {
     static class Uses implements ExceptionalAccessAudit {
         final List<String> recorded = new ArrayList<>();
 
-        @Override public void used(UUID authorizationId, String access, String area, String method, String routeTemplate) {
-            recorded.add(authorizationId + "|" + access + "|" + area + "|" + method + "|" + routeTemplate);
+        boolean failing;
+        final List<ExceptionalAccessUse> uses = new ArrayList<>();
+
+        @Override public void used(ExceptionalAccessUse use) {
+            if (failing) throw new IllegalStateException("the audit cannot be written");
+            uses.add(use);
+            recorded.add(use.authorizationId() + "|" + use.access() + "|" + use.area() + "|" + use.method() + "|" + use.routeTemplate());
         }
     }
 
@@ -56,6 +62,8 @@ class ExceptionalAccessHttpTest {
     @BeforeEach void clean() {
         statuses.clear();
         uses.recorded.clear();
+        uses.uses.clear();
+        uses.failing = false;
     }
 
     private String token(String access, List<String> scope) throws Exception {
@@ -113,5 +121,24 @@ class ExceptionalAccessHttpTest {
         String bearer = TestJwtKeys.token(Map.of("alg", "RS256"), claims, TestJwtKeys.TRUSTED);
 
         assertThat(status(get(BASE + "/catalog/services"), bearer)).isEqualTo(401);
+    }
+
+    @Test void theUseCarriesTheAdministratorTheTenantTheInstantAndTheCorrelationAndNothingOfTheRequest() throws Exception {
+        mvc.perform(get(BASE + "/catalog/services?limit=1").header("X-Correlation-Id", "trace-7").header("Authorization", "Bearer " + token("exceptional", List.of("CATALOG")))).andReturn();
+
+        assertThat(uses.uses).hasSize(1);
+        ExceptionalAccessUse use = uses.uses.get(0);
+        assertThat(use.platformAdministratorId()).isEqualTo(UUID.fromString(TestJwtKeys.ACCOUNT));
+        assertThat(use.tenantId()).isEqualTo(UUID.fromString(TestJwtKeys.TENANT));
+        assertThat(use.authorizationId()).isEqualTo(AUTHORIZATION);
+        assertThat(use.occurredAt()).isNotNull();
+        assertThat(use.correlationId()).isEqualTo("trace-7");
+        assertThat(use.routeTemplate()).doesNotContain("limit");
+    }
+
+    @Test void aUseThatCannotBeAuditedIsNotServed() throws Exception {
+        uses.failing = true;
+
+        assertThat(status(get(BASE + "/catalog/services"), token("exceptional", List.of("CATALOG")))).isEqualTo(500);
     }
 }
