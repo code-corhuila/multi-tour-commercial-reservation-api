@@ -144,6 +144,8 @@ class SensitiveDataRetentionJdbcHttpTest {
         assertThat(done.get("customerDataDeleted").asBoolean()).isTrue();
         assertThat(again.get("outcome").asText()).isEqualTo("ALREADY_DELETED");
         assertThat(records()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event WHERE tenant_id = ? AND event_type = 'SensitiveDataDeleted'", Integer.class, tenant))
+                .isEqualTo(1);
         CatalogHttpTest.assertField(exchange(delete(tenant, first, null), service(), 400), "Idempotency-Key");
     }
 

@@ -44,7 +44,7 @@ class DeleteSensitiveDataUseCaseTest {
     private final Map<UUID, List<UUID>> reservationsOfCustomer = new HashMap<>();
     private final Set<UUID> deleted = new HashSet<>(), customersWithData = new HashSet<>(Set.of(CUSTOMER));
     private final Map<UUID, Integer> companionRows = new HashMap<>();
-    private final List<SensitiveDataDeletion> records = new ArrayList<>();
+    private final List<SensitiveDataDeletion> records = new ArrayList<>(), events = new ArrayList<>();
     private int transactions, locks;
 
     private final RetentionDeletions deletions = new RetentionDeletions() {
@@ -65,7 +65,7 @@ class DeleteSensitiveDataUseCaseTest {
         @Override public List<UUID> dueCandidates(UUID tenantId, Instant now, int limit, UUID after) { return List.of(); }
     };
     private final DeleteSensitiveDataUseCase useCase = new DeleteSensitiveDataUseCase(
-            readerOfTheFacts, (tenant, id) -> Optional.empty(), deletions, transaction, Clock.fixed(NOW, ZoneOffset.UTC));
+            readerOfTheFacts, (tenant, id) -> Optional.empty(), deletions, events::add, transaction, Clock.fixed(NOW, ZoneOffset.UTC));
 
     private void reservation(UUID id, Instant serviceEnd) {
         facts.put(id, new RetentionFacts(CUSTOMER, BOGOTA, serviceEnd == null ? new DepartureFacts(DepartureStatus.SCHEDULED, null, null)
@@ -137,6 +137,25 @@ class DeleteSensitiveDataUseCaseTest {
         facts.put(THIRD, facts.get(FIRST));
         assertThat(useCase.delete(TENANT, THIRD).customerDataDeleted()).isTrue();
         assertThat(customersWithData).isEmpty();
+    }
+
+    // T-06 / AC-19.8, RN-11: one event per deletion, written in the same transaction, with the facts of the record and no value; nothing is emitted when nothing is deleted.
+    @Test
+    void theDeletionWritesTheEventOnceInTheSameTransaction() {
+        reservation(FIRST, LONG_AGO);
+        reservation(SECOND, RECENT);
+
+        useCase.delete(TENANT, SECOND);
+        useCase.delete(TENANT, FIRST);
+        useCase.delete(TENANT, FIRST);
+
+        assertThat(events).containsExactlyElementsOf(records);
+        assertThat(events).singleElement().satisfies(event -> {
+            assertThat(event.reservationId()).isEqualTo(FIRST);
+            assertThat(event.basis()).isEqualTo(AnchorBasis.SERVICE_END);
+            assertThat(event.companionRowsDeleted()).isZero();
+        });
+        assertThat(transactions).isEqualTo(1);
     }
 
     @Test

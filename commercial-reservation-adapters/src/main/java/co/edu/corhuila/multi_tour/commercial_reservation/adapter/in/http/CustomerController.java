@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCustomerRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCustomer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadSensitiveCustomerData;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.SearchCustomers;
