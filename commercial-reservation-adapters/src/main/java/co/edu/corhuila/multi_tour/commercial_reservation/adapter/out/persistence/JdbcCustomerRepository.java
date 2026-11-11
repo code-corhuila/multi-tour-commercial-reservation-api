@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistenc
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerNameSearch;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FieldCipher;
@@ -20,6 +21,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,7 +31,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 // Sensitive values are encrypted here, before they reach the SQL, and decrypted only when a row is read. The
 // associated data binds each envelope to its tenant, customer and column, so it cannot be moved to another row.
 // It writes inside the transaction of the caller (JdbcCustomerTransaction) and holds no value in any message.
-public final class JdbcCustomerRepository implements CustomerRepository, CustomerProfileReader, CustomerByAccount, CustomerByEmail {
+public final class JdbcCustomerRepository implements CustomerRepository, CustomerProfileReader, CustomerByAccount, CustomerByEmail, CustomerNameSearch {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String STATUS = "ACTIVE"; // DP-D5-6 placeholder: the status catalogue is not decided
     private static final String ACCOUNT_KEY = "uq_customer_tenant_id_account_id";
@@ -126,6 +128,32 @@ public final class JdbcCustomerRepository implements CustomerRepository, Custome
                         row.getObject("created_at", OffsetDateTime.class).toInstant(),
                         row.getObject("terms_accepted_at", OffsetDateTime.class).toInstant(), null),
                 tenantId, customerId).stream().findFirst();
+    }
+
+    // The name search of the picker (HU-COM-007): the prefix is compared as plain text on lower(full_name), the expression of
+    // idx_customer_tenant_full_name, inside one tenant. Like the general read, it neither joins nor decrypts the sensitive table.
+    // The order and the cursor use the byte order of that index. Nothing here logs the prefix.
+    @Override
+    public List<Customer> findByNamePrefix(UUID tenantId, String lowerPrefix, After after, int limit) {
+        String pattern = lowerPrefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+        String order = "lower(full_name) COLLATE \"C\"";
+        String sql = "SELECT customer_id, full_name, created_at, terms_accepted_at, document_number, birth_date_or_age, "
+                + "contact_info ->> 'envelope' AS contact_envelope FROM commercial_reservation.customer "
+                + "WHERE tenant_id = ? AND lower(full_name) LIKE ? ESCAPE '\\'"
+                + (after == null ? "" : " AND (" + order + ", customer_id) > (?::text, ?)")
+                + " ORDER BY " + order + ", customer_id LIMIT ?";
+        Object[] arguments = after == null ? new Object[] {tenantId, pattern, limit}
+                : new Object[] {tenantId, pattern, after.lowerName(), after.customerId(), limit};
+        return jdbc.query(sql, (row, index) -> {
+            UUID id = row.getObject("customer_id", UUID.class);
+            return Customer.restore(id, tenantId,
+                    DocumentNumber.of(open(row.getString("document_number"), tenantId, id, "document_number")),
+                    row.getString("full_name"),
+                    birth(open(row.getString("birth_date_or_age"), tenantId, id, "birth_date_or_age")),
+                    contact(open(row.getString("contact_envelope"), tenantId, id, "contact_info")),
+                    row.getObject("created_at", OffsetDateTime.class).toInstant(),
+                    row.getObject("terms_accepted_at", OffsetDateTime.class).toInstant(), null);
+        }, arguments);
     }
 
     private String seal(String plain, UUID tenant, UUID customer, String column) {

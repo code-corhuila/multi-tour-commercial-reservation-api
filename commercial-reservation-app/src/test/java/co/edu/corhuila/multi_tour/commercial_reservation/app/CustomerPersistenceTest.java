@@ -70,7 +70,7 @@ class CustomerPersistenceTest {
         repository = new JdbcCustomerRepository(jdbc, cipher);
         outbox = new JdbcCustomerOutbox(jdbc);
         transaction = new JdbcCustomerTransaction(new TransactionTemplate(new DataSourceTransactionManager(source)));
-        register = new RegisterLeadCustomerUseCase(repository, outbox, transaction, new JdbcServiceRiskReader(jdbc),
+        register = new RegisterLeadCustomerUseCase(repository, outbox, transaction, new JdbcServiceRiskReader(jdbc), repository,
                 UUID::randomUUID, Clock.fixed(NOW, ZoneOffset.UTC));
         insertService(highRiskService, tenant, true);
         insertService(plainService, tenant, false);
@@ -188,7 +188,7 @@ class CustomerPersistenceTest {
     void aFailingEventRollsTheCustomerBackToo() {
         var failing = new RegisterLeadCustomerUseCase(repository, event -> {
             throw new IllegalStateException("outbox down");
-        }, transaction, new JdbcServiceRiskReader(jdbc), UUID::randomUUID, Clock.fixed(NOW, ZoneOffset.UTC));
+        }, transaction, new JdbcServiceRiskReader(jdbc), repository, UUID::randomUUID, Clock.fixed(NOW, ZoneOffset.UTC));
         int before = countByTenant("customer", tenant);
         assertThatThrownBy(() -> failing.register(actor(tenant), command(highRiskService, true)))
                 .isInstanceOf(IllegalStateException.class);
@@ -228,7 +228,7 @@ class CustomerPersistenceTest {
     @Test
     void anEnvelopeMovedToAnotherCustomerDoesNotDecrypt() {
         var first = register.register(actor(tenant), command(highRiskService, true));
-        var second = register.register(actor(tenant), command(highRiskService, true));
+        var second = register.register(actor(tenant), withEmail(command(highRiskService, true), "persona.dos@example.invalid"));
         jdbc.update("UPDATE commercial_reservation.customer SET document_number = "
                 + "(SELECT document_number FROM commercial_reservation.customer WHERE customer_id = ?) "
                 + "WHERE customer_id = ?", first.customerId(), second.customerId());
@@ -242,6 +242,28 @@ class CustomerPersistenceTest {
         assertThat(reader.isHighRisk(tenant, highRiskService)).contains(true);
         assertThat(reader.isHighRisk(tenant, plainService)).contains(false);
         assertThat(reader.isHighRisk(otherTenant, highRiskService)).isEmpty();
+    }
+
+    // AC-05.7 and AC-05.8 against the real store: the lookup reads the tenant's customers and decrypts their contact (DD-7).
+    @Test
+    void aSecondRegistrationWithTheSameEmailIsRefusedAndAnAccountLinkedRecordIsReturned() {
+        var first = register.register(actor(tenant), command(plainService, false));
+
+        assertThatThrownBy(() -> register.register(actor(tenant), withEmail(command(plainService, false), " " + EMAIL.toUpperCase() + " ")))
+                .isInstanceOf(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation.class)
+                .hasMessageContaining(EMAIL);
+        assertThat(countByTenant("customer", tenant)).isEqualTo(1);
+
+        jdbc.update("UPDATE commercial_reservation.customer SET account_id = ? WHERE customer_id = ?", UUID.randomUUID(), first.customerId());
+        var again = register.register(actor(tenant), withEmail(command(plainService, false), EMAIL));
+
+        assertThat(again.customerId()).isEqualTo(first.customerId());
+        assertThat(countByTenant("customer", tenant)).isEqualTo(1);
+    }
+
+    private static RegisterLeadCustomer.Command withEmail(RegisterLeadCustomer.Command base, String email) {
+        return new RegisterLeadCustomer.Command(base.serviceId(), base.documentNumber(), base.fullName(), base.birthDate(),
+                base.age(), email, base.phone(), base.termsAccepted(), base.highRiskData());
     }
 
     private RegisterLeadCustomer.Command command(UUID service, boolean withRisk) {

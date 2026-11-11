@@ -47,6 +47,8 @@ class CustomerHttpPersistenceTest {
 
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
+    // One e-mail per test: the tests share the database and the tenant, and a repeated e-mail is a match now (AC-05.8).
+    final String email = "Persona." + UUID.randomUUID() + "@Example.invalid";
 
     @Test void aRegistrationIsStoredOnceTheRepeatedKeyReturnsIt200AndTheKeyIsOfTypeCustomer() throws Exception {
         UUID service = insertService(true);
@@ -104,7 +106,7 @@ class CustomerHttpPersistenceTest {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("fullName", "Persona Ficticia Uno"); body.put("documentNumber", " ab-0000 ");
         body.put("birthDate", "1990-05-17");
-        body.put("contact", Map.of("email", "Persona.Uno@Example.invalid", "phone", "3000000000"));
+        body.put("contact", Map.of("email", email, "phone", "3000000000"));
         body.put("termsAccepted", true); body.put("serviceId", service.toString());
         return body;
     }

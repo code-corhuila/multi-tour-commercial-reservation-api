@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCustomerRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCustomer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadSensitiveCustomerData;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.SearchCustomers;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
@@ -20,7 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// Nothing deletes nor merges a person (spec section 6). The three routes are PROPOSED in the contract (Customers).
+// Nothing deletes nor merges a person (spec section 6). The routes are PROPOSED in the contract (Customers).
 @RestController
 @RequestMapping("/api/v1/commercial-reservation/customers")
 public final class CustomerController {
@@ -29,12 +30,14 @@ public final class CustomerController {
     private final IdempotentCustomerRegistration registration;
     private final GetCustomer get;
     private final ReadSensitiveCustomerData sensitive;
+    private final SearchCustomers search;
 
     public CustomerController(IdempotentCustomerRegistration registration, GetCustomer get,
-            ReadSensitiveCustomerData sensitive) {
+            ReadSensitiveCustomerData sensitive, SearchCustomers search) {
         this.registration = registration;
         this.get = get;
         this.sensitive = sensitive;
+        this.search = search;
     }
 
     @PostMapping
@@ -55,6 +58,17 @@ public final class CustomerController {
         var body = CustomerResponse.from(result.customer());
         return result.created() ? ResponseEntity.created(URI.create(BASE + body.customerId())).body(body)
                 : ResponseEntity.ok(body);
+    }
+
+    // The picker of HU-COM-007: by the start of the name, ordinary data only. The text is neither logged nor cached.
+    @GetMapping
+    public ResponseEntity<CustomerSearchResponse> search(
+            @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @RequestParam(value = "search", required = false) String text,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "cursor", required = false) String cursor) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(CustomerSearchResponse.from(
+                search.search(CustomerHttpAccess.actor(principal), text, limit, cursor)));
     }
 
     @GetMapping("/{customerId}")

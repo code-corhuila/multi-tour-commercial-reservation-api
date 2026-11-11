@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerAccountLink;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerNameSearch;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
@@ -29,18 +30,18 @@ class CustomerHttpFixture {
     @Bean @Primary MemoryCustomers memoryCustomers() { return new MemoryCustomers(); }
 
     static final class MemoryCustomers implements CustomerRepository, CustomerProfileReader, CustomerRegisteredOutbox,
-            SensitiveDataAccessOutbox, CustomerTransaction, ServiceRiskReader, CustomerByAccount, CustomerByEmail, CustomerAccountLink {
+            SensitiveDataAccessOutbox, CustomerTransaction, ServiceRiskReader, CustomerByAccount, CustomerByEmail, CustomerAccountLink, CustomerNameSearch {
         record Service(UUID tenant, boolean highRisk) {}
         final Map<UUID, Customer> customers = new HashMap<>();
         final Map<UUID, Service> services = new HashMap<>();
         final List<CustomerRegistered> registered = new ArrayList<>();
         final List<SensitiveDataAccessed> accessed = new ArrayList<>();
-        int fullReads, profileReads;
+        int fullReads, profileReads, searches, lastSearchLimit;
         RuntimeException failOnAudit;
 
         void clear() {
             customers.clear(); services.clear(); registered.clear(); accessed.clear();
-            fullReads = 0; profileReads = 0; failOnAudit = null;
+            fullReads = 0; profileReads = 0; searches = 0; lastSearchLimit = 0; failOnAudit = null;
         }
         public Optional<Customer> findByTenantAndAccount(UUID tenant, UUID account) {
             return customers.values().stream().filter(found -> found.tenantId().equals(tenant) && account.equals(found.accountId())).findFirst();
@@ -65,6 +66,18 @@ class CustomerHttpFixture {
             return Optional.ofNullable(customers.get(id)).filter(found -> found.tenantId().equals(tenant))
                     .map(found -> Customer.restore(found.customerId(), found.tenantId(), found.documentNumber(),
                             found.fullName(), found.birthDateOrAge(), found.contact(), found.createdAt(), found.termsAcceptedAt(), null));
+        }
+        // The ordinary rows of the tenant whose lower-case name starts with the prefix, ordered by name and id, after the cursor.
+        public List<Customer> findByNamePrefix(UUID tenant, String prefix, After after, int limit) {
+            searches++; lastSearchLimit = limit;
+            return customers.values().stream().filter(found -> found.tenantId().equals(tenant))
+                    .filter(found -> found.fullName().toLowerCase().startsWith(prefix))
+                    .sorted(java.util.Comparator.comparing((Customer found) -> found.fullName().toLowerCase()).thenComparing(Customer::customerId))
+                    .filter(found -> after == null || found.fullName().toLowerCase().compareTo(after.lowerName()) > 0
+                            || (found.fullName().toLowerCase().equals(after.lowerName()) && found.customerId().compareTo(after.customerId()) > 0))
+                    .limit(limit).map(found -> Customer.restore(found.customerId(), found.tenantId(), found.documentNumber(),
+                            found.fullName(), found.birthDateOrAge(), found.contact(), found.createdAt(), found.termsAcceptedAt(), null))
+                    .toList();
         }
         public Optional<Boolean> isHighRisk(UUID tenant, UUID service) {
             return Optional.ofNullable(services.get(service)).filter(found -> found.tenant().equals(tenant))

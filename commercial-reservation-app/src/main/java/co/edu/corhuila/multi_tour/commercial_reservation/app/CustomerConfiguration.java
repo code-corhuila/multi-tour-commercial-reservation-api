@@ -10,9 +10,13 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcServiceRiskReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCustomer;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.SearchCustomers;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerNameSearch;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.SearchCustomersUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadSensitiveCustomerData;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterLeadCustomer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerTransaction;
@@ -72,8 +76,8 @@ class CustomerConfiguration {
 
     @Bean
     RegisterLeadCustomer registerLeadCustomer(CustomerRepository repository, CustomerRegisteredOutbox outbox,
-            CustomerTransaction transaction, ServiceRiskReader risk, IdGenerator ids, Clock clock) {
-        return new RegisterLeadCustomerUseCase(repository, outbox, transaction, risk, ids, clock);
+            CustomerTransaction transaction, ServiceRiskReader risk, CustomerByEmail emails, IdGenerator ids, Clock clock) {
+        return new RegisterLeadCustomerUseCase(repository, outbox, transaction, risk, emails, ids, clock);
     }
 
     @Bean
@@ -88,6 +92,11 @@ class CustomerConfiguration {
     }
 
     @Bean
+    SearchCustomers searchCustomers(CustomerNameSearch directory) {
+        return new SearchCustomersUseCase(directory);
+    }
+
+    @Bean
     IdempotentCustomerRegistration idempotentCustomerRegistration(RegisterLeadCustomer register, GetCustomer get,
             IdempotentWrites writes) {
         return new IdempotentCustomerRegistration(register, get, writes);
@@ -95,8 +104,8 @@ class CustomerConfiguration {
 
     @Bean
     CustomerController customerController(IdempotentCustomerRegistration registration, GetCustomer get,
-            ReadSensitiveCustomerData sensitive) {
-        return new CustomerController(registration, get, sensitive);
+            ReadSensitiveCustomerData sensitive, SearchCustomers search) {
+        return new CustomerController(registration, get, sensitive, search);
     }
 
     @Bean
