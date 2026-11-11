@@ -77,6 +77,26 @@ public final class JdbcReservationRepository implements ReservationRepository {
     }
 
 
+    // The review list reads the reservations of a page together: the same restore as findByTenantAndId, in a fixed number of statements
+    // (creation values, lines, companions, state, open seats, attempts) whatever the number of reservations. Tenant-scoped like the single read.
+    @Override
+    public java.util.Map<UUID, Reservation> findByTenantAndIds(UUID tenantId, java.util.Collection<UUID> reservationIds) {
+        java.util.Map<UUID, Reservation> found = reader.findAllAsCreated(tenantId, reservationIds);
+        if (found.isEmpty()) return found;
+        String ids = SqlUuidArray.of(found.keySet());
+        java.util.Set<UUID> holding = attempts.openSeats(tenantId, ids);
+        java.util.Map<UUID, java.util.List<co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentAttempt>> stored =
+                attempts.readAll(tenantId, ids);
+        jdbc.query("SELECT reservation_id, reservation_status, payment_status, pending_balance_cents FROM commercial_reservation.reservation "
+                + "WHERE tenant_id = ? AND reservation_id = ANY (?::uuid[])", (row, index) -> {
+                    UUID id = row.getObject("reservation_id", UUID.class);
+                    return found.get(id).restoredAs(ReservationStatus.valueOf(row.getString("reservation_status")),
+                            PaymentStatus.valueOf(row.getString("payment_status")), new Cents(row.getLong("pending_balance_cents")),
+                            holding.contains(id), stored.getOrDefault(id, java.util.List.of()));
+                }, tenantId, ids);
+        return found;
+    }
+
     // HU-COM-011 RN-06: the same lookup after taking the row lock, so a second expiry waits and then finds the cancelled state. It runs
     // inside the transaction of the use case.
     @Override
