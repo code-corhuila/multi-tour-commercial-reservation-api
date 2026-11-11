@@ -49,8 +49,13 @@ class ListDiscountRulesTest {
         assertThat(list.list(actor(Role.TENANT_ADMINISTRATOR))).isEmpty();
     }
 
-    @ParameterizedTest @EnumSource(value = Role.class, names = "TENANT_ADMINISTRATOR", mode = EnumSource.Mode.EXCLUDE)
+    @ParameterizedTest @EnumSource(value = Role.class, names = {"TENANT_ADMINISTRATOR", "PLATFORM_SUPPORT"}, mode = EnumSource.Mode.EXCLUDE)
     void everyOtherRoleIsRefusedAsAPermissionMatter(Role role) {
         assertThatThrownBy(() -> list.list(actor(role))).isInstanceOf(DiscountRuleAccessDeniedException.class);
+    }
+
+    // HU-SEC-007: the read only platform support actor reads the rules of the tenant.
+    @Test void thePlatformSupportActorReadsTheRules() {
+        assertThat(list.list(actor(Role.PLATFORM_SUPPORT))).isEmpty();
     }
 }
