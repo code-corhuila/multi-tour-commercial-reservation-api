@@ -5,10 +5,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ProofPage;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ProofView;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListPaymentProofs;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadCustomerName;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadPaymentProofFile;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadPaymentProofs;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProofFile;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ValidationStatus;
@@ -37,9 +36,9 @@ public final class PaymentProofController {
     private final ListPaymentProofs list;
     private final ReadPaymentProofs read;
     private final ReadPaymentProofFile file;
-    private final CustomerRepository customers;
+    private final ReadCustomerName customers;
 
-    public PaymentProofController(ListPaymentProofs list, ReadPaymentProofs read, ReadPaymentProofFile file, CustomerRepository customers) {
+    public PaymentProofController(ListPaymentProofs list, ReadPaymentProofs read, ReadPaymentProofFile file, ReadCustomerName customers) {
         this.list = list;
         this.read = read;
         this.file = file;
@@ -108,7 +107,7 @@ public final class PaymentProofController {
     private java.util.function.Function<UUID, String> names(UUID tenantId) {
         Map<UUID, String> known = new HashMap<>();
         return customerId -> known.computeIfAbsent(customerId,
-                id -> customers.findByTenantAndId(tenantId, id).map(Customer::fullName).orElse(""));
+                id -> customers.nameOf(tenantId, id));
     }
 
     private static boolean flag(String value) {
