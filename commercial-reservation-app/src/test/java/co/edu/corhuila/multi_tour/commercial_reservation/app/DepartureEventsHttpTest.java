@@ -2,7 +2,14 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceType;
@@ -14,8 +21,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -40,14 +49,22 @@ class DepartureEventsHttpTest {
     @Autowired DepartureEventHttpFixture.MemoryDepartures departures;
     @Autowired CatalogHttpFixture.MemoryCatalog catalog;
     UUID tour, salida;
+    private ListAppender<ILoggingEvent> logs;
 
     @BeforeEach void plant() {
+        logs = new ListAppender<>();
+        logs.start();
+        ((Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME)).addAppender(logs);
         events.clear();
         departures.clear();
         tour = UUID.randomUUID();
         salida = UUID.randomUUID();
         catalog.save(CatalogService.register(tour, TENANT, CatalogServiceType.TOUR, "Caminata Ficticia",
                 CommercialTerms.of(100_000L, 50_000L, 12, false, false), Instant.parse("2026-10-01T00:00:00Z")));
+    }
+
+    @AfterEach void release() {
+        ((Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME)).detachAppender(logs);
     }
 
     private Map<String, Object> event(UUID id, String type, Map<String, Object> extra) {
@@ -134,13 +151,74 @@ class DepartureEventsHttpTest {
         assertThat(departures.rows.get(salida).status()).isEqualTo(DepartureStatus.FINALIZED);
     }
 
-    @Test void aDepartureEventForAnUnknownDepartureAnswersBadRequestAndCanBeRedelivered() throws Exception {
+    // DP-16 and DD-8 (answered by the Project Lead): an event that arrives before SalidaScheduled answers 503 so the relay
+    // retries with growing waits; no provisional row is created and the event is not marked as received.
+    @Test void aDepartureEventForADepartureWithNoRowAnswersRetryLaterAndCanBeRedelivered() throws Exception {
         Map<String, Object> early = event(UUID.randomUUID(), "SalidaCancelled", Map.of());
-        deliver(early, "SERVICE", 400);
+        deliver(early, "SERVICE", 503);
+        assertThat(departures.rows).isEmpty();
         assertThat(events.processed).isEmpty();
         deliver(scheduled(UUID.randomUUID()), "SERVICE", 201);
         deliver(early, "SERVICE", 201);
         assertThat(departures.rows.get(salida).status()).isEqualTo(DepartureStatus.CANCELLED);
+    }
+
+    @Test void theRetryLaterAnswerHasTheShapeOfTheErrorHandlerAndAWaitHint() throws Exception {
+        Map<String, Object> early = event(UUID.randomUUID(), "SalidaVehiclesChanged", Map.of("vehicleTotalCapacity", 9));
+        mvc.perform(post(ROUTE).header("X-Correlation-Id", "departure-events-test").contentType(MediaType.APPLICATION_JSON)
+                        .content(TestJwtKeys.JSON.writeValueAsString(early)).header("Idempotency-Key", early.get("eventId").toString())
+                        .header("Authorization", "Bearer " + token("SERVICE")))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string("Retry-After", "5"))
+                .andExpect(jsonPath("$.error").value("SERVICE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.message").value("deliver the event again later"))
+                .andExpect(jsonPath("$.traceId").value("departure-events-test"));
+    }
+
+    @Test void aRetryLaterAnswerIsLoggedAsAWarningWithTheEventIdOnly() throws Exception {
+        UUID id = UUID.randomUUID();
+        deliver(event(id, "SalidaFinalized", Map.of()), "SERVICE", 503);
+        assertThat(logs.list).noneMatch(entry -> entry.getLevel().isGreaterOrEqual(Level.ERROR));
+        var held = logs.list.stream().filter(entry -> entry.getLevel() == Level.WARN
+                && entry.getFormattedMessage().contains(id.toString())).toList();
+        assertThat(held).hasSize(1);
+        assertThat(held.get(0).getThrowableProxy()).isNull();
+        assertThat(held.get(0).getFormattedMessage()).doesNotContain(salida.toString()).doesNotContain(TENANT.toString());
+    }
+
+    @Test void theOccurredAtOfTheEventIsStoredAsTheMarkerOfTheRow() throws Exception {
+        Map<String, Object> first = scheduled(UUID.randomUUID());
+        first.put("occurredAt", "2026-11-03T10:00:00Z");
+        deliver(first, "SERVICE", 201);
+        assertThat(departures.rows.get(salida).lastEventOccurredAt()).isEqualTo(Instant.parse("2026-11-03T10:00:00Z"));
+        Map<String, Object> started = simple("SalidaExecutionStarted");
+        started.put("occurredAt", "2027-03-01T13:05:00Z");
+        deliver(started, "SERVICE", 201);
+        assertThat(departures.rows.get(salida).lastEventOccurredAt()).isEqualTo(Instant.parse("2027-03-01T13:05:00Z"));
+    }
+
+    @Test void anOlderVehicleEventAnswersOkAndNeverOverwritesTheNewerCapacity() throws Exception {
+        departures.save(new DepartureState(salida, TENANT, tour, STARTS, DepartureStatus.SCHEDULED, 12, 0,
+                Instant.parse("2026-11-03T10:00:00Z")));
+        Map<String, Object> newer = vehicles(10);
+        newer.put("occurredAt", "2026-11-03T12:00:00Z");
+        deliver(newer, "SERVICE", 201);
+        Map<String, Object> older = vehicles(4);
+        older.put("occurredAt", "2026-11-03T11:00:00Z");
+        deliver(older, "SERVICE", 200);
+        assertThat(departures.rows.get(salida).effectiveCapacity()).isEqualTo(10);
+        assertThat(departures.rows.get(salida).lastEventOccurredAt()).isEqualTo(Instant.parse("2026-11-03T12:00:00Z"));
+    }
+
+    @Test void aDepartureEventWithoutAValidOccurredAtIsRefused() throws Exception {
+        Map<String, Object> missing = scheduled(UUID.randomUUID());
+        missing.remove("occurredAt");
+        deliver(missing, "SERVICE", 400);
+        Map<String, Object> invalid = scheduled(UUID.randomUUID());
+        invalid.put("occurredAt", "yesterday");
+        deliver(invalid, "SERVICE", 400);
+        assertThat(departures.rows).isEmpty();
+        assertThat(events.processed).isEmpty();
     }
 
     @Test void aPersonTokenCannotPostADepartureEvent() throws Exception {
