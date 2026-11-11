@@ -21,4 +21,9 @@ public interface SalidaCapacityHolder {
     default boolean move(UUID tenantId, UUID reservationId, UUID fromSalidaId, UUID toSalidaId, int seats) {
         throw new UnsupportedOperationException("the move needs the adapter override");
     }
+
+    // HU-COM-018 D-04: the temporary hold of a rescheduling proposal (allocation kind REPROGRAMMING_HOLD) in the proposed departure, by the same conditional update; false when it has no room.
+    default boolean holdForRescheduling(UUID tenantId, UUID reservationId, UUID salidaId, int seats) {
+        throw new UnsupportedOperationException("the rescheduling hold needs the adapter override");
+    }
 }

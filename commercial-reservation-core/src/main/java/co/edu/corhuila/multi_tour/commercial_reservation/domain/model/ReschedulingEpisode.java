@@ -1,0 +1,63 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+// HU-COM-018 plan D-02, RN-04, RN-07: the incident of one reservation whose departure was cancelled for a cause not attributable to the customer. It is a relationship,
+// never a state of the reservation. It holds the clocks (counted from the cancellation instant) and its proposals; substitute proposals never restart the limit.
+// Immutable: every move returns the next episode.
+public record ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UUID originalSalidaId, Instant cancelledAt, Instant openedAt, EpisodeState state,
+        ClosingReason reason, Instant closedAt, Instant periodStart, Duration frozen, List<ReschedulingProposal> proposals) {
+
+    public ReschedulingEpisode {
+        if (id == null || tenantId == null || reservationId == null || originalSalidaId == null || cancelledAt == null || openedAt == null || state == null
+                || periodStart == null || frozen == null || proposals == null)
+            throw new DomainException("episode", "the rescheduling episode data is incomplete");
+        if ((state == EpisodeState.OPEN) != (closedAt == null && reason == null))
+            throw new DomainException("closedAt", "only a closed episode has a closing instant and a reason");
+        proposals = List.copyOf(proposals);
+    }
+
+    public static ReschedulingEpisode open(UUID id, UUID tenantId, UUID reservationId, UUID originalSalidaId, Instant cancelledAt, Instant openedAt) {
+        return new ReschedulingEpisode(id, tenantId, reservationId, originalSalidaId, cancelledAt, openedAt, EpisodeState.OPEN, null, null, cancelledAt,
+                Duration.ZERO, List.of());
+    }
+
+    public Instant episodeLimit() {
+        return ReschedulingDeadlines.episodeLimit(cancelledAt, frozen);
+    }
+
+    // The end of the period to propose: 24 hours from the cancellation, or from the last voiding, never past the limit.
+    public Instant proposalPeriodEnd() {
+        return ReschedulingDeadlines.proposalPeriodEnd(periodStart, episodeLimit());
+    }
+
+    public Optional<ReschedulingProposal> pendingProposal() {
+        return proposals.stream().filter(ReschedulingProposal::pending).findFirst();
+    }
+
+    // The seats are held by the use case; here the proposal is admitted: open episode, no other pending, inside the period that began at the cancellation or the voiding.
+    public ReschedulingEpisode propose(UUID proposalId, UUID salidaId, int partySize, UUID by, Instant now, Instant proposedStart) {
+        if (state != EpisodeState.OPEN) throw new InvalidStatusTransitionException("the episode is already closed");
+        if (pendingProposal().isPresent()) throw new InvalidStatusTransitionException("the episode already has a pending proposal");
+        if (now.isBefore(periodStart)) throw new BusinessRuleViolation("a proposal cannot precede the period it belongs to");
+        if (!now.isBefore(proposalPeriodEnd())) throw new BusinessRuleViolation("the period to propose has ended");
+        ReschedulingProposal proposal = new ReschedulingProposal(proposalId, salidaId, partySize, by, now,
+                ReschedulingDeadlines.responseDeadline(now, episodeLimit(), proposedStart), ProposalState.PENDING, null);
+        List<ReschedulingProposal> next = new ArrayList<>(proposals);
+        next.add(proposal);
+        return new ReschedulingEpisode(id, tenantId, reservationId, originalSalidaId, cancelledAt, openedAt, state, reason, closedAt, periodStart, frozen, next);
+    }
+
+    // The proposed departure was cancelled: the proposal is void (not a rejection) and a new period of the lowest of 24 hours and the remainder starts at that instant.
+    public ReschedulingEpisode voidPending(Instant now) {
+        ReschedulingProposal pending = pendingProposal().orElseThrow(() -> new InvalidStatusTransitionException("the episode has no pending proposal"));
+        List<ReschedulingProposal> next = new ArrayList<>(proposals);
+        next.set(next.indexOf(pending), pending.closed(ProposalState.VOID, now));
+        return new ReschedulingEpisode(id, tenantId, reservationId, originalSalidaId, cancelledAt, openedAt, state, reason, closedAt, now, frozen, next);
+    }
+}
