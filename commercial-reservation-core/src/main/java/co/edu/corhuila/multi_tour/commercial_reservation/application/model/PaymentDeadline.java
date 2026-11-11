@@ -23,6 +23,11 @@ public record PaymentDeadline(DeadlineKind kind, Instant dueAt, Integer extensio
         return EffectiveDeadline.of(dueAt, extensionHours == null ? 0 : extensionHours, departureStart);
     }
 
+    // The instant to show and to judge (RN-02, RN-17): the effective deadline; a frozen one has no running instant.
+    public Instant inForce(Instant departureStart) {
+        return frozen() ? null : effective(departureStart);
+    }
+
     // The one extension: the initial deadline, still open and not frozen, within 1 hour and the maximum, never past the departure start.
     public PaymentDeadline extended(int hours, int maximum, UUID grantedBy, Instant now, Instant departureStart) {
         if (kind != DeadlineKind.INITIAL_PAYMENT) throw new BusinessRuleViolation("only the initial payment deadline can be extended");
