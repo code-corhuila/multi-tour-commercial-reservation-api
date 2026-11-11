@@ -87,4 +87,16 @@ class IdempotentWritesTest {
 
         assertThat(fakes.committed).isEmpty();
     }
+
+    @Test void aResultThatDoesNotRegisterLeavesNoKeyAndCanBeAskedAgain() {
+        var fakes = new Fakes();
+        var writes = new IdempotentWrites(fakes, fakes);
+
+        var refused = writes.runWhen(tenant, "key-1", "thing", () -> first, id -> false, id -> id, id -> id);
+        var asked = writes.runWhen(tenant, "key-1", "thing", () -> second, id -> true, id -> id, id -> id);
+
+        assertThat(refused.value()).isEqualTo(first);
+        assertThat(fakes.committed).containsEntry("key-1", second);
+        assertThat(asked.created()).isTrue();
+    }
 }
