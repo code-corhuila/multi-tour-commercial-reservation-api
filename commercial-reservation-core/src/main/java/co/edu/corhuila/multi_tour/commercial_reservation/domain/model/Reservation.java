@@ -9,15 +9,16 @@ import java.util.UUID;
 // equal to the final value and no seat held (RN-RES-006, RN-RES-007). HU-COM-009 adds the payment attempts as children:
 // registered is not validated, and the financial situation moves only with validated values (RN-01, RN-02).
 public final class Reservation {
-    private final UUID reservationId, tenantId, customerId, departureId, createdBy;
-    private final int people;
-    private final ReservedService service;
-    private final Cents projectedValue, finalValue;
-    private final List<FixedDiscount> fixedDiscounts;
+    private final UUID reservationId, tenantId, customerId, createdBy;
+    private UUID departureId;
+    private int people;
+    private ReservedService service;
+    private Cents projectedValue, finalValue;
+    private List<FixedDiscount> fixedDiscounts;
     private final PaymentType expectedPaymentType;
     private final PaymentMethod expectedPaymentMethod;
     private final Instant createdAt;
-    private final List<Companion> companions;
+    private List<Companion> companions;
     private final List<PaymentAttempt> attempts = new ArrayList<>();
     private final List<PaymentEvent> events = new ArrayList<>();
     private ReservationStatus reservationStatus = ReservationStatus.PENDING_PAYMENT;
@@ -248,6 +249,62 @@ public final class Reservation {
         boolean proofInTime = attempts.stream().anyMatch(a -> a.validationStatus() == ValidationStatus.IN_VALIDATION
                 && !a.registeredAt().isAfter(effectiveDeadline));
         return proofInTime ? ExpiryVerdict.PROOF_IN_VALIDATION : ExpiryVerdict.EXPIRABLE;
+    }
+
+    // HU-COM-012 RN-01, RN-02, RN-12: the one place that changes people, service, departure, value and balance. The lines fixed at creation
+    // are recomputed in order from their copied type and value, never from the rules of today (RN-RES-003). Validated payments stay:
+    // pending = max(0, new final - validated), and what the validated amount exceeds the new value is the excess.
+    public ModificationOutcome modify(int newPeople, ReservedService newService, UUID newDeparture, List<Companion> newCompanions,
+            Instant departureStart, Instant now) {
+        ModificationPlan plan = plan(newPeople, newService, newDeparture, newCompanions, departureStart, now);
+        fixedDiscounts = plan.lines(); people = newPeople; service = newService; departureId = newDeparture; companions = plan.group();
+        projectedValue = plan.projected(); finalValue = plan.outcome().newFinalValue(); pendingBalance = plan.outcome().newPendingBalance();
+        return plan.outcome();
+    }
+
+    // AC-12.2: the same computation and the same refusals, kept nowhere: the reservation is left as it was.
+    public ModificationOutcome quoteModification(int newPeople, ReservedService newService, UUID newDeparture, List<Companion> newCompanions,
+            Instant departureStart, Instant now) {
+        return plan(newPeople, newService, newDeparture, newCompanions, departureStart, now).outcome();
+    }
+
+    private record ModificationPlan(List<FixedDiscount> lines, List<Companion> group, Cents projected, ModificationOutcome outcome) {
+    }
+
+    private ModificationPlan plan(int newPeople, ReservedService newService, UUID newDeparture, List<Companion> newCompanions,
+            Instant departureStart, Instant now) {
+        if (reservationStatus != ReservationStatus.PENDING_PAYMENT && reservationStatus != ReservationStatus.CONFIRMED)
+            throw new InvalidStatusTransitionException("only a pending-payment or confirmed reservation can be modified");
+        if (departureStart == null || now == null || !now.isBefore(departureStart))
+            throw new InvalidStatusTransitionException("a reservation whose departure has started cannot be modified");
+        if (newPeople < 1) throw new DomainException("people", "people must be at least one");
+        if (newService == null || newDeparture == null) throw new MissingReservationDataException(List.of("serviceId", "salidaId"));
+        List<Companion> group = newCompanions == null ? List.of() : newCompanions;
+        if (group.size() > newPeople - 1)
+            throw new DomainException("companions", "the companions must fit in the people left by the lead customer");
+        if (group.stream().map(companion -> companion.documentNumber().comparable()).distinct().count() != group.size())
+            throw new BusinessRuleViolation("a document is already in the group");
+        Cents projected = newService.projectedFor(newPeople);
+        long previous = projected.amount();
+        List<FixedDiscount> lines = new ArrayList<>();
+        for (FixedDiscount line : fixedDiscounts) {
+            Cents base = new Cents(line.calculationBase() == DiscountBase.ORIGINAL_VALUE ? projected.amount() : previous);
+            DiscountLine raw = line.percentageBasisPoints() != null
+                    ? DiscountLine.percentage(base, new BasisPoints(line.percentageBasisPoints()))
+                    : DiscountLine.fixedAmount(base, new Cents(line.amountCents()));
+            long amount = Math.min(Math.min(raw.amount().amount(), line.capCents() == null ? Long.MAX_VALUE : line.capCents()), previous);
+            previous -= amount;
+            lines.add(new FixedDiscount(line.order(), line.ruleId(), line.ruleName(), line.type(), line.percentageBasisPoints(),
+                    line.amountCents(), line.calculationBase(), base, new Cents(amount), new Cents(previous), line.capCents()));
+        }
+        Cents oldFinal = finalValue, oldPending = pendingBalance;
+        long validated = oldFinal.amount() - oldPending.amount();
+        Cents newFinal = new Cents(previous);
+        Cents newPending = new Cents(Math.max(0, newFinal.amount() - validated));
+        Cents excess = new Cents(Math.max(0, validated - newFinal.amount()));
+        int seatDelta = newPeople - people;
+        return new ModificationPlan(List.copyOf(lines), List.copyOf(group), projected,
+                new ModificationOutcome(oldFinal, newFinal, oldPending, newPending, excess, seatDelta));
     }
 
     // The events born since the last pull, in order; the use case writes them to the outbox in the same transaction.
