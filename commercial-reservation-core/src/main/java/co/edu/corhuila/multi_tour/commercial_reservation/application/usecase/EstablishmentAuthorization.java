@@ -11,7 +11,7 @@ public final class EstablishmentAuthorization {
         if (actor == null || actor.tenantId() == null || actor.actorId() == null || actor.role() == null)
             throw new EstablishmentAccessDeniedException();
         if (actor.role() == TENANT_ADMINISTRATOR) return;
-        if (!write && (actor.role() == MANAGER || actor.role() == ANALYST)) return;
+        if (!write && (actor.role() == MANAGER || actor.role() == ANALYST || actor.role() == PLATFORM_SUPPORT)) return;
         throw new EstablishmentAccessDeniedException();
     }
 }
