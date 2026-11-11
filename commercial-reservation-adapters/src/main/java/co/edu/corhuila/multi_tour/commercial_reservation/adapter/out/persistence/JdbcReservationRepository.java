@@ -76,6 +76,15 @@ public final class JdbcReservationRepository implements ReservationRepository {
                         attempts.read(tenantId, reservationId)), tenantId, reservationId).stream().findFirst());
     }
 
+
+    // HU-COM-011 RN-06: the same lookup after taking the row lock, so a second expiry waits and then finds the cancelled state. It runs
+    // inside the transaction of the use case.
+    @Override
+    public Optional<Reservation> lockByTenantAndId(UUID tenantId, UUID reservationId) {
+        jdbc.queryForList("SELECT 1 FROM commercial_reservation.reservation WHERE tenant_id = ? AND reservation_id = ? FOR UPDATE", tenantId,
+                reservationId);
+        return findByTenantAndId(tenantId, reservationId);
+    }
     @Override
     public Optional<Reservation> findByTenantAndAttempt(UUID tenantId, UUID attemptId) {
         return jdbc.query("SELECT reservation_id FROM commercial_reservation.payment_attempt WHERE tenant_id = ? AND payment_attempt_id = ?",
@@ -89,9 +98,12 @@ public final class JdbcReservationRepository implements ReservationRepository {
     }
 
     private void updatePayment(Reservation r) {
-        jdbc.update("UPDATE commercial_reservation.reservation SET reservation_status = ?, payment_status = ?, pending_balance_cents = ? "
-                + "WHERE tenant_id = ? AND reservation_id = ?", r.reservationStatus().name(), r.paymentStatus().name(),
-                r.pendingBalance().amount(), r.tenantId(), r.reservationId());
+        jdbc.update("UPDATE commercial_reservation.reservation SET reservation_status = ?, payment_status = ?, pending_balance_cents = ?, "
+                + "cancellation_cause = ?, cancelled_at = ?, cancelled_by = ? "
+                + "WHERE tenant_id = ? AND reservation_id = ? AND reservation_status <> 'CANCELLED'", r.reservationStatus().name(), r.paymentStatus().name(),
+                r.pendingBalance().amount(), r.cancellationCause() == null ? null : r.cancellationCause().name(),
+                r.cancelledAt() == null ? null : java.time.OffsetDateTime.ofInstant(r.cancelledAt(), java.time.ZoneOffset.UTC), r.cancelledBy(),
+                r.tenantId(), r.reservationId());
     }
 
     private void insertReservation(Reservation r) {
