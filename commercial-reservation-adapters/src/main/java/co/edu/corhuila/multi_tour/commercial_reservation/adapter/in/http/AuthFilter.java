@@ -27,15 +27,18 @@ public class AuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return "GET".equals(request.getMethod())
-                && ("/health".equals(request.getRequestURI().substring(request.getContextPath().length()))
-                || request.getRequestURI().substring(request.getContextPath().length()).matches(
-                        "/api/v1/commercial-reservation/public/tenants/[^/]+/associated-establishments/[^/]+/image"));
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        return ("GET".equals(request.getMethod()) && "/health".equals(path)) || PublicPaths.allows(request.getMethod(), path);
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        if (PublicPaths.isPublicArea(request.getRequestURI().substring(request.getContextPath().length()))) {
+            // A method or a path the public area does not list: the shared not found, never 401 (plan D-04).
+            errors.write(request, response, ApiError.Code.NOT_FOUND, "resource not found");
+            return;
+        }
         String authorization = request.getHeader("Authorization");
         try {
             if (authorization == null || !authorization.startsWith("Bearer ")) throw new InvalidTokenException();

@@ -17,7 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-// HU-COM-006: the departure ports and the mirror use case. The consumer route that calls MirrorSalidaState is not built here.
+// HU-COM-006: the departure ports and the mirror use case. The route that calls MirrorSalidaState is the branch for the Salida events of TenantEventController.
 @Configuration
 class DepartureMirrorConfiguration {
 
