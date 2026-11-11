@@ -173,6 +173,50 @@ class RegisterTransferTest {
         assertThat(fakes.reservations.get(RESERVATION).attempts()).hasSize(2);
     }
 
+    // AC-09.21 and RN-17 judge the effective deadline (the due instant plus the extension, never past the departure start).
+    @Test
+    void anExtendedDeadlineAcceptsAPaymentAfterTheOriginalDueInstant() {
+        fakes.deadlines.put(RESERVATION, new PaymentDeadline(DeadlineKind.INITIAL_PAYMENT, NOW.minusSeconds(3_600), 2, NOW.minusSeconds(7_200),
+                ACTOR, null, null));
+
+        register.register(command(RESERVATION, 100_000L, PNG));
+
+        assertThat(fakes.reservations.get(RESERVATION).attempts()).hasSize(1);
+    }
+
+    @Test
+    void anExtendedDeadlineStillRefusesAPaymentAfterTheExtendedInstant() {
+        fakes.deadlines.put(RESERVATION, new PaymentDeadline(DeadlineKind.INITIAL_PAYMENT, NOW.minusSeconds(3 * 3_600), 2,
+                NOW.minusSeconds(4 * 3_600), ACTOR, null, null));
+
+        assertThatThrownBy(() -> register.register(command(RESERVATION, 100_000L, PNG))).isInstanceOf(BusinessRuleViolation.class)
+                .hasMessageContaining("deadline");
+
+        assertThat(fakes.saved).isEmpty();
+        assertThat(fakes.holdCalls).isZero();
+    }
+
+    @Test
+    void aFrozenDeadlineIsNotExpiredWhileItIsFrozen() {
+        fakes.deadlines.put(RESERVATION, new PaymentDeadline(DeadlineKind.INITIAL_PAYMENT, NOW.minusSeconds(3_600), null, null, null,
+                NOW.minusSeconds(7_200), 30));
+
+        register.register(command(RESERVATION, 100_000L, PNG));
+
+        assertThat(fakes.reservations.get(RESERVATION).attempts()).hasSize(1);
+    }
+
+    @Test
+    void anExtensionNeverCarriesTheDeadlinePastTheDepartureStart() {
+        departures.plant(new DepartureState(DEPARTURE, TENANT, SERVICE, NOW.plusSeconds(3_600), DepartureStatus.SCHEDULED, 10, 0));
+        fakes.deadlines.put(RESERVATION, new PaymentDeadline(DeadlineKind.INITIAL_PAYMENT, NOW.minusSeconds(60), 5, NOW.minusSeconds(7_200),
+                ACTOR, null, null));
+
+        register.register(command(RESERVATION, 100_000L, PNG));
+
+        assertThat(fakes.reservations.get(RESERVATION).attempts()).hasSize(1);
+    }
+
     @Test
     void aProofIsJudgedFromItsContentAndNothingIsStoredWhenItIsNot() {
         byte[] text = "a text renamed proof.pdf".getBytes(StandardCharsets.UTF_8);
