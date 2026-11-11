@@ -17,7 +17,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-// The detail of one offered tour with the departures that can be booked (plan D-02, D-07, RN-02). Any item that is
+// The detail of one offered tour with its scheduled future departures, a full one marked full (plan D-02, D-07, RN-02). Any item that is
 // not an active tour of the tenant of the link answers the same not found (RN-09, AC-06.11).
 public final class GetPublicTourUseCase implements GetPublicTour {
     private final TenantDirectory directory;
@@ -46,14 +46,15 @@ public final class GetPublicTourUseCase implements GetPublicTour {
                 bookable(tenantId, serviceId));
     }
 
-    // The reader already filters, but the rule is checked again here: the adapter is not the only guard (RN-02).
+    // The reader already filters, but the rule is checked again here: the adapter is not the only guard (RN-02). A full
+    // departure stays in the answer marked full so the customer sees it; creating on it is still refused (AC-08.3).
     private List<PublicDeparture> bookable(UUID tenantId, UUID serviceId) {
         Instant now = clock.instant();
         return departures.findOpen(tenantId, serviceId, now).stream()
                 .filter(row -> row.tenantId().equals(tenantId) && row.serviceId().equals(serviceId))
-                .filter(row -> row.status() == DepartureStatus.SCHEDULED && row.startsAt().isAfter(now)
-                        && row.seats().available() > 0)
+                .filter(row -> row.status() == DepartureStatus.SCHEDULED && row.startsAt().isAfter(now))
                 .sorted(Comparator.comparing(DepartureState::startsAt))
-                .map(row -> new PublicDeparture(row.departureId(), row.startsAt(), row.seats().available())).toList();
+                .map(row -> new PublicDeparture(row.departureId(), row.startsAt(),
+                        row.seats().available(), row.seats().available() <= 0)).toList();
     }
 }

@@ -69,6 +69,13 @@ public final class ReservationController {
         return ReservationQuoteResponse.from(quote.quote(principal.tenantId(), request.serviceId(), request.salidaId(), request.people()));
     }
 
+    // HU-COM-008 DP-12: the Final Customer's door to the same quote (the role is checked by ReservationHttpAccess).
+    @PostMapping("/own/reservation-quotes")
+    public ReservationQuoteResponse quoteOwn(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @RequestBody QuoteReservationRequest request) {
+        return quote(principal, request);
+    }
+
     @PostMapping("/reservations")
     public ResponseEntity<ReservationResponse> create(
             @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,

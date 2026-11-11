@@ -34,11 +34,11 @@ class PublicTourDetailTest extends PublicOfferFixture {
     }
 
     @Test
-    void onlyAScheduledFutureDepartureWithSeatsIsOffered() {
+    void onlyAScheduledFutureDepartureIsOfferedAndAFullOneComesMarkedFull() {
         CatalogService tour = plantTourWith(TENANT, "Canyon", 100_000, 10, false);
         DepartureState offered = departure(tour, DepartureStatus.SCHEDULED, Duration.ofDays(2), 10, 4);
-        departure(tour, DepartureStatus.SCHEDULED, Duration.ofDays(3), 10, 10);
-        departure(tour, DepartureStatus.SCHEDULED, Duration.ofDays(4), 0, 0);
+        DepartureState full = departure(tour, DepartureStatus.SCHEDULED, Duration.ofDays(3), 10, 10);
+        DepartureState noCapacity = departure(tour, DepartureStatus.SCHEDULED, Duration.ofDays(4), 0, 0);
         departure(tour, DepartureStatus.CANCELLED, Duration.ofDays(5), 10, 0);
         departure(tour, DepartureStatus.IN_EXECUTION, Duration.ofDays(6), 10, 0);
         departure(tour, DepartureStatus.FINALIZED, Duration.ofDays(7), 10, 0);
@@ -46,7 +46,10 @@ class PublicTourDetailTest extends PublicOfferFixture {
 
         PublicTourDetail result = read(IDENTIFIER, tour.serviceId());
 
-        assertThat(result.departures()).containsExactly(new PublicDeparture(offered.departureId(), offered.startsAt(), 6));
+        assertThat(result.departures()).containsExactly(
+                new PublicDeparture(offered.departureId(), offered.startsAt(), 6, false),
+                new PublicDeparture(full.departureId(), full.startsAt(), 0, true),
+                new PublicDeparture(noCapacity.departureId(), noCapacity.startsAt(), 0, true));
     }
 
     @Test
