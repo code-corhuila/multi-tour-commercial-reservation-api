@@ -4,6 +4,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Reser
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationPage;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OwnReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentStatus;
@@ -70,7 +71,7 @@ public final class JdbcReservationQueries implements ReservationQueries, OwnRese
         arguments.add((page - 1L) * limit);
         List<ReservationListItem> items = jdbc.query("SELECT r.reservation_id, c.full_name, s.commercial_name, d.hora_inicio, "
                 + "r.reservation_status, r.payment_status, r.pending_balance_cents, r.payment_type, r.payment_method, "
-                + "r.final_value_cents - r.pending_balance_cents AS validated, (SELECT a.validation_status FROM commercial_reservation.payment_attempt a "
+                + "r.final_value_cents - r.pending_balance_cents AS validated, r.cancellation_cause, (SELECT a.validation_status FROM commercial_reservation.payment_attempt a "
                 + "WHERE a.tenant_id = r.tenant_id AND a.reservation_id = r.reservation_id ORDER BY a.registered_at DESC LIMIT 1) AS latest_proof" + where
                 + " ORDER BY r.created_at DESC, r.reservation_id DESC LIMIT ? OFFSET ?",
                 (row, index) -> new ReservationListItem(row.getObject("reservation_id", UUID.class), row.getString("full_name"),
@@ -78,7 +79,8 @@ public final class JdbcReservationQueries implements ReservationQueries, OwnRese
                         ReservationStatus.valueOf(row.getString("reservation_status")),
                         PaymentStatus.valueOf(row.getString("payment_status")), new Cents(row.getLong("pending_balance_cents")),
                         PaymentType.valueOf(row.getString("payment_type")), PaymentMethod.valueOf(row.getString("payment_method")),
-                        new Cents(row.getLong("validated")), Optional.ofNullable(row.getString("latest_proof")).map(ValidationStatus::valueOf)),
+                        new Cents(row.getLong("validated")), Optional.ofNullable(row.getString("latest_proof")).map(ValidationStatus::valueOf),
+                        Optional.ofNullable(row.getString("cancellation_cause")).map(CancellationCause::valueOf)),
                 arguments.toArray());
         return new ReservationPage(items, total);
     }
@@ -86,17 +88,19 @@ public final class JdbcReservationQueries implements ReservationQueries, OwnRese
     Optional<Reservation> detail(UUID tenantId, UUID customerId, UUID reservationId) {
         List<Object> arguments = new ArrayList<>(List.of(tenantId, reservationId));
         if (customerId != null) arguments.add(customerId);
-        return jdbc.query("SELECT r.reservation_status, r.payment_status, r.pending_balance_cents, EXISTS (SELECT 1 FROM "
+        return jdbc.query("SELECT r.reservation_status, r.payment_status, r.pending_balance_cents, r.cancellation_cause, EXISTS (SELECT 1 FROM "
                 + "commercial_reservation.capacity_allocation a WHERE a.tenant_id = r.tenant_id AND a.reservation_id = r.reservation_id "
                 + "AND a.released_at IS NULL) AS seat_held FROM commercial_reservation.reservation r "
                 + "WHERE r.tenant_id = ? AND r.reservation_id = ?" + (customerId == null ? "" : " AND r.customer_id = ?"),
                 (row, index) -> new Stored(ReservationStatus.valueOf(row.getString("reservation_status")),
                         PaymentStatus.valueOf(row.getString("payment_status")), new Cents(row.getLong("pending_balance_cents")),
-                        row.getBoolean("seat_held")), arguments.toArray()).stream().findFirst()
+                        row.getBoolean("seat_held"), Optional.ofNullable(row.getString("cancellation_cause")).map(CancellationCause::valueOf).orElse(null)),
+                arguments.toArray()).stream().findFirst()
                 .flatMap(stored -> reader.findAsCreated(tenantId, reservationId).map(created -> created.restoredAs(
-                        stored.status(), stored.payment(), stored.pending(), stored.seatHeld(), new JdbcPaymentAttempts(jdbc).read(tenantId, reservationId))));
+                        stored.status(), stored.payment(), stored.pending(), stored.seatHeld(), new JdbcPaymentAttempts(jdbc).read(tenantId, reservationId))
+                        .restoredCancellation(stored.cause())));
     }
 
-    private record Stored(ReservationStatus status, PaymentStatus payment, Cents pending, boolean seatHeld) {
+    private record Stored(ReservationStatus status, PaymentStatus payment, Cents pending, boolean seatHeld, CancellationCause cause) {
     }
 }
