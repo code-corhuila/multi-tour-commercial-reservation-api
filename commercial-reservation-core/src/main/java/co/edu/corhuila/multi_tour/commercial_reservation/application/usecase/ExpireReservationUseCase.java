@@ -21,7 +21,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservatio
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationStatus;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 // RN-06, RN-07, RN-10; AC-11.2, AC-11.14: the job asks, the service re-checks under the row lock and decides. The cancellation, the
@@ -56,12 +56,18 @@ public class ExpireReservationUseCase implements ExpireReservation {
             Reservation reservation = reservations.lockByTenantAndId(tenantId, reservationId)
                     .orElseThrow(() -> new ReservationNotFoundException(reservationId));
             Instant now = Instant.now(clock);
-            Optional<PaymentDeadline> deadline = deadlines.openDeadline(tenantId, reservationId);
-            if (deadline.isEmpty()) return refused(reservation, reservation.reservationStatus() == ReservationStatus.CANCELLED
+            List<PaymentDeadline> rows = deadlines.openDeadlines(tenantId, reservationId);
+            if (rows.isEmpty()) return refused(reservation, reservation.reservationStatus() == ReservationStatus.CANCELLED
                     ? ExpiryVerdict.ALREADY_CANCELLED : ExpiryVerdict.NOT_DUE);
             Instant start = departures.find(tenantId, reservation.departureId()).map(DepartureState::startsAt).orElse(null);
-            ExpiryVerdict verdict = reservation.expiryVerdict(deadline.get().kind(), deadline.get().effective(start),
-                    deadline.get().frozen(), now);
+            // Any row that is reached, unpaid, not frozen and without a proof in time expires the reservation; a row still running never does.
+            // When none does, the answer is the first reason that is not NOT_DUE (a proof, a freeze, a payment), else NOT_DUE.
+            ExpiryVerdict verdict = ExpiryVerdict.NOT_DUE;
+            for (PaymentDeadline row : rows) {
+                ExpiryVerdict each = reservation.expiryVerdict(row.kind(), row.effective(start), row.frozen(), now);
+                if (each == ExpiryVerdict.EXPIRABLE) { verdict = each; break; }
+                if (verdict == ExpiryVerdict.NOT_DUE) verdict = each;
+            }
             if (verdict != ExpiryVerdict.EXPIRABLE) return refused(reservation, verdict);
             Cents validated = new Cents(reservation.finalValue().amount() - reservation.pendingBalance().amount());
             int released = holder.release(tenantId, reservationId);

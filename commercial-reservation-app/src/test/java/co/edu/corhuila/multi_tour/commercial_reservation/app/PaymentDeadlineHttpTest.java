@@ -137,4 +137,19 @@ class PaymentDeadlineHttpTest extends ReservationHttpBase {
         exchange(create(createBody(), "reservation-key-32", ADMIN), 200);
         assertThat(deadlines.initial).hasSize(1);
     }
+
+    @Test void theCollaboratorWhoGrantedTheExtensionIsHiddenFromTheFinalCustomerAndShownToTheStaff() throws Exception {
+        UUID grantor = UUID.fromString(TestJwtKeys.ACCOUNT);
+        payments.deadline = new PaymentDeadline(DeadlineKind.INITIAL_PAYMENT, NOW.plus(Duration.ofHours(2)), 5, NOW, grantor, null, null);
+        String path = BASE + "/reservations/" + ownReservationId + "/payment-deadline";
+
+        var customerView = CatalogHttpTest.json(exchange(withToken(get(path), FINAL_CUSTOMER), 200));
+        assertThat(customerView.get("extensionHours").asInt()).isEqualTo(5);
+        assertThat(customerView.has("extensionGrantedAt")).isTrue();
+        assertThat(customerView.has("extensionGrantedBy")).isFalse();
+        for (String role : List.of(ADMIN, COLLABORATOR, MANAGER, ACCOUNTANT, ANALYST)) {
+            var staffView = CatalogHttpTest.json(exchange(withToken(get(path), role), 200));
+            assertThat(staffView.get("extensionGrantedBy").asText()).as(role).isEqualTo(grantor.toString());
+        }
+    }
 }

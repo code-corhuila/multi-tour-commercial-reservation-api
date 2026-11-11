@@ -67,7 +67,8 @@ public final class PaymentDeadlineController {
     @GetMapping("/reservations/{reservationId}/payment-deadline")
     public DeadlineResponse read(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("reservationId") UUID reservationId) {
-        return DeadlineResponse.of(deadline.get(PaymentActors.of(principal), reservationId));
+        var actor = PaymentActors.of(principal);
+        return DeadlineResponse.of(deadline.get(actor, reservationId), actor.role() != co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role.FINAL_CUSTOMER);
     }
 
     @GetMapping("/reservations/{reservationId}/payment-followups")
