@@ -6,6 +6,12 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantDeadlines;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantDecisions;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcFinancialDecisionRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKind;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantEventTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantStatusStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantSuspensions;
@@ -47,7 +53,7 @@ class TenantInactivityPersistenceTest {
         b = new ReservationPersistenceFixture();
         var jdbc = a.jdbc;
         suspensions = new JdbcTenantSuspensions(jdbc);
-        var effects = new TenantInactivityUseCase(suspensions, new JdbcTenantDeadlines(jdbc), new UuidGenerator());
+        var effects = new TenantInactivityUseCase(suspensions, new JdbcTenantDeadlines(jdbc), new JdbcTenantDecisions(jdbc), new UuidGenerator());
         apply = new ApplyTenantEventUseCase(new JdbcTenantStatusStore(jdbc), new JdbcProcessedEvents(jdbc), new JdbcTenantEventTransaction(a.transactions), effects);
         reservationA = reservation(a);
         reservationB = reservation(b);
@@ -125,5 +131,29 @@ class TenantInactivityPersistenceTest {
         assertThat(balance[1]).isEqualTo(40);
         assertThat(balance[2]).isEqualTo("DEPARTURE_CANCELLED_OR_INTERRUPTED");
         assertThat(suspensions.intervals(b.tenant)).isEqualTo(new SuspensionIntervals(java.util.List.of()));
+    }
+
+    @Test
+    void theInactivationFreezesTheOpenDecisionsOfThatTenantAndTheReactivationResumesThemWithWhatRemained() {
+        var decisionsA = new JdbcFinancialDecisionRepository(a.jdbc);
+        FinancialDecision mine = FinancialDecision.open(UUID.randomUUID(), a.tenant, reservationA, DecisionKind.CUSTOMER_CANCELLATION, new Cents(100_000), new Cents(20_000), null, T0.minus(Duration.ofHours(4)));
+        FinancialDecision other = FinancialDecision.open(UUID.randomUUID(), b.tenant, reservationB, DecisionKind.CUSTOMER_CANCELLATION, new Cents(100_000), new Cents(20_000), null, T0.minus(Duration.ofHours(4)));
+        decisionsA.save(mine);
+        decisionsA.save(other);
+
+        apply.apply(event(TenantEventType.TENANT_INACTIVATED, a.tenant, T0, null));
+
+        assertThat(decisionsA.findLatest(a.tenant, reservationA, DecisionKind.CUSTOMER_CANCELLATION).orElseThrow().remainingAtFreezeMinutes()).isEqualTo(20 * 60L);
+        assertThat(decisionsA.findLatest(b.tenant, reservationB, DecisionKind.CUSTOMER_CANCELLATION).orElseThrow().isFrozen()).as("the other tenant is never touched").isFalse();
+        Instant back = T0.plus(Duration.ofHours(30));
+
+        apply.apply(event(TenantEventType.TENANT_REACTIVATED, a.tenant, back, null));
+
+        FinancialDecision resumed = decisionsA.findLatest(a.tenant, reservationA, DecisionKind.CUSTOMER_CANCELLATION).orElseThrow();
+        assertThat(resumed.isFrozen()).isFalse();
+        assertThat(resumed.dueAt()).isEqualTo(back.plus(Duration.ofHours(20)));
+        var queries = new JdbcRefundQueries(a.jdbc);
+        assertThat(queries.dueDecisions(a.tenant, back.plus(Duration.ofHours(19)), 1, 50).items()).as("not due before the shifted instant").isEmpty();
+        assertThat(queries.dueDecisions(a.tenant, back.plus(Duration.ofHours(20)), 1, 50).items()).extracting(FinancialDecision::id).containsExactly(mine.id());
     }
 }
