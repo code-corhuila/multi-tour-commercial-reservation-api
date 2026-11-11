@@ -110,6 +110,28 @@ final class PaymentFakes implements ReservationRepository, PaymentDeadlineReader
     }
 
     @Override
+    public int releaseSeats(UUID tenantId, UUID reservationId, int seats) {
+        requireTransaction();
+        releaseCalls++;
+        Reservation reservation = reservations.get(reservationId);
+        DepartureState row = departures.rows.get(reservation.departureId());
+        departures.rows.put(row.departureId(), new DepartureState(row.departureId(), row.tenantId(), row.serviceId(), row.startsAt(),
+                row.status(), row.effectiveCapacity(), Math.max(row.heldSeats() - seats, 0)));
+        return seats;
+    }
+
+    // One operation: the new departure is held first and the old one released only when the hold succeeded.
+    @Override
+    public boolean move(UUID tenantId, UUID reservationId, UUID from, UUID to, int seats) {
+        requireTransaction();
+        if (!hold(tenantId, to, seats)) return false;
+        DepartureState row = departures.rows.get(from);
+        departures.rows.put(from, new DepartureState(row.departureId(), row.tenantId(), row.serviceId(), row.startsAt(), row.status(),
+                row.effectiveCapacity(), Math.max(row.heldSeats() - seats, 0)));
+        return true;
+    }
+
+    @Override
     public void save(UUID tenantId, UUID attemptId, ProofFile proof) {
         requireTransaction();
         // The proof table has a foreign key to the attempt, so the attempt has to be stored first.
