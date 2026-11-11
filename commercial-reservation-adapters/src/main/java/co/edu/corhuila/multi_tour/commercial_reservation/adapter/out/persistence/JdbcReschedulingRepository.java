@@ -111,7 +111,7 @@ public final class JdbcReschedulingRepository implements ReschedulingRepository 
         return new Header(r.getObject("rescheduling_episode_id", UUID.class), r.getObject("tenant_id", UUID.class), r.getObject("reservation_id", UUID.class),
                 r.getObject("original_salida_id", UUID.class), instant(r, "episode_started_at"), instant(r, "proposal_due_at"), EpisodeState.valueOf(r.getString("episode_state")),
                 instant(r, "closed_at"), reason == null ? null : ClosingReason.valueOf(reason), instant(r, "opened_at"),
-                instant(r, "frozen_at"), r.getObject("remaining_episode_minutes", Long.class), r.getLong("frozen_total_minutes"));
+                instant(r, "frozen_at"), minutes(r, "remaining_episode_minutes"), r.getLong("frozen_total_minutes"));
     }
 
     private ReschedulingEpisode withProposals(Header h) {
@@ -131,6 +131,11 @@ public final class JdbcReschedulingRepository implements ReschedulingRepository 
                 r.getString("answer_evidence"), instant(r, "answered_at"), r.getObject("answer_recorded_by", UUID.class));
         return new ReschedulingProposal(r.getObject("rescheduling_proposal_id", UUID.class), r.getObject("proposed_salida_id", UUID.class), r.getInt("party_size"),
                 r.getObject("proposed_by", UUID.class), instant(r, "proposed_at"), instant(r, "response_deadline_at"), state, instant(r, "closed_at"), answer,
-                r.getObject("remaining_response_minutes", Long.class));
+                minutes(r, "remaining_response_minutes"));
+    }
+    // The column is an integer, which the driver does not hand over as a Long.
+    private static Long minutes(ResultSet r, String column) throws SQLException {
+        long value = r.getLong(column);
+        return r.wasNull() ? null : value;
     }
 }
