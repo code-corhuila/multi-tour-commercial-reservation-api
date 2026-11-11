@@ -16,8 +16,10 @@ public final class CustomerHttpAccess implements HandlerInterceptor {
             account = UUID.fromString(principal.sub());
             if (!account.toString().equalsIgnoreCase(principal.sub())) throw new IllegalArgumentException();
         } catch (IllegalArgumentException invalid) { throw new InvalidTokenException(); }
+        // HU-SEC-007: the mark of the token, never the roles claim, makes the read only actor of an exceptional or emergency access.
+        if (principal.exceptional() != null) return new CustomerActor(principal.tenantId(), account, CustomerActor.Role.PLATFORM_SUPPORT, principal.permissions());
         for (var role : CustomerActor.Role.values()) {
-            if (principal.roles().contains(role.name()))
+            if (role != CustomerActor.Role.PLATFORM_SUPPORT && principal.roles().contains(role.name()))
                 return new CustomerActor(principal.tenantId(), account, role, principal.permissions());
         }
         throw new CustomerAccessDeniedException();

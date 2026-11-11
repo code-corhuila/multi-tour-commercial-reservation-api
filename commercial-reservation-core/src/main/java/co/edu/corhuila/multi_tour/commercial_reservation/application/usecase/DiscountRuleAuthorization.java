@@ -15,6 +15,8 @@ public final class DiscountRuleAuthorization {
 
     // DP-09 default: only the Tenant Administrator reads a rule.
     public static void requireRead(DiscountRuleActor actor) {
+        // HU-SEC-007: the read only platform support actor reads the rules too.
+        if (actor != null && actor.role() == DiscountRuleActor.Role.PLATFORM_SUPPORT && actor.tenantId() != null && actor.actorId() != null) return;
         requireWrite(actor);
     }
 

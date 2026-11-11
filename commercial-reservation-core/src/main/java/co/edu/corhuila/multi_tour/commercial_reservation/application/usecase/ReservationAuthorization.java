@@ -26,11 +26,11 @@ public final class ReservationAuthorization {
     }
 
     public static void requireRead(CustomerActor actor) {
-        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST, Role.FINAL_CUSTOMER);
+        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST, Role.FINAL_CUSTOMER, Role.PLATFORM_SUPPORT);
     }
 
     public static void requireDepartures(CustomerActor actor) {
-        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ANALYST, Role.FINAL_CUSTOMER);
+        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ANALYST, Role.FINAL_CUSTOMER, Role.PLATFORM_SUPPORT);
     }
 
     private static void require(CustomerActor actor, Role... allowed) {
