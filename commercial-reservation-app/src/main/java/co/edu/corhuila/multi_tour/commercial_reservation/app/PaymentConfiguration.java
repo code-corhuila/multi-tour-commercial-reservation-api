@@ -1,7 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentDeadlineWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentDeadlineWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentDeadlineController;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExtendPaymentDeadlineUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetPaymentDeadlineUseCase;
@@ -239,8 +239,8 @@ class PaymentConfiguration {
 
     @Bean
     IdempotentDeadlineWrites idempotentDeadlineWrites(RecordPaymentFollowup followups, ExtendPaymentDeadline extensions,
-            GetPaymentDeadline reads, @Lazy PaymentFollowupRepository history, IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentDeadlineWrites(followups, extensions, reads, history, keys, new TransactionTemplate(manager));
+            GetPaymentDeadline reads, @Lazy PaymentFollowupRepository history, IdempotentWrites writes) {
+        return new IdempotentDeadlineWrites(followups, extensions, reads, history, writes);
     }
 
     @Bean
