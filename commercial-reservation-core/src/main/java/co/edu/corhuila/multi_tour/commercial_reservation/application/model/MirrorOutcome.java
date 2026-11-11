@@ -1,7 +1,8 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.application.model;
 
-// What the consumer adapter logs by event id and nothing else (AC-06.16). Only IGNORED_UNKNOWN leaves the event
-// unmarked, so a redelivery after the scheduled event can still apply it (DP-16).
+// What the consumer adapter logs by event id and nothing else (AC-06.16). IGNORED_UNKNOWN and AWAITING_DEPARTURE leave the
+// event unmarked, so a redelivery can still apply it. AWAITING_DEPARTURE is an event whose departure has no row yet: the
+// adapter answers retry later until SalidaScheduled creates the row (DP-16, DD-8).
 public enum MirrorOutcome {
-    APPLIED, DUPLICATE, IGNORED_OUT_OF_ORDER, IGNORED_UNKNOWN
+    APPLIED, DUPLICATE, IGNORED_OUT_OF_ORDER, IGNORED_UNKNOWN, AWAITING_DEPARTURE
 }

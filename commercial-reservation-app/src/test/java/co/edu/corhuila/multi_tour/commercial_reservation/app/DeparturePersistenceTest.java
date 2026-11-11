@@ -182,13 +182,13 @@ class DeparturePersistenceTest {
         var mirror = new MirrorSalidaStateUseCase(departures, processed, transaction, catalog);
         UUID departureId = UUID.randomUUID();
         Instant startsAt = Instant.now().truncatedTo(ChronoUnit.MICROS).plus(2, ChronoUnit.DAYS);
-        var scheduled = new SalidaEvent.Scheduled(UUID.randomUUID(), tenant, departureId, tour.serviceId(), startsAt);
+        var scheduled = new SalidaEvent.Scheduled(UUID.randomUUID(), tenant, departureId, tour.serviceId(), startsAt, Instant.now().truncatedTo(ChronoUnit.MICROS));
 
         assertThat(mirror.apply(scheduled)).isEqualTo(MirrorOutcome.APPLIED);
         assertThat(mirror.apply(scheduled)).isEqualTo(MirrorOutcome.DUPLICATE);
-        assertThat(mirror.apply(new SalidaEvent.Finalized(UUID.randomUUID(), tenant, departureId)))
+        assertThat(mirror.apply(new SalidaEvent.Finalized(UUID.randomUUID(), tenant, departureId, Instant.now().truncatedTo(ChronoUnit.MICROS))))
                 .isEqualTo(MirrorOutcome.APPLIED);
-        assertThat(mirror.apply(new SalidaEvent.ExecutionStarted(UUID.randomUUID(), tenant, departureId)))
+        assertThat(mirror.apply(new SalidaEvent.ExecutionStarted(UUID.randomUUID(), tenant, departureId, Instant.now().truncatedTo(ChronoUnit.MICROS))))
                 .isEqualTo(MirrorOutcome.IGNORED_OUT_OF_ORDER);
 
         DepartureState stored = departures.find(tenant, departureId).orElseThrow();
@@ -203,12 +203,39 @@ class DeparturePersistenceTest {
         CatalogService withBus = tour(tenant, 12, true);
         UUID departureId = UUID.randomUUID();
         mirror.apply(new SalidaEvent.Scheduled(UUID.randomUUID(), tenant, departureId, withBus.serviceId(),
-                Instant.now().plus(2, ChronoUnit.DAYS)));
+                Instant.now().plus(2, ChronoUnit.DAYS), Instant.now().truncatedTo(ChronoUnit.MICROS)));
         assertThat(departures.find(tenant, departureId).orElseThrow().effectiveCapacity()).isZero();
 
-        mirror.apply(new SalidaEvent.VehiclesChanged(UUID.randomUUID(), tenant, departureId, 8));
+        mirror.apply(new SalidaEvent.VehiclesChanged(UUID.randomUUID(), tenant, departureId, 8, Instant.now().truncatedTo(ChronoUnit.MICROS)));
 
         assertThat(departures.find(tenant, departureId).orElseThrow().effectiveCapacity()).isEqualTo(8);
+    }
+
+    // DP-16 and DD-8: the column last_event_occurred_at of the -db repository holds the marker of the last event applied.
+    @Test
+    void theMarkerOfTheLastEventAppliedIsStoredAndAnOlderVehicleEventChangesNothing() {
+        var mirror = new MirrorSalidaStateUseCase(departures, processed, transaction, catalog);
+        CatalogService withBus = tour(tenant, 12, true);
+        UUID departureId = UUID.randomUUID();
+        Instant base = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        mirror.apply(new SalidaEvent.Scheduled(UUID.randomUUID(), tenant, departureId, withBus.serviceId(),
+                base.plus(2, ChronoUnit.DAYS), base));
+        assertThat(departures.find(tenant, departureId).orElseThrow().lastEventOccurredAt()).isEqualTo(base);
+
+        mirror.apply(new SalidaEvent.VehiclesChanged(UUID.randomUUID(), tenant, departureId, 8, base.plusSeconds(60)));
+        var older = mirror.apply(new SalidaEvent.VehiclesChanged(UUID.randomUUID(), tenant, departureId, 3, base.plusSeconds(30)));
+
+        assertThat(older).isEqualTo(MirrorOutcome.IGNORED_OUT_OF_ORDER);
+        DepartureState stored = departures.find(tenant, departureId).orElseThrow();
+        assertThat(stored.effectiveCapacity()).isEqualTo(8);
+        assertThat(stored.lastEventOccurredAt()).isEqualTo(base.plusSeconds(60));
+    }
+
+    @Test
+    void aRowSavedWithoutAMarkerReadsBackWithANullMarker() {
+        DepartureState born = row(tour, DepartureStatus.SCHEDULED, 24, 12, 0);
+
+        assertThat(departures.find(tenant, born.departureId()).orElseThrow().lastEventOccurredAt()).isNull();
     }
 
     private static boolean present(String name) {

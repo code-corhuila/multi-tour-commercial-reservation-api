@@ -73,18 +73,20 @@ public final class TenantEventController {
         if (type != null && type.startsWith("Salida")) {
             SalidaEvent salida = toSalidaEvent(body, type, tenantId);
             sameKey(key, salida.eventId());
-            return departureAnswer(mirror.apply(salida));
+            return departureAnswer(mirror.apply(salida), salida.eventId());
         }
         TenantEvent event = toEvent(body, tenantId);
         sameKey(key, event.eventId());
         return ResponseEntity.status(apply.apply(event) == TenantEventOutcome.APPLIED ? HttpStatus.CREATED : HttpStatus.OK).build();
     }
 
-    // A departure event with no row yet is not marked as received, so it answers 400 and its redelivery can still apply it (DP-16).
-    private static ResponseEntity<Void> departureAnswer(MirrorOutcome outcome) {
+    // A departure event with no row yet is not marked as received and answers 503, so the relay retries it with growing waits
+    // until SalidaScheduled creates the row (DP-16, DD-8). A scheduled event for a service this tenant has no tour for stays 400.
+    private static ResponseEntity<Void> departureAnswer(MirrorOutcome outcome, UUID eventId) {
         return switch (outcome) {
             case APPLIED -> ResponseEntity.status(HttpStatus.CREATED).build();
             case DUPLICATE, IGNORED_OUT_OF_ORDER -> ResponseEntity.ok().build();
+            case AWAITING_DEPARTURE -> throw new RetryLaterException(eventId);
             case IGNORED_UNKNOWN -> throw new DomainException("salidaId", "has no row yet; redeliver the event after SalidaScheduled");
         };
     }
@@ -101,18 +103,19 @@ public final class TenantEventController {
         }
         UUID salidaId = uuid(payload, "salidaId");
         if (!uuid(body, "aggregateId").equals(salidaId)) throw new DomainException("aggregateId", "must be the salidaId of the payload");
+        Instant occurredAt = instant(body, "occurredAt");
         return switch (type) {
-            case "SalidaScheduled" -> new SalidaEvent.Scheduled(eventId, tenantId, salidaId, uuid(payload, "serviceId"), instant(payload, "startsAt"));
+            case "SalidaScheduled" -> new SalidaEvent.Scheduled(eventId, tenantId, salidaId, uuid(payload, "serviceId"), instant(payload, "startsAt"), occurredAt);
             case "SalidaVehiclesChanged" -> {
                 JsonNode total = payload.path("vehicleTotalCapacity");
                 if (!total.isIntegralNumber() || !total.canConvertToInt() || total.asInt() < 0) {
                     throw new DomainException("vehicleTotalCapacity", "must be an integer of 0 or more");
                 }
-                yield new SalidaEvent.VehiclesChanged(eventId, tenantId, salidaId, total.asInt());
+                yield new SalidaEvent.VehiclesChanged(eventId, tenantId, salidaId, total.asInt(), occurredAt);
             }
-            case "SalidaExecutionStarted" -> new SalidaEvent.ExecutionStarted(eventId, tenantId, salidaId);
-            case "SalidaFinalized" -> new SalidaEvent.Finalized(eventId, tenantId, salidaId);
-            case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId);
+            case "SalidaExecutionStarted" -> new SalidaEvent.ExecutionStarted(eventId, tenantId, salidaId, occurredAt);
+            case "SalidaFinalized" -> new SalidaEvent.Finalized(eventId, tenantId, salidaId, occurredAt);
+            case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId, occurredAt);
             default -> throw new DomainException("eventType", "is not an event this service consumes");
         };
     }

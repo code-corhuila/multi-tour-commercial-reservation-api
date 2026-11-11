@@ -15,7 +15,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 // Mirrors the departure events into the capacity rows (plan D-08, RN-11). One effect per event id, the status only
-// moves forward, and the row and the processed id commit together. The consumer route that calls this is not built here.
+// moves forward, and the row and the processed id commit together. The row keeps the occurredAt of the last event applied
+// (DP-16, DD-8): a capacity event older than that never overwrites a newer one, and the status stays protected by the
+// forward-only matrix, so a cancellation always reaches an open departure. An event with no row yet is not marked, and
+// no provisional row is created: the consumer route answers retry later until SalidaScheduled arrives.
 public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
 
     private final DepartureStateRepository departures;
@@ -45,7 +48,7 @@ public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
                 case SalidaEvent.VehiclesChanged changed -> changeVehicles(changed);
             };
             // An event with no row yet stays unmarked so its redelivery can still apply it (DP-16, DD-8).
-            if (outcome != MirrorOutcome.IGNORED_UNKNOWN) {
+            if (outcome != MirrorOutcome.IGNORED_UNKNOWN && outcome != MirrorOutcome.AWAITING_DEPARTURE) {
                 processed.record(event.eventId());
             }
             return outcome;
@@ -63,29 +66,33 @@ public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
         // Mandatory transport: no seats until the first vehicle event (G-VEH, DP-08).
         int initial = tour.get().terms().transportRequired() ? 0 : capacityOf(tour.get());
         departures.save(new DepartureState(event.departureId(), event.tenantId(), event.serviceId(),
-                event.startsAt(), DepartureStatus.SCHEDULED, initial, 0));
+                event.startsAt(), DepartureStatus.SCHEDULED, initial, 0, event.occurredAt()));
         return MirrorOutcome.APPLIED;
     }
 
     private MirrorOutcome advance(SalidaEvent event, DepartureStatus next) {
         Optional<DepartureState> row = departures.find(event.tenantId(), event.departureId());
         if (row.isEmpty()) {
-            return MirrorOutcome.IGNORED_UNKNOWN;
+            return MirrorOutcome.AWAITING_DEPARTURE;
         }
         if (!row.get().status().canMoveTo(next)) {
             return MirrorOutcome.IGNORED_OUT_OF_ORDER;
         }
-        departures.save(row.get().withStatus(next));
+        departures.save(row.get().withStatus(next).appliedAt(event.occurredAt()));
         return MirrorOutcome.APPLIED;
     }
 
     private MirrorOutcome changeVehicles(SalidaEvent.VehiclesChanged event) {
         Optional<DepartureState> row = departures.find(event.tenantId(), event.departureId());
         if (row.isEmpty()) {
-            return MirrorOutcome.IGNORED_UNKNOWN;
+            return MirrorOutcome.AWAITING_DEPARTURE;
         }
         // A final departure keeps its capacity: the event is ignored and still marked processed (ADR-004 D4).
         if (row.get().status() == DepartureStatus.FINALIZED || row.get().status() == DepartureStatus.CANCELLED) {
+            return MirrorOutcome.IGNORED_OUT_OF_ORDER;
+        }
+        // An older capacity must not overwrite a newer one (DP-16, DD-8); the same instant still applies.
+        if (row.get().isNewerThan(event.occurredAt())) {
             return MirrorOutcome.IGNORED_OUT_OF_ORDER;
         }
         Optional<CatalogService> tour = tour(row.get().tenantId(), row.get().serviceId());
@@ -94,7 +101,7 @@ public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
         }
         // The lower of the tour capacity and the vehicle total, never below the seats already held (H8).
         int effective = Math.max(Math.min(capacityOf(tour.get()), event.vehicleTotalCapacity()), row.get().heldSeats());
-        departures.save(row.get().withEffectiveCapacity(effective));
+        departures.save(row.get().withEffectiveCapacity(effective).appliedAt(event.occurredAt()));
         return MirrorOutcome.APPLIED;
     }
 
