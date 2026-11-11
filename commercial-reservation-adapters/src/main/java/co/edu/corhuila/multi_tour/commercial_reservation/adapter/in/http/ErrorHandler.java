@@ -22,6 +22,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Est
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReschedulingNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingPaymentDataException;
@@ -143,7 +144,7 @@ public class ErrorHandler {
                 || ex instanceof PublicOfferNotFoundException
                 || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException || ex instanceof AuthorizableReasonNotFoundException
                 || ex instanceof DepartureNotFoundException || ex instanceof ReservationNotFoundException || ex instanceof PaymentProofNotFoundException
-                || ex instanceof RefundNotFoundException || ex instanceof CreditBalanceNotFoundException || ex instanceof ClientNoticeNotFoundException
+                || ex instanceof RefundNotFoundException || ex instanceof ReschedulingNotFoundException || ex instanceof CreditBalanceNotFoundException || ex instanceof ClientNoticeNotFoundException
                 || ex instanceof OutboxEventNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
@@ -171,7 +172,7 @@ public class ErrorHandler {
         return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && (path.endsWith("/reservations") || path.endsWith("/customers"))
                 || path.contains("/additional-discount") || path.contains("/payments") || path.contains("/payment-proofs") || path.endsWith("/cancellation")
                 || path.contains("/refund-authorizations/") || path.contains("/financial-decisions/") || path.endsWith("/refund-determinations")
-                || path.endsWith("/modifications") || path.endsWith("/modification-quote");
+                || path.contains("/reschedulings") || path.endsWith("/modifications") || path.endsWith("/modification-quote");
     }
 
     private static String jsonField(Throwable error) {

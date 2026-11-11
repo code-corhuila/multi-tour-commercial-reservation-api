@@ -2,6 +2,9 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.HealthController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ApiErrorWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcExceptionalAccessAudit;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExceptionalAccessAudit;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.LoggingExceptionalAccessAudit;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogAuthorization;
@@ -231,9 +234,20 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors,
-            TenantStatusReader statuses) {
-        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses));
+    ExceptionalAccessAudit exceptionalAccessAudit(JdbcTemplate jdbc) {
+        // HU-SEC-007 G-SEC9-1: the use is written to the outbox (the audit) and also logged; if the outbox cannot be written the use is not served.
+        var outbox = new JdbcExceptionalAccessAudit(jdbc);
+        var log = new LoggingExceptionalAccessAudit();
+        return use -> {
+            outbox.used(use);
+            log.used(use);
+        };
+    }
+
+    @Bean
+    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors, ExceptionalAccessAudit audit,
+            TenantStatusReader statuses, Clock clock) {
+        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses, audit, clock));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }

@@ -19,7 +19,7 @@ import java.util.Set;
 public class ManagePaymentParametersUseCase implements ManagePaymentParameters {
 
     private static final Set<Role> READERS = Set.of(Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER,
-            Role.ANALYST, Role.ACCOUNTANT);
+            Role.ANALYST, Role.ACCOUNTANT, Role.PLATFORM_SUPPORT);
 
     private final PaymentParameterRepository parameters;
     private final PaymentTransaction transaction;
