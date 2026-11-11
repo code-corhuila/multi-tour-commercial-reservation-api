@@ -5,6 +5,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.De
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SeatsUnavailableException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
@@ -25,7 +26,7 @@ public class ReservableDeparture {
         DepartureState departure = requireOpen(tenantId, departureId, serviceId);
         int available = departure.seats().available();
         if (available < people) {
-            throw new BusinessRuleViolation("not enough seats: " + available + " seats available");
+            throw new SeatsUnavailableException(available);
         }
         return departure;
     }

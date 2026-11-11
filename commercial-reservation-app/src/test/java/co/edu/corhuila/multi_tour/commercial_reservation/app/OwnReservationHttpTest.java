@@ -57,9 +57,11 @@ class OwnReservationHttpTest extends ReservationHttpBase {
         });
     }
 
-    @Test void aFinalCustomerQuotesWithTheSameBodyAsTheOperator() throws Exception {
-        var quote = CatalogHttpTest.json(exchange(quote(quoteBody(2), FINAL_CUSTOMER), 200));
-        assertThat(quote.isObject()).isTrue();
+    @Test void aFinalCustomerCannotQuoteUntilTheQuoteRouteOfTheirOwnExists() throws Exception {
+        var error = CatalogHttpTest.json(exchange(quote(quoteBody(2), FINAL_CUSTOMER), 403));
+        assertThat(error.get("error").asText()).isEqualTo("FORBIDDEN");
+        assertThat(error.has("tourLine")).isFalse();
+        assertThat(store.saves).isZero();
     }
 
     @Test void creatingWithoutATokenAnswers401AndStoresNothing() throws Exception {

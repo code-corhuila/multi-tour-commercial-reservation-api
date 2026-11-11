@@ -38,7 +38,8 @@ public final class JdbcReservationReader implements ReservationReader, CreatedRe
         this.cipher = cipher;
     }
 
-    // Subtotal: what the fixed lines left (the projected value when there is none). Paid: 0 until HU-COM-010. Applied: the
+    // Subtotal: what the fixed lines left (the projected value when there is none). Paid: what was validated, the final
+    // value fixed at creation minus the pending balance that HU-COM-009/010 keep. Applied: the
     // fixed lines that took something plus the additional discount (plan D-09).
     @Override
     public Optional<ReservationSnapshot> findByTenantAndId(UUID tenantId, UUID reservationId) {
@@ -48,10 +49,10 @@ public final class JdbcReservationReader implements ReservationReader, CreatedRe
                 + "(SELECT count(*) FROM commercial_reservation.reservation_fixed_discount f "
                 + "WHERE f.reservation_id = r.reservation_id AND f.amount_cents > 0) "
                 + "+ (SELECT count(*) FROM commercial_reservation.reservation_additional_discount a "
-                + "WHERE a.reservation_id = r.reservation_id) AS applied "
+                + "WHERE a.reservation_id = r.reservation_id) AS applied, r.final_value_cents - r.pending_balance_cents AS paid "
                 + "FROM commercial_reservation.reservation r WHERE r.tenant_id = ? AND r.reservation_id = ?",
                 (row, index) -> new ReservationSnapshot(tenantId, reservationId, state(row.getString("reservation_status")),
-                        new Cents(row.getLong("subtotal")), new Cents(0), row.getInt("applied")),
+                        new Cents(row.getLong("subtotal")), new Cents(row.getLong("paid")), row.getInt("applied")),
                 tenantId, reservationId).stream().findFirst();
     }
 

@@ -102,6 +102,23 @@ class ReservationCompanionsHttpTest extends ReservationHttpBase {
     }
 
     @Test @SuppressWarnings("unchecked")
+    void twoCompanionsWithOneDocumentTypedWithAndWithoutSpacesAreRejectedAndNothingChanges() throws Exception {
+        var body = bodyWith(companion("Twin A", "CC 55", 20), companion("Twin B", "cc55", 22));
+        var error = CatalogHttpTest.json(exchange(create(body, "companion-key-twin", ADMIN), 422));
+        assertThat(error.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(error.get("message").asText()).contains("document");
+        assertThat(error.toString()).doesNotContain("55");
+        assertThat(store.reservations).isEmpty();
+        assertThat(store.departures.get(departure).heldSeats()).isEqualTo(7);
+    }
+
+    @Test @SuppressWarnings("unchecked")
+    void aCompanionWithTheDocumentOfTheLeadTypedWithSpacesIsRejected() throws Exception {
+        exchange(create(bodyWith(companion("Acompanante Uno", "cc 123 45", 25)), "companion-key-lead-sp", ADMIN), 422);
+        assertThat(store.reservations).isEmpty();
+    }
+
+    @Test @SuppressWarnings("unchecked")
     void twoCompanionsWithOneDocumentTypedTwoWaysAreRejectedAndNothingIsStored() throws Exception {
         var body = bodyWith(companion("Acompanante Uno", "CC9", 25), companion("Acompanante Dos", "  cc9 ", 30));
         exchange(create(body, "companion-key-5", ADMIN), 422);

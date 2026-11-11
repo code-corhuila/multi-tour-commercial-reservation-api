@@ -50,7 +50,7 @@ public final class Reservation {
         List<Companion> group = companions == null ? List.of() : companions;
         if (group.size() > people - 1)
             throw new DomainException("companions", "the companions must fit in the people left by the lead customer");
-        if (group.stream().map(Companion::documentNumber).distinct().count() != group.size())
+        if (group.stream().map(companion -> companion.documentNumber().comparable()).distinct().count() != group.size())
             throw new BusinessRuleViolation("a document is already in the group");
         if (projected == null || !projected.equals(service.projectedFor(people)))
             throw new DomainException("projectedValue", "projectedValue must be the tour plus the transport of every person");

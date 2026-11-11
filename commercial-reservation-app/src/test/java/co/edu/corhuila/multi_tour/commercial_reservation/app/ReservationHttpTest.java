@@ -53,6 +53,38 @@ class ReservationHttpTest extends ReservationHttpBase {
         assertThat(store.reservations).hasSize(1);
     }
 
+    @Test void aFullDepartureIsRefusedWithSeatsUnavailableAndTheHeldSeatsStayTheSame() throws Exception {
+        var body = createBody(); body.put("salidaId", fullDeparture.toString()); body.put("people", 1);
+        var error = CatalogHttpTest.json(exchange(create(body, "reservation-key-6b", ADMIN), 422));
+        assertThat(error.get("error").asText()).isEqualTo("SEATS_UNAVAILABLE");
+        assertThat(error.get("message").asText()).contains("0 seats");
+        assertThat(store.reservations).isEmpty();
+        assertThat(store.departures.get(fullDeparture).heldSeats()).isEqualTo(4);
+    }
+
+    @Test void theSameKeyWithAnotherBodyIsRefusedWith422AndTheFirstReservationStaysUntouched() throws Exception {
+        var first = CatalogHttpTest.json(exchange(create(createBody(), "reservation-key-14", ADMIN), 201));
+        var other = createBody(); other.put("people", 2);
+        var error = CatalogHttpTest.json(exchange(create(other, "reservation-key-14", ADMIN), 422));
+        assertThat(error.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(error.toString()).doesNotContain(first.get("reservationId").asText());
+        assertThat(store.reservations).hasSize(1);
+        assertThat(store.saves).isEqualTo(1);
+        var again = CatalogHttpTest.json(exchange(create(createBody(), "reservation-key-14", ADMIN), 200));
+        assertThat(again).isEqualTo(first);
+    }
+
+    @Test void theSameKeyWithAnotherPaymentOrDepartureIsRefusedWith422() throws Exception {
+        exchange(create(createBody(), "reservation-key-15", ADMIN), 201);
+        var payment = createBody(); payment.put("paymentType", "FULL_PAYMENT");
+        exchange(create(payment, "reservation-key-15", ADMIN), 422);
+        var method = createBody(); method.put("paymentMethod", "CASH");
+        exchange(create(method, "reservation-key-15", ADMIN), 422);
+        var elsewhere = createBody(); elsewhere.put("salidaId", fullDeparture.toString());
+        exchange(create(elsewhere, "reservation-key-15", ADMIN), 422);
+        assertThat(store.reservations).hasSize(1);
+    }
+
     @ParameterizedTest @ValueSource(strings = {"", "short"})
     void aMissingOrShortKeyIsRefusedNamingTheHeader(String key) throws Exception {
         CatalogHttpTest.assertField(exchange(create(createBody(), key.isEmpty() ? null : key, ADMIN), 400), "Idempotency-Key");
@@ -77,7 +109,7 @@ class ReservationHttpTest extends ReservationHttpBase {
     @Test void notEnoughSeatsIsRefusedWith422CarryingTheSeatsAvailableAndStoresNothing() throws Exception {
         var body = createBody(); body.put("people", 4);
         var error = CatalogHttpTest.json(exchange(create(body, "reservation-key-6", ADMIN), 422));
-        assertThat(error.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(error.get("error").asText()).isEqualTo("SEATS_UNAVAILABLE");
         assertThat(error.get("message").asText()).contains("3 seats");
         assertThat(store.reservations).isEmpty();
         assertThat(store.departures.get(departure).heldSeats()).isEqualTo(7);
