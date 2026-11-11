@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCatalogRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReactivateCatalogService;

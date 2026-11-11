@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentDiscountRuleCreation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateDiscountRule;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDiscountRules;

@@ -2,8 +2,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CustomerController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CustomerHttpAccess;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCustomerRegistration;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCustomerRegistration;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.crypto.AesGcmFieldCipher;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerRepository;
@@ -89,8 +89,8 @@ class CustomerConfiguration {
 
     @Bean
     IdempotentCustomerRegistration idempotentCustomerRegistration(RegisterLeadCustomer register, GetCustomer get,
-            IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentCustomerRegistration(register, get, keys, new TransactionTemplate(manager));
+            IdempotentWrites writes) {
+        return new IdempotentCustomerRegistration(register, get, writes);
     }
 
     @Bean

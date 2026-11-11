@@ -4,7 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentDiscountRuleCreation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentDiscountRuleCreation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyStore;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.SpringRequestTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDiscountRules;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyKeys;
@@ -220,7 +223,7 @@ class DiscountRulePersistenceTest {
 
     @Test
     void replayWithTheSameKeyReturnsTheRuleWithoutAnotherRowOrEvent() {
-        var creation = new IdempotentDiscountRuleCreation(create, new GetDiscountRuleUseCase(rules), keys, transactions);
+        var creation = new IdempotentDiscountRuleCreation(create, new GetDiscountRuleUseCase(rules), new IdempotentWrites(new JdbcIdempotencyStore(keys), new SpringRequestTransaction(transactions)));
         var command = command("Replay", 300, null, ServiceCoverage.all(), null);
 
         var first = creation.create(admin, command, "discount-key-one");
@@ -242,7 +245,7 @@ class DiscountRulePersistenceTest {
             DiscountRule rule = create.create(actor, command);
             throw new IllegalStateException("boom after " + rule.ruleId());
         };
-        var creation = new IdempotentDiscountRuleCreation(failing, new GetDiscountRuleUseCase(rules), keys, transactions);
+        var creation = new IdempotentDiscountRuleCreation(failing, new GetDiscountRuleUseCase(rules), new IdempotentWrites(new JdbcIdempotencyStore(keys), new SpringRequestTransaction(transactions)));
 
         assertThatThrownBy(() -> creation.create(admin, command("Boom", 300, null, ServiceCoverage.all(), null),
                 "discount-key-boom")).isInstanceOf(IllegalStateException.class);
