@@ -6,7 +6,6 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Idempot
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReservationDiscountBreakdownController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalAuthorizableReasons;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredExcessTreatment;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAdditionalDiscountRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.AuthorizableReasonTimes;
@@ -51,10 +50,6 @@ class AdditionalDiscountConfiguration {
 
     @Bean ReservationModifiedOutbox reservationModifiedOutbox(JdbcTemplate jdbc, ObjectMapper json) {
         return new JdbcReservationModifiedOutbox(jdbc, json);
-    }
-
-    @Bean ExcessTreatment excessTreatment() {
-        return new DeferredExcessTreatment();
     }
 
     @Bean RegisterAdditionalDiscount registerAdditionalDiscount(ReservationReader reservations,
