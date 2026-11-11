@@ -9,7 +9,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 // The hold is one conditional update of the capacity row, held plus requested within the effective capacity (ADR-004 D4): never a
 // read followed by a write, so the loser of a race gets false. The detail of the seat (capacity_allocation) is written with the
-// reservation; the release closes that open row and gives the seats back in the same transaction of the caller.
+// reservation; the same statement re-checks that the departure is still SCHEDULED, so a concurrent cancellation keeps no seat on it
+// (the start instant is judged by the application with its clock); the release closes that open row and gives the seats back in the same transaction of the caller.
 public final class JdbcSalidaCapacityHolder implements SalidaCapacityHolder {
     private final JdbcTemplate jdbc;
 
@@ -20,7 +21,7 @@ public final class JdbcSalidaCapacityHolder implements SalidaCapacityHolder {
     @Override
     public boolean hold(UUID tenantId, UUID salidaId, int requested) {
         return jdbc.update("UPDATE commercial_reservation.salida_capacity SET held_seats = held_seats + ? WHERE tenant_id = ? "
-                + "AND salida_id = ? AND held_seats + ? <= effective_capacity", requested, tenantId, salidaId, requested) == 1;
+                + "AND salida_id = ? AND status = 'SCHEDULED' AND held_seats + ? <= effective_capacity", requested, tenantId, salidaId, requested) == 1;
     }
 
     @Override
