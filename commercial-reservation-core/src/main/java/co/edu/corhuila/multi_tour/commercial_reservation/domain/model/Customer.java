@@ -4,7 +4,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 // Lead customer (RN-01). Only the 06-data fields: document, name, birth date or age, contact, terms.
-// Optional high-risk data (RN-02). TODO: companions (T-03, DP-02), events (T-08) are not here.
+// Optional high-risk data (RN-02). The companions belong to the Reservation (Companion), not to this record, and the
+// CustomerRegistered event is written to the outbox by RegisterLeadCustomerUseCase, so neither is held here.
 public final class Customer {
     private final UUID customerId, tenantId;
     private final DocumentNumber documentNumber;
