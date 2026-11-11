@@ -6,18 +6,16 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Regis
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetOwnReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetPaymentDeadline;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListReservationPayments;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentAttempt;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Instant;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -45,13 +43,15 @@ public final class PaymentController {
     private final GetReservation get;
     private final GetOwnReservation getOwn;
     private final GetPaymentDeadline deadlines;
+    private final ListReservationPayments payments;
 
     public PaymentController(IdempotentPaymentRegistration registration, GetReservation get, GetOwnReservation getOwn,
-            GetPaymentDeadline deadlines) {
+            GetPaymentDeadline deadlines, ListReservationPayments payments) {
         this.registration = registration;
         this.get = get;
         this.getOwn = getOwn;
         this.deadlines = deadlines;
+        this.payments = payments;
     }
 
     @PostMapping(value = "/reservations/{reservationId}/payments", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -75,12 +75,7 @@ public final class PaymentController {
             @PathVariable("reservationId") UUID reservationId, @RequestParam Map<String, String> query) {
         var paging = new PageQuery(query, Set.of("page", "limit"));
         PaymentActor actor = PaymentActors.of(principal);
-        Reservation reservation = reservation(actor, reservationId);
-        Instant dueAt = dueAt(actor, reservationId);
-        List<PaymentAttempt> attempts = reservation.attempts().stream().sorted(Comparator.comparing(PaymentAttempt::registeredAt).reversed()).toList();
-        var data = attempts.stream().skip((paging.page - 1L) * paging.limit).limit(paging.limit)
-                .map(attempt -> PaymentResponse.of(reservation, attempt, dueAt)).toList();
-        return new ReservationListResponses<>(data, paging.meta(attempts.size()));
+var history = payments.list(actor, reservationId, paging.page, paging.limit);        Instant dueAt = dueAt(actor, reservationId);        var data = history.attempts().stream().map(attempt -> PaymentResponse.of(history.reservation(), attempt, dueAt)).toList();        return new ReservationListResponses<>(data, paging.meta(history.total()));
     }
 
     @GetMapping("/reservations/{reservationId}/payments/{paymentId}")

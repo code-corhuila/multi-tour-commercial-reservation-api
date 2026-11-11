@@ -6,8 +6,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RecordValidatedPaymentCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RejectProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RecordValidatedPayment;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadCustomerName;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import java.time.Clock;
 import java.time.Instant;
@@ -34,10 +33,10 @@ public final class PaymentProofDecisionController {
 
     private final IdempotentProofDecision decisions;
     private final RecordValidatedPayment validated;
-    private final CustomerRepository customers;
+    private final ReadCustomerName customers;
     private final Clock clock;
 
-    public PaymentProofDecisionController(IdempotentProofDecision decisions, RecordValidatedPayment validated, CustomerRepository customers,
+    public PaymentProofDecisionController(IdempotentProofDecision decisions, RecordValidatedPayment validated, ReadCustomerName customers,
             Clock clock) {
         this.decisions = decisions;
         this.validated = validated;
@@ -73,7 +72,7 @@ public final class PaymentProofDecisionController {
 
     private ProofDecisionResponse answer(DecidedProof decided) {
         var reservation = decided.reservation();
-        String name = customers.findByTenantAndId(reservation.tenantId(), reservation.customerId()).map(Customer::fullName).orElse("");
+        String name = customers.nameOf(reservation.tenantId(), reservation.customerId());
         return ProofDecisionResponse.of(decided, name, Instant.now(clock));
     }
 
