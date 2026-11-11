@@ -24,6 +24,15 @@ public final class JdbcPaymentFollowupRepository implements PaymentFollowupRepos
                 OffsetDateTime.ofInstant(f.contactedAt(), ZoneOffset.UTC), f.note());
     }
 
+
+    @Override
+    public java.util.Optional<PaymentFollowup> find(UUID tenantId, UUID followupId) {
+        return jdbc.query("SELECT reservation_id, contacted_by, contacted_at, note FROM commercial_reservation.payment_followup "
+                + "WHERE tenant_id = ? AND payment_followup_id = ?", (row, index) -> new PaymentFollowup(followupId, tenantId,
+                        row.getObject("reservation_id", UUID.class), row.getObject("contacted_by", UUID.class),
+                        row.getObject("contacted_at", OffsetDateTime.class).toInstant(), row.getString("note")), tenantId, followupId)
+                .stream().findFirst();
+    }
     @Override
     public FollowupPage page(UUID tenantId, UUID reservationId, int page, int limit) {
         long total = jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.payment_followup WHERE tenant_id = ? AND reservation_id = ?",
