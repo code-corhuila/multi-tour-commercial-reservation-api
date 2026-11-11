@@ -32,7 +32,8 @@ public class ReadPaymentProofFileUseCase implements ReadPaymentProofFile {
         Reservation reservation = reservations.findByTenantAndAttempt(actor.tenantId(), attemptId)
                 .filter(found -> found.tenantId().equals(actor.tenantId()))
                 .orElseThrow(() -> new PaymentProofNotFoundException(attemptId));
-        if (!owns(actor, reservation)) PaymentProofAuthorization.requireDecide(actor);
+        // HU-SEC-007: the read only actor of an exceptional access reads the file (scope RESERVATIONS, audited); it never gets the decide permission.
+        if (!owns(actor, reservation) && actor.role() != Role.PLATFORM_SUPPORT) PaymentProofAuthorization.requireDecide(actor);
         return proofs.read(actor.tenantId(), attemptId).orElseThrow(() -> new PaymentProofNotFoundException(attemptId));
     }
 
