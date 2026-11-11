@@ -65,6 +65,10 @@ class ReservationHttpFixture {
         public Optional<Reservation> findByTenantAndId(UUID tenant, UUID id) {
             return Optional.ofNullable(reservations.get(id)).filter(found -> found.tenantId().equals(tenant));
         }
+        @Override public Optional<Reservation> findByTenantAndAttempt(UUID tenant, UUID attempt) {
+            return reservations.values().stream().filter(found -> found.tenantId().equals(tenant))
+                    .filter(found -> found.attempts().stream().anyMatch(row -> row.attemptId().equals(attempt))).findFirst();
+        }
         public List<DepartureState> findOpen(UUID tenant, UUID service, Instant now) {
             return departures.values().stream().filter(row -> row.tenantId().equals(tenant) && row.serviceId().equals(service)).toList();
         }
