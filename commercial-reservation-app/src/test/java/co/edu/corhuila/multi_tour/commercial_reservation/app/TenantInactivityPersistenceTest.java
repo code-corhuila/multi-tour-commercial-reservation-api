@@ -186,7 +186,7 @@ class TenantInactivityPersistenceTest {
         assertThat(frozen.pendingProposal().orElseThrow().remainingResponseMinutes()).isEqualTo(Duration.between(T0, mine.pendingProposal().orElseThrow().responseDeadlineAt()).toMinutes());
         assertThat(new JdbcReschedulingRepository(b.jdbc).find(b.tenant, other.id()).orElseThrow().isFrozen()).as("the other tenant is never touched").isFalse();
         var queries = new JdbcReschedulingQueries(a.jdbc);
-        assertThat(queries.due(T0.plus(Duration.ofDays(30)), 50)).as("a frozen episode is never due").isEmpty();
+        assertThat(dueOf(queries, T0.plus(Duration.ofDays(30)))).as("a frozen episode is never due").isEmpty();
         Instant back = T0.plus(Duration.ofHours(30));
 
         apply.apply(event(TenantEventType.TENANT_REACTIVATED, a.tenant, back, null));
@@ -196,8 +196,8 @@ class TenantInactivityPersistenceTest {
         assertThat(resumed.frozen()).isEqualTo(Duration.ofHours(30));
         assertThat(resumed.episodeLimit()).isEqualTo(mine.episodeLimit().plus(Duration.ofHours(30)));
         assertThat(resumed.pendingProposal().orElseThrow().responseDeadlineAt()).isEqualTo(mine.pendingProposal().orElseThrow().responseDeadlineAt().plus(Duration.ofHours(30)));
-        assertThat(queries.due(mine.pendingProposal().orElseThrow().responseDeadlineAt().plus(Duration.ofHours(29)), 50)).isEmpty();
-        assertThat(queries.due(mine.pendingProposal().orElseThrow().responseDeadlineAt().plus(Duration.ofHours(30)), 50)).singleElement()
+        assertThat(dueOf(queries, mine.pendingProposal().orElseThrow().responseDeadlineAt().plus(Duration.ofHours(29)))).isEmpty();
+        assertThat(dueOf(queries, mine.pendingProposal().orElseThrow().responseDeadlineAt().plus(Duration.ofHours(30)))).singleElement()
                 .satisfies(due -> assertThat(due.episodeId()).isEqualTo(mine.id()));
     }
 
@@ -217,5 +217,10 @@ class TenantInactivityPersistenceTest {
         assertThat(closed.state().name()).isEqualTo("RESCHEDULED");
         assertThat(closed.isFrozen()).isFalse();
         assertThat(closed.proposals().get(0).remainingResponseMinutes()).isNull();
+    }
+
+    // The due list of job 5 is across tenants: only the episodes of tenant A are judged here.
+    private java.util.List<co.edu.corhuila.multi_tour.commercial_reservation.application.model.DueRescheduling> dueOf(JdbcReschedulingQueries queries, Instant at) {
+        return queries.due(at, 50).stream().filter(d -> d.tenantId().equals(a.tenant)).toList();
     }
 }
