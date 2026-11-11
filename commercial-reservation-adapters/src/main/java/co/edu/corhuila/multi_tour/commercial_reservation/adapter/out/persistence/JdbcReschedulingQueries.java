@@ -23,7 +23,7 @@ public final class JdbcReschedulingQueries implements ReschedulingQueries {
         return jdbc.query("SELECT e.tenant_id, e.reservation_id, e.rescheduling_episode_id FROM commercial_reservation.rescheduling_episode e WHERE e.episode_state = 'OPEN' AND e.frozen_at IS NULL AND ("
                 + "(e.proposal_due_at <= ? AND NOT EXISTS (SELECT 1 FROM commercial_reservation.rescheduling_proposal p WHERE p.tenant_id = e.tenant_id AND p.rescheduling_episode_id = e.rescheduling_episode_id AND p.proposal_state = 'PENDING')) "
                 + "OR EXISTS (SELECT 1 FROM commercial_reservation.rescheduling_proposal p WHERE p.tenant_id = e.tenant_id AND p.rescheduling_episode_id = e.rescheduling_episode_id AND p.proposal_state = 'PENDING' AND p.response_deadline_at <= ?) "
-                + "OR e.episode_started_at <= ?) ORDER BY e.proposal_due_at, e.rescheduling_episode_id LIMIT ?",
+                + "OR e.episode_started_at + COALESCE(e.frozen_total_minutes, 0) * interval '1 minute' <= ?) ORDER BY e.proposal_due_at, e.rescheduling_episode_id LIMIT ?",
                 (row, index) -> new DueRescheduling(row.getObject("tenant_id", java.util.UUID.class), row.getObject("reservation_id", java.util.UUID.class), row.getObject("rescheduling_episode_id", java.util.UUID.class)),
                 time(now), time(now), time(now.minus(ReschedulingDeadlines.EPISODE_LIMIT)), limit);
     }
