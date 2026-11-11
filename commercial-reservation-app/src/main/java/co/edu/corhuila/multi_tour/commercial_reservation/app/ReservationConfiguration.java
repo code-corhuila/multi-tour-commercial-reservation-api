@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentReservationCreation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentReservationCreation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReservationController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReservationHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
@@ -108,8 +109,8 @@ class ReservationConfiguration {
     @Bean
     IdempotentReservationCreation idempotentReservationCreation(CreateReservation create, @Lazy ReservationQueries queries,
             @Lazy CustomerByAccount accounts, CustomerRepository customers,
-            IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentReservationCreation(create, queries, accounts, customers, keys, new TransactionTemplate(manager));
+            IdempotentWrites writes) {
+        return new IdempotentReservationCreation(create, queries, accounts, customers, writes);
     }
 
     @Bean
