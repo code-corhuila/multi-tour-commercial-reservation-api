@@ -19,7 +19,10 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -27,6 +30,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 // HU-COM-012 over HTTP (api spec T-07 to T-09; AC-12.1 to AC-12.10, AC-12.15): the quote, the modification and the history. The user and the
 // instant are the token and the clock; the role gate runs before the body is read; the write needs its Idempotency-Key.
 @Import(ModificationHttpFixture.class)
+@ExtendWith(OutputCaptureExtension.class)
 class ModificationHttpTest extends ReservationHttpBase {
 
     private final UUID reservationId = new UUID(42, 1), otherTenantReservation = new UUID(42, 2);
@@ -144,5 +148,21 @@ class ModificationHttpTest extends ReservationHttpBase {
         exchange(modify(reservationId, body, "modify-key-010", ADMIN), 201);
         exchange(modify(reservationId, Map.of("changeType", "MODIFICATION", "people", 1, "reason", "Other"), "modify-key-010", ADMIN), 422);
         assertThat(modifications.rows).hasSize(1);
+    }
+
+    // AC-12.15 (RN-13, RNF-03), the log half the spec named: the event is written once, a repeat of the key writes none, and no log line of
+    // the quote, the write and the history carries the reason, a name, a document, an e-mail or a phone.
+    @Test void theEventsAndTheLogsCarryNoPersonalDataNorTheReason(CapturedOutput output) throws Exception {
+        String reason = "Motivo reservado ficticio 5512";
+        var body = Map.<String, Object>of("changeType", "MODIFICATION", "people", 2, "reason", reason);
+
+        exchange(quoteOf(reservationId, body, ADMIN), 200);
+        exchange(modify(reservationId, body, "modify-key-011", COLLABORATOR), 201);
+        exchange(modify(reservationId, body, "modify-key-011", COLLABORATOR), 200);
+        exchange(withToken(get(BASE + "/reservations/" + reservationId + "/modifications"), MANAGER), 200);
+
+        assertThat(names(payments.events)).containsExactly("ReservationChanged");
+        assertThat(payments.events.toString()).doesNotContain(reason, "Persona Ficticia", "persona@example.invalid", "CC12345", "3000000000");
+        assertThat(output.getAll()).doesNotContain(reason, "Persona Ficticia", "persona@example.invalid", "CC12345", "3000000000");
     }
 }
