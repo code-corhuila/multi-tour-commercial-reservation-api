@@ -1,0 +1,35 @@
+# Annex C 5.3.10 / ADR-004 D10: every limit is declared, none is left to a framework default.
+# Secrets have no default on purpose: a missing one must stop the start with its name in the message.
+logging:
+  structured:
+    format:
+      console: ecs
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 800KB
+      max-request-size: 1MB
+  application:
+    name: commercial-reservation-api
+  mvc:
+    async:
+      # Tomcat exposes no per-write timeout in Spring Boot; this bounds how long a response may take to be produced.
+      request-timeout: 15s
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 5000
+      connection-init-sql: SET statement_timeout = 5000
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  tomcat:
+    connection-timeout: 5s
+    keep-alive-timeout: 60s

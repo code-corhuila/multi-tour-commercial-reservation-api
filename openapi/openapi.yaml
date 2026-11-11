@@ -1,0 +1,1014 @@
+# Reference copy of specs/Commercial and Reservations/commercial-reservation.yaml.
+# PROPOSED, not yet published in 07-api
+openapi: 3.0.3
+info:
+  title: Commercial Reservation API
+  version: 1.0.0
+  description: |
+    Service `multi-tour-commercial-reservation` (ADR-004 D1), macrodomain Commercial and
+    Reservations. This version of the contract holds only the operations of **HU-COM-001 — Manage
+    the operational catalog** (`code-corhuila/multi-tour-docs#167`); each later story of the
+    macrodomain adds its own operations to this file.
+
+    Design contract. The contract the service is tested against is its own
+    `openapi/openapi.yaml` (ADR-004 D7); both follow `07-api/guidelines.md`. It replaces the
+    historical Cut 1 contract of the monolith, which was archived (H-G03).
+
+    ## Authentication
+    RS256 bearer token issued by the security microservice (ADR-004 D5). Include in every
+    request: `Authorization: Bearer <access_token>`. The service validates the token itself.
+
+    ## Tenant isolation
+    The tenant is always the `tenantId` claim of the token, never a path parameter, a header or
+    a body field (guidelines.md §1.7, D-C04). A catalog item of another tenant answers `404`,
+    the same as an item that does not exist (D-C10).
+
+    ## Roles
+    - `TENANT_ADMINISTRATOR`: registers, updates, inactivates and reactivates items; sets rates,
+      costs, capacity and the high-risk mark.
+    - `OPERATIONAL_COLLABORATOR`: reads items and, **only when the tenant enabled it**, updates
+      the descriptive information (`commercialName`). Any change of a rate, a cost or the
+      capacity parameters is refused with `403` (HU-COM-001 AC4).
+    - Any other role: `403`. The read access of the Manager, the Analyst and the Accountant, and
+      the public read of what is published, belong to other stories (see "Open gaps").
+
+    ## Conventions
+    Creation requires `Idempotency-Key` (`201` with `Location`, `200` on a repeat). State changes
+    are `POST …/{action}`; repeating one leaves the same state and answers `200` without a second
+    event. There is **no operation that deletes an item** (HU-COM-001 AC6; guidelines.md D-C05).
+    Money is an integer in minor units with the unit in the name. Every error uses the single
+    envelope of `07-api/guidelines.md §3`, with `traceId` equal to `X-Correlation-Id`.
+
+    ## Open gaps
+    All of these are PROPUESTO for this story, approved by the Project Lead on 2026-10-08
+    (specs of HU-COM-001, declared debt DD-16 to DD-21 of the `-api`):
+    - **Item type.** `serviceType` is `TOUR` or `TRANSPORTATION` (the vocabulary of `06-data/models.md`), the two kinds of item HU-COM-001 AC1 names.
+      Lodging and food are not catalog items (RN-ALI-001); associated hotels and restaurants are
+      HU-COM-002. `02-domain` DD-01 stays NO DEFINIDO at domain level.
+    - **Operational cost.** `baseOperationalCostCents` is a field of the item (AC1). `02-domain`
+      DD-03 stays NO DEFINIDO at domain level.
+    - **Transport rate.** For a `TRANSPORTATION` item, `baseRateCents` is the rate **per person**
+      (RN-TRA-002); there is no separate field.
+    - **High-risk mark.** `highRisk` is an attribute of the item (gap G-3, `02-domain` DD-04),
+      set by the Tenant Administrator when registering or updating.
+    - **Capacity.** `configuredCapacity` is required for a `TOUR` and optional for a `TRANSPORTATION` item, whose seats are the vehicles of `operations-cost` (`02-domain`: "applicable cost/capacity parameters"). Lowering it under the seats
+      already held in a scheduled departure is refused with `422` (AC5). The held seats are
+      supplied by the capacity row of this service (ADR-004 D4).
+    - **What a Collaborator may change.** `commercialName` only; `transportRequired` and
+      `highRisk` are commercial terms of the Administrator.
+    - **`transportRequired` on a `TRANSPORTATION` item.** Meaningful for a `TOUR` (transport mandatory
+      or included, RN-TRA-001); for a `TRANSPORTATION` item the service stores `false`.
+    - **High-risk mark, not yet in the models.** `highRisk` is not in `02-domain` (DD-04) nor in `06-data/models.md` until the pull request that records the decision DD-17 is merged; this contract is aligned with `02-domain` only after it.
+    - **Who registers.** Only the Tenant Administrator: a registration needs the rates and the cost, which the Operational Collaborator may not set (`02-domain`, RF-004).
+    - **Listings.** The management list returns active and inactive items; the list of what is
+      offered for sale is HU-COM-006.
+    - **Reads of other roles.** Manager, Analyst and Accountant are outside HU-COM-001.
+
+servers:
+  - url: https://{gatewayHost}/api/v1
+    description: Through multi-tour-api-gateway; the service port (8083) is internal
+    variables:
+      gatewayHost:
+        default: localhost
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Catalog services
+    description: Tours and transport items the tenant offers (HU-COM-001)
+  - name: Health
+    description: Service health check
+  - name: Associated establishments
+    description: Tenant-scoped promotional hotel and restaurant associations (HU-COM-002)
+
+paths:
+
+  # ─── Health ────────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      summary: Health check
+      tags: [Health]
+      security: []
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  dependencies:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        enum: [ok, degraded, down]
+              example:
+                status: ok
+                timestamp: '2026-10-08T10:30:00Z'
+                dependencies:
+                  database: ok
+        '503':
+          description: Service unavailable (dependency down)
+
+  # ─── Catalog services ──────────────────────────────────────────────────────
+
+  /catalog/services:
+    get:
+      summary: List the catalog items of the tenant
+      description: |
+        Returns a paginated list, most recent first. **Inactive items are included**, so that an
+        inactive one can be found and reactivated; the list of what is offered for sale is another
+        story (HU-COM-006).
+        **Requires:** `TENANT_ADMINISTRATOR` or `OPERATIONAL_COLLABORATOR`.
+      operationId: listCatalogServices
+      tags: [Catalog services]
+      parameters:
+        - $ref: './_shared.yaml#/components/parameters/PageParam'
+        - $ref: './_shared.yaml#/components/parameters/LimitParam'
+        - name: catalogStatus
+          in: query
+          description: Filter by catalog status
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE]
+        - name: serviceType
+          in: query
+          description: Filter by item type
+          schema:
+            type: string
+            enum: [TOUR, TRANSPORTATION]
+      responses:
+        '200':
+          description: Paginated list of catalog items
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CatalogServiceResponse'
+                  meta:
+                    $ref: './_shared.yaml#/components/schemas/PaginatedMeta'
+              example:
+                data:
+                  - serviceId: 3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
+                    serviceType: TOUR
+                    commercialName: Cañón del Chicamocha
+                    catalogStatus: ACTIVE
+                    baseRateCents: 35000000
+                    baseOperationalCostCents: 21000000
+                    configuredCapacity: 18
+                    transportRequired: true
+                    highRisk: false
+                    createdAt: '2026-10-08T10:30:00Z'
+                    updatedAt: '2026-10-08T10:30:00Z'
+                meta:
+                  page: 1
+                  limit: 20
+                  total: 1
+                  totalPages: 1
+        '400':
+          description: A `limit` out of range or an unknown filter value (never clipped)
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+              example:
+                error: VALIDATION_ERROR
+                message: One or more fields failed validation
+                details:
+                  - field: limit
+                    message: must be between 1 and 100
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+    post:
+      summary: Register a catalog item
+      description: |
+        Creates a tour or a transportation item. The initial condition is active (INFERIDO, `02-domain` DD-05: the request carries no status). The commercial value and the operational
+        cost are both required (RN-ATR-001, HU-COM-001 AC1).
+        **Requires:** `TENANT_ADMINISTRATOR`.
+      operationId: createCatalogService
+      tags: [Catalog services]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCatalogServiceRequest'
+            example:
+              serviceType: TOUR
+              commercialName: Cañón del Chicamocha
+              baseRateCents: 35000000
+              baseOperationalCostCents: 21000000
+              configuredCapacity: 18
+              transportRequired: true
+              highRisk: false
+      responses:
+        '201':
+          description: Item created, active
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogServiceResponse'
+              example:
+                serviceId: 3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
+                serviceType: TOUR
+                commercialName: Cañón del Chicamocha
+                catalogStatus: ACTIVE
+                baseRateCents: 35000000
+                baseOperationalCostCents: 21000000
+                configuredCapacity: 18
+                transportRequired: true
+                highRisk: false
+                createdAt: '2026-10-08T10:30:00Z'
+                updatedAt: '2026-10-08T10:30:00Z'
+        '200':
+          description: Repeated request with the same `Idempotency-Key`; returns the item already created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogServiceResponse'
+        '400':
+          description: Validation error — missing or invalid fields, or a missing or malformed `Idempotency-Key`
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+              example:
+                error: VALIDATION_ERROR
+                message: One or more fields failed validation
+                details:
+                  - field: baseOperationalCostCents
+                    message: is required
+                  - field: Idempotency-Key
+                    message: header required, 8 to 128 characters
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /catalog/services/{serviceId}:
+    parameters:
+      - $ref: '#/components/parameters/ServiceIdPath'
+
+    get:
+      summary: Get a catalog item
+      description: |
+        Returns the item **whether it is active or inactive**: a reservation line must always be
+        able to resolve its item. An item of another tenant answers `404`.
+        **Requires:** `TENANT_ADMINISTRATOR` or `OPERATIONAL_COLLABORATOR`.
+      operationId: getCatalogService
+      tags: [Catalog services]
+      responses:
+        '200':
+          description: The catalog item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogServiceResponse'
+        '400':
+          description: The identifier is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+              example:
+                error: VALIDATION_ERROR
+                message: One or more fields failed validation
+                details:
+                  - field: serviceId
+                    message: must be a UUID
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+    patch:
+      summary: Update a catalog item
+      description: |
+        Partial update: only the fields sent change, and the result is validated again as on
+        creation. The item keeps its identifier and its type.
+        **Requires:** `TENANT_ADMINISTRATOR` for any field. `OPERATIONAL_COLLABORATOR` may change
+        `commercialName` only, and only when the tenant enabled descriptive updates; a Collaborator
+        who sends a rate, a cost, the capacity or any other field gets `403` and nothing changes
+        (HU-COM-001 AC4).
+        Lowering `configuredCapacity` under the seats already held in a scheduled departure is
+        refused with `422` and nothing is written (AC5).
+      operationId: updateCatalogService
+      tags: [Catalog services]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCatalogServiceRequest'
+            example:
+              baseRateCents: 38000000
+              configuredCapacity: 20
+      responses:
+        '200':
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogServiceResponse'
+        '400':
+          description: Invalid field, an unknown field (including `tenantId` or `serviceType`) or an empty body
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+              example:
+                error: VALIDATION_ERROR
+                message: One or more fields failed validation
+                details:
+                  - field: baseRateCents
+                    message: must be zero or greater
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          description: The caller's role or the tenant's configuration does not allow changing these fields
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+              example:
+                error: FORBIDDEN
+                message: The Operational Collaborator may change descriptive information only
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '422':
+          description: A domain rule forbids the change, for example a capacity under the seats already held
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+              example:
+                error: BUSINESS_RULE_VIOLATION
+                message: The capacity cannot be lower than the seats already held in a scheduled departure
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /catalog/services/{serviceId}/inactivate:
+    post:
+      summary: Inactivate a catalog item
+      description: |
+        The item stops being offered in new reservations and **keeps its information and its
+        history**; it is never deleted. Emits `CatalogServiceInactivated` through the outbox.
+        Repeating it on an inactive item leaves the same state, answers `200` and emits nothing.
+        **Requires:** `TENANT_ADMINISTRATOR`.
+      operationId: inactivateCatalogService
+      tags: [Catalog services]
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdPath'
+      responses:
+        '200':
+          description: The item, now inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogServiceResponse'
+              example:
+                serviceId: 3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
+                serviceType: TOUR
+                commercialName: Cañón del Chicamocha
+                catalogStatus: INACTIVE
+                baseRateCents: 35000000
+                baseOperationalCostCents: 21000000
+                configuredCapacity: 18
+                transportRequired: true
+                highRisk: false
+                createdAt: '2026-10-08T10:30:00Z'
+                updatedAt: '2026-10-09T08:00:00Z'
+        '400':
+          description: The identifier is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+              example:
+                error: VALIDATION_ERROR
+                message: One or more fields failed validation
+                details:
+                  - field: serviceId
+                    message: must be a UUID
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /catalog/services/{serviceId}/reactivate:
+    post:
+      summary: Reactivate a catalog item
+      description: |
+        The item can be offered again in new reservations and **keeps its history**.
+        Reactivating bypasses no capacity, validity or operational restriction. Emits
+        `CatalogServiceReactivated` through the outbox. Repeating it on an active item leaves the
+        same state, answers `200` and emits nothing.
+        **Requires:** `TENANT_ADMINISTRATOR`.
+      operationId: reactivateCatalogService
+      tags: [Catalog services]
+      parameters:
+        - $ref: '#/components/parameters/ServiceIdPath'
+      responses:
+        '200':
+          description: The item, now active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogServiceResponse'
+        '400':
+          description: The identifier is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+              example:
+                error: VALIDATION_ERROR
+                message: One or more fields failed validation
+                details:
+                  - field: serviceId
+                    message: must be a UUID
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '422':
+          description: A validity, a restriction or a capacity rule forbids the reactivation (reactivation bypasses none of them, `02-domain`)
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+              example:
+                error: BUSINESS_RULE_VIOLATION
+                message: The item cannot be reactivated while a restriction applies
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /associated-establishments:
+    get:
+      summary: List associated establishments for management
+      description: |
+        Returns the tenant's promotional associations, including active and inactive records,
+        most recent first. Manager and Analyst access is available only when the tenant enables
+        those roles. The tenant is resolved from the bearer token; `tenantId` is not accepted in
+        the request (ADR-003, guidelines D-C04).
+      operationId: listAssociatedEstablishments
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: './_shared.yaml#/components/parameters/PageParam'
+        - $ref: './_shared.yaml#/components/parameters/LimitParam'
+        - name: associationStatus
+          in: query
+          description: Filter by association visibility status
+          schema:
+            $ref: '#/components/schemas/AssociatedEstablishmentStatus'
+        - name: establishmentType
+          in: query
+          description: Filter by establishment type
+          schema:
+            $ref: '#/components/schemas/AssociatedEstablishmentType'
+      responses:
+        '200':
+          description: Paginated tenant-scoped association list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+                  meta:
+                    $ref: './_shared.yaml#/components/schemas/PaginatedMeta'
+        '400':
+          description: Invalid pagination or filter value
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+    post:
+      summary: Register an associated establishment
+      description: |
+        Registers one promotional hotel or restaurant association for the tenant resolved from
+        the bearer token. `tenantId` is not accepted. The initial state is ACTIVE when the
+        association is registered and published in the same act (PDR RF-018, AC1). Commercial
+        information and image are required at registration. This operation does not create rooms,
+        dishes, menus, seats, rates or availability.
+      operationId: createAssociatedEstablishment
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateAssociatedEstablishmentRequest'
+      responses:
+        '201':
+          description: Associated establishment created
+          headers:
+            Location:
+              description: Path of the created associated establishment
+              schema:
+                type: string
+                example: /api/v1/associated-establishments/3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '200':
+          description: Same resource returned for an idempotent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '400':
+          description: Invalid fields, unsupported type, invalid image content or missing required data
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '413':
+          description: Image exceeds 800 KB
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '415':
+          description: Image content is not PNG, JPEG or WebP; SVG is refused
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /associated-establishments/{associationId}:
+    parameters:
+      - $ref: '#/components/parameters/AssociationIdPath'
+    get:
+      summary: Get an associated establishment
+      description: |
+        Returns the association by identifier, including when inactive. An association owned by
+        another tenant answers `404`, the same as an unknown identifier (AC-02.2).
+        **Requires:** `TENANT_ADMINISTRATOR`, or an enabled `MANAGER` or `ANALYST`.
+      operationId: getAssociatedEstablishment
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The tenant-scoped association
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '400':
+          description: The identifier is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /public/tenants/{identifier}/associated-establishments/{associationId}/image:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdentifierPath'
+      - $ref: '#/components/parameters/AssociationIdPath'
+    get:
+      summary: Get a public association image
+      description: |
+        Public promotional image route used before sign-in. The tenant identifier in the path is
+        the convention from `authentication.md`; how it resolves to the owning `tenantId` remains
+        **PROPUESTO** (DD-5). The route is public and must be cacheable, never `no-store` (ADR-005 E6).
+      operationId: getAssociatedEstablishmentImage
+      tags: [Associated establishments]
+      security: []
+      responses:
+        '200':
+          description: PNG, JPEG or WebP image
+          headers:
+            Cache-Control:
+              description: Public cache policy for promotional images
+              schema:
+                type: string
+                example: public, max-age=86400
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: The tenant identifier or association identifier is not a valid value
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /associated-establishments/{associationId}/inactivate:
+    parameters:
+      - $ref: '#/components/parameters/AssociationIdPath'
+    post:
+      summary: Inactivate an associated establishment
+      description: |
+        Inactivates the tenant-scoped association, retaining its history and excluding it from
+        new promotional consultations. The operation is idempotent for an already inactive
+        association (plan D-09) and does not delete or modify catalog services.
+      operationId: inactivateAssociatedEstablishment
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Association after inactivation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '400':
+          description: The identifier is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /associated-establishments/{associationId}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/AssociationIdPath'
+    post:
+      summary: Reactivate an associated establishment
+      description: |
+        Reactivates the tenant-scoped association, retaining its history and making it eligible
+        for new promotional consultations. The operation is idempotent for an already active
+        association (plan D-09) and does not create rooms, dishes, menus, seats, rates or
+        availability.
+      operationId: reactivateAssociatedEstablishment
+      tags: [Associated establishments]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Association after reactivation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociatedEstablishmentResponse'
+        '400':
+          description: The identifier is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+components:
+  schemas:
+
+    AssociatedEstablishmentType:
+      type: string
+      enum: [HOTEL, RESTAURANT]
+      description: Closed establishment type set from RN-ASO-001 (AC-02.3).
+
+    AssociatedEstablishmentStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+      description: |
+        Association visibility. The initial state is `ACTIVE` when the association is registered
+        and published in the same act (PDR RF-018, AC1). `INACTIVE` is retained and excluded from
+        new promotional consultations.
+
+    AssociatedEstablishmentResponse:
+      type: object
+      description: |
+        Tenant promotional association. It creates no rooms, dishes, menus, seats, rates or
+        availability (AC-02.7). `tenantId` is deliberately not exposed.
+      required: [associationId, establishmentType, commercialName, commercialInformation, imageReference, associationStatus]
+      properties:
+        associationId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        establishmentType:
+          $ref: '#/components/schemas/AssociatedEstablishmentType'
+        commercialName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        commercialInformation:
+          type: string
+          description: Promotional description and contact text; final content details remain PROPUESTO under D5.
+        imageReference:
+          type: string
+          description: Customer-visible image reference; storage target remains PROPUESTO under DP-01.
+          x-proposed: DP-01
+        associationStatus:
+          $ref: '#/components/schemas/AssociatedEstablishmentStatus'
+
+    CreateAssociatedEstablishmentRequest:
+      type: object
+      description: |
+        Multipart registration payload. Commercial information and image are required by PDR
+        RF-018 and AC1. The image is validated from content before storage: PNG, JPEG or WebP,
+        at most 800 KB; SVG is refused (ADR-005 E6).
+      additionalProperties: false
+      required: [establishmentType, commercialName, commercialInformation, image]
+      properties:
+        establishmentType:
+          $ref: '#/components/schemas/AssociatedEstablishmentType'
+        commercialName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        commercialInformation:
+          type: string
+          description: Promotional description and contact text; final content details remain PROPUESTO under D5.
+        image:
+          type: string
+          format: binary
+          description: Required image; max 800 KB, PNG/JPEG/WebP by content. SVG is refused.
+
+    # ── Catalog services ──────────────────────────────────────────────────────
+
+    CatalogServiceType:
+      type: string
+      enum: [TOUR, TRANSPORTATION]
+      description: |
+        The two kinds of item HU-COM-001 manages. The type cannot change after creation.
+      example: TOUR
+
+    CatalogServiceResponse:
+      type: object
+      description: |
+        Catalog item. Fields derived from the `catalog_services` logical record of
+        `06-data/models.md` (RF-004; HU-COM-001 AC1); money in minor units.
+      required:
+        - serviceId
+        - serviceType
+        - commercialName
+        - catalogStatus
+        - baseRateCents
+        - baseOperationalCostCents
+        - configuredCapacity
+        - transportRequired
+        - highRisk
+        - createdAt
+        - updatedAt
+      properties:
+        serviceId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        serviceType:
+          $ref: '#/components/schemas/CatalogServiceType'
+        commercialName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Cañón del Chicamocha
+        catalogStatus:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+          description: |
+            Commercial eligibility. `INACTIVE` means the item is not offered in new reservations;
+            it is a business state, not a deletion mark, and the item stays readable by id.
+          example: ACTIVE
+        baseRateCents:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Base commercial rate in minor units. For a `TRANSPORTATION` item it is the rate **per
+            person** (RN-TRA-002).
+          example: 35000000
+        baseOperationalCostCents:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Base operational cost parametrized for the item, in minor units (RN-ATR-001)
+          example: 21000000
+        configuredCapacity:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: |
+            Capacity of the item; for a tour, the tour capacity used by each departure (RN-SAL-001).
+            `null` for a `TRANSPORTATION` item that does not use capacity control.
+          example: 18
+        transportRequired:
+          type: boolean
+          description: |
+            For a `TOUR`: whether transport is mandatory or included (RN-TRA-001). For a
+            `TRANSPORTATION` item it is always `false`.
+          example: true
+        highRisk:
+          type: boolean
+          description: Whether the activity is marked high risk (gap G-3)
+          example: false
+        createdAt:
+          $ref: './_shared.yaml#/components/schemas/Timestamp'
+        updatedAt:
+          $ref: './_shared.yaml#/components/schemas/Timestamp'
+
+    CreateCatalogServiceRequest:
+      type: object
+      description: |
+        Registers an item. Every field is required, except the capacity of a `TRANSPORTATION` item: the commercial value and the operational cost
+        must both be defined (RN-ATR-001), and no default hides a decision. `tenantId` is not
+        accepted (guidelines.md D-C04).
+      additionalProperties: false
+      required:
+        - serviceType
+        - commercialName
+        - baseRateCents
+        - baseOperationalCostCents
+        - transportRequired
+        - highRisk
+      properties:
+        serviceType:
+          $ref: '#/components/schemas/CatalogServiceType'
+        commercialName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        baseRateCents:
+          type: integer
+          format: int64
+          minimum: 0
+        baseOperationalCostCents:
+          type: integer
+          format: int64
+          minimum: 0
+        configuredCapacity:
+          type: integer
+          minimum: 1
+          description: Required when `serviceType` is `TOUR` (otherwise `400`); optional for `TRANSPORTATION`
+        transportRequired:
+          type: boolean
+        highRisk:
+          type: boolean
+
+    UpdateCatalogServiceRequest:
+      type: object
+      description: |
+        Partial update; at least one field. `serviceType` and `tenantId` are not accepted, and the
+        status changes only through the `inactivate` and `reactivate` operations.
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        commercialName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        baseRateCents:
+          type: integer
+          format: int64
+          minimum: 0
+        baseOperationalCostCents:
+          type: integer
+          format: int64
+          minimum: 0
+        configuredCapacity:
+          type: integer
+          minimum: 1
+        transportRequired:
+          type: boolean
+        highRisk:
+          type: boolean
+
+  parameters:
+    AssociationIdPath:
+      name: associationId
+      in: path
+      required: true
+      description: Identifier of the associated establishment (UUID)
+      schema:
+        $ref: './_shared.yaml#/components/schemas/UUID'
+    TenantIdentifierPath:
+      name: identifier
+      in: path
+      required: true
+      description: Public tenant identifier; resolution to tenantId is PROPUESTO (DD-5)
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Same value on every retry of the same creation (guidelines.md §1.8)
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    ServiceIdPath:
+      name: serviceId
+      in: path
+      required: true
+      description: Identifier of the catalog item (UUID)
+      schema:
+        $ref: './_shared.yaml#/components/schemas/UUID'
+
+  headers:
+    Location:
+      description: Path of the created resource
+      schema:
+        type: string
+        example: /api/v1/catalog/services/3f2a1c9e-7b64-4d0e-9a51-0c6e8d2b4f10
+
+  securitySchemes:
+    bearerAuth:
+      $ref: './_shared.yaml#/components/securitySchemes/bearerAuth'
