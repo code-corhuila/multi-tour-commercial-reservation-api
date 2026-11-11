@@ -108,6 +108,21 @@ class ReservationPricingTest {
     }
 
     @Test
+    void aSecondRuleOnTheOriginalValueKeepsTheOriginalBaseAndTheRunningSubtotal() {
+        DiscountRule early = rule("Early", 1, DiscountBase.ORIGINAL_VALUE, 1000, null, null);
+        DiscountRule loyal = rule("Loyal", 2, DiscountBase.ORIGINAL_VALUE, 500, null, null);
+
+        ReservationQuote quote = quote(tour(CatalogServiceType.TOUR, true), 3);
+
+        assertThat(quote.discounts()).containsExactly(
+                new FixedDiscount(1, early.ruleId(), "Early", DiscountType.PERCENTAGE, 1000, null,
+                        DiscountBase.ORIGINAL_VALUE, new Cents(360_000), new Cents(36_000), new Cents(324_000), null),
+                new FixedDiscount(2, loyal.ruleId(), "Loyal", DiscountType.PERCENTAGE, 500, null,
+                        DiscountBase.ORIGINAL_VALUE, new Cents(360_000), new Cents(18_000), new Cents(306_000), null));
+        assertThat(quote.finalValue()).isEqualTo(new Cents(306_000));
+    }
+
+    @Test
     void eachDiscountLineNamesItsOrderBaseAndCap() {
         DiscountRule early = rule("Early", 1, DiscountBase.ORIGINAL_VALUE, 1000, null, 15_000L);
         DiscountRule fixed = rule("Loyal", 2, DiscountBase.PREVIOUS_SUBTOTAL, null, 5_000L, null);
