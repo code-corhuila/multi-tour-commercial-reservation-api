@@ -1,5 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ExceptionalAccessUse;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExceptionalAccessAudit;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
 import jakarta.servlet.FilterChain;
@@ -7,6 +9,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Clock;
+import java.util.UUID;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,8 +22,16 @@ public class AuthFilter extends OncePerRequestFilter {
     private final Rs256Verifier verifier;
     private final ApiErrorWriter errors;
     private final TenantStatusReader statuses;
+    private final ExceptionalAccessAudit audit;
+    private final Clock clock;
 
     public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses) {
+        this(verifier, errors, statuses, new LoggingExceptionalAccessAudit(), Clock.systemUTC());
+    }
+
+    public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses, ExceptionalAccessAudit audit, Clock clock) {
+        this.clock = clock;
+        this.audit = audit;
         this.verifier = verifier;
         this.errors = errors;
         this.statuses = statuses;
@@ -48,6 +60,18 @@ public class AuthFilter extends OncePerRequestFilter {
                 errors.write(request, response, ApiError.Code.FORBIDDEN, "the access is restricted to the work of an inactive tenant");
                 return;
             }
+            if (principal.exceptional() != null) {
+                // HU-SEC-007 G-SEC9-1 (ADR-004 D5): only a read inside the scope; any write, internal route or route not listed is refused, and each use is audited with the authorizationId.
+                String path = request.getRequestURI().substring(request.getContextPath().length());
+                ExceptionalAccess access = principal.exceptional();
+                if (!ExceptionalAccessPolicy.allows(request.getMethod(), path, access.scope())) {
+                    errors.write(request, response, ApiError.Code.FORBIDDEN, "the exceptional access is read only and limited to its scope");
+                    return;
+                }
+                audit.used(new ExceptionalAccessUse(access.authorizationId(), UUID.fromString(principal.sub()), principal.tenantId(), access.access(),
+                        ExceptionalAccessPolicy.areaOf(request.getMethod(), path).orElseThrow(), request.getMethod(), ExceptionalAccessPolicy.template(path), clock.instant(),
+                        (String) request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE)));
+            }
             if (inactive(request, principal)) {
                 errors.write(request, response, ApiError.Code.UNAUTHORIZED, "authentication is required");
                 return;
@@ -67,7 +91,8 @@ public class AuthFilter extends OncePerRequestFilter {
     // The receiving route is checked by its SERVICE role alone, because it must work for an inactive tenant.
     private boolean inactive(HttpServletRequest request, AuthenticatedPrincipal principal) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        if (principal.tenantId() == null || principal.restricted()
+        // The exceptional or emergency access reads only, so an inactive tenant does not close it (HU-SEC-007, Project Lead 2026-11-11).
+        if (principal.tenantId() == null || principal.restricted() || principal.exceptional() != null
                 || path.matches("/api/v1/commercial-reservation/internal/tenants/[^/]+/events")) {
             return false;
         }

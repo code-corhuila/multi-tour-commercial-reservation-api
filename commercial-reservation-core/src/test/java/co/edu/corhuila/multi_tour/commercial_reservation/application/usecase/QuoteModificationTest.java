@@ -15,6 +15,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ChangeType
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountBase;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DiscountType;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FixedDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
@@ -145,5 +148,37 @@ class QuoteModificationTest {
         assertThat(crowded.seatsAvailable()).isFalse();
         assertThat(crowded.allowed()).isFalse();
         assertThat(crowded.reason()).isEqualTo(Reason.NO_AVAILABILITY);
+    }
+
+    // The mockup draws the projected value and the discounts of the recalculation: the projected value of the new party and what the fixed
+    // lines take from it, so that projected - discounts = new final value.
+    @Test
+    void theQuoteCarriesTheProjectedValueAndTheDiscountsOfTheRecalculation() {
+        policy = Optional.of(new ChangePolicy(true, 60));
+        UUID discounted = new UUID(12, 0xb8);
+        FixedDiscount tenPercent = new FixedDiscount(1, new UUID(12, 0xb9), "Early", DiscountType.PERCENTAGE, 1000, null,
+                DiscountBase.ORIGINAL_VALUE, new Cents(300_000), new Cents(30_000), new Cents(270_000), null);
+        Reservation reservation = Reservation.create(discounted, TENANT, CUSTOMER, DEPARTURE, COLLABORATOR, 2,
+                new ReservedService(SERVICE, new Cents(100_000), new Cents(50_000)), new Cents(300_000), new Cents(270_000), List.of(tenPercent),
+                PaymentType.FULL_PAYMENT, PaymentMethod.TRANSFER, CREATED);
+        reservation.restoredAs(ReservationStatus.PENDING_PAYMENT, PaymentStatus.NO_PAYMENT, new Cents(270_000), false, List.of());
+        fakes.reservations.put(discounted, reservation);
+
+        ModificationQuote answer = quote.quote(actor(Role.OPERATIONAL_COLLABORATOR), discounted,
+                new ModificationRequest(ChangeType.MODIFICATION, 3, DEPARTURE, List.of()));
+
+        assertThat(answer.projectedValue()).isEqualTo(new Cents(450_000));
+        assertThat(answer.discount()).isEqualTo(new Cents(45_000));
+        assertThat(answer.outcome().newFinalValue()).isEqualTo(new Cents(405_000));
+    }
+
+    @Test
+    void aRefusedQuoteAnswersTheProjectedValueAndTheDiscountsAsTheyAre() {
+        policy = Optional.empty();
+
+        ModificationQuote refused = ask();
+
+        assertThat(refused.projectedValue()).isEqualTo(new Cents(300_000));
+        assertThat(refused.discount()).isEqualTo(new Cents(0));
     }
 }

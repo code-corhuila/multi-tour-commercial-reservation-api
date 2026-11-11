@@ -14,10 +14,15 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-// HU-COM-020 RN-02, RN-03, RN-06 over payment_deadline (freeze columns of HU-COM-011, freeze_cause of HU-COM-020): the open deadline rows of one tenant with the start of their departure and whether
-// it was cancelled (the capacity mirror), and the write of a frozen or resumed row with its freeze pair and its cause together (the checks of the engine refuse one without the others). The decision is
-// the pure PaymentDeadline.frozen / resumed, so only a row that changed is saved. Every query leads with the tenant.
+// HU-COM-020 RN-02, RN-03, RN-06 over payment_deadline (freeze columns of HU-COM-011, freeze_cause of HU-COM-020): the open deadline rows of one tenant (or of one reservation of it) with the start of
+// their departure and whether it was cancelled (the capacity mirror), and the write of a frozen or resumed row with its freeze pair and its cause together (the checks of the engine refuse one without
+// the others). The decision is the pure PaymentDeadline.frozen / resumed, so only a row that changed is saved. Every query leads with the tenant.
 public final class JdbcTenantDeadlines implements TenantDeadlineStore {
+    private static final String SELECT = "SELECT d.payment_deadline_id, d.tenant_id, d.reservation_id, d.deadline_kind, d.due_at, d.extension_hours, d.extension_granted_at, d.extension_granted_by, "
+            + "d.frozen_at, d.remaining_at_freeze_minutes, d.freeze_cause, c.hora_inicio, COALESCE(c.status = 'CANCELLED', false) AS departure_cancelled "
+            + "FROM commercial_reservation.payment_deadline d JOIN commercial_reservation.reservation r ON r.tenant_id = d.tenant_id AND r.reservation_id = d.reservation_id "
+            + "LEFT JOIN commercial_reservation.salida_capacity c ON c.tenant_id = r.tenant_id AND c.salida_id = r.salida_id "
+            + "WHERE d.tenant_id = ? AND r.reservation_status IN ('PENDING_PAYMENT', 'CONFIRMED', 'IN_EXECUTION')";
     private final JdbcTemplate jdbc;
 
     public JdbcTenantDeadlines(JdbcTemplate jdbc) {
@@ -26,12 +31,12 @@ public final class JdbcTenantDeadlines implements TenantDeadlineStore {
 
     @Override
     public List<TenantDeadline> openOf(UUID tenantId) {
-        return jdbc.query("SELECT d.payment_deadline_id, d.tenant_id, d.reservation_id, d.deadline_kind, d.due_at, d.extension_hours, d.extension_granted_at, d.extension_granted_by, "
-                + "d.frozen_at, d.remaining_at_freeze_minutes, d.freeze_cause, c.hora_inicio, COALESCE(c.status = 'CANCELLED', false) AS departure_cancelled "
-                + "FROM commercial_reservation.payment_deadline d JOIN commercial_reservation.reservation r ON r.tenant_id = d.tenant_id AND r.reservation_id = d.reservation_id "
-                + "LEFT JOIN commercial_reservation.salida_capacity c ON c.tenant_id = r.tenant_id AND c.salida_id = r.salida_id "
-                + "WHERE d.tenant_id = ? AND r.reservation_status IN ('PENDING_PAYMENT', 'CONFIRMED', 'IN_EXECUTION') ORDER BY d.reservation_id, d.due_at",
-                (row, index) -> map(row), tenantId);
+        return jdbc.query(SELECT + " ORDER BY d.reservation_id, d.due_at", (row, index) -> map(row), tenantId);
+    }
+
+    // HU-COM-018 AC-18.8: the same rows for one reservation, for the freeze and the resume of a rescheduling.
+    public List<TenantDeadline> openOf(UUID tenantId, UUID reservationId) {
+        return jdbc.query(SELECT + " AND d.reservation_id = ? ORDER BY d.due_at", (row, index) -> map(row), tenantId, reservationId);
     }
 
     @Override

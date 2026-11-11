@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 public class Rs256Verifier {
     private static final Logger LOG = LoggerFactory.getLogger(Rs256Verifier.class);
+    private static final Set<String> AREAS = Set.of("RESERVATIONS", "CATALOG", "OPERATIONS", "CASH", "CUSTOMERS", "SENSITIVE");
     private final PublicKey key;
     private final Clock clock;
     private final ObjectMapper json;
@@ -69,13 +70,34 @@ public class Rs256Verifier {
                     granted.add(permission.textValue());
                 }
             }
+            ExceptionalAccess exceptionalAccess = exceptional(claims, tenantId);
+            if (exceptionalAccess != null) require(UUID.fromString(sub.textValue()).toString().equalsIgnoreCase(sub.textValue()), "an exceptional access needs the administrator identifier as subject");
             return new AuthenticatedPrincipal(sub.textValue(), tenantId, names, granted,
-                    "restricted".equals(claims.path("access").textValue()));
+                    "restricted".equals(claims.path("access").textValue()), exceptionalAccess);
         } catch (Exception failure) {
             LOG.warn("Access token rejected: {}", failure instanceof IllegalArgumentException
                     ? failure.getMessage() : failure.getClass().getSimpleName());
             throw new InvalidTokenException();
         }
+    }
+
+    // HU-SEC-007, ADR-004 D5: access=exceptional or emergency needs a tenant, a non-empty scope of known areas and the authorizationId; anything else is not a valid token.
+    private ExceptionalAccess exceptional(JsonNode claims, UUID tenantId) {
+        String access = claims.path("access").textValue();
+        if (!"exceptional".equals(access) && !"emergency".equals(access)) return null;
+        require(tenantId != null, "an exceptional access needs a tenant");
+        JsonNode areas = claims.path("scope");
+        require(areas.isArray() && !areas.isEmpty(), "scope must be a non-empty array");
+        Set<String> scope = new HashSet<>();
+        for (JsonNode area : areas) {
+            require(area.isTextual() && AREAS.contains(area.textValue()), "unknown area in scope");
+            scope.add(area.textValue());
+        }
+        JsonNode authorization = claims.path("authorizationId");
+        require(authorization.isTextual(), "missing authorizationId");
+        UUID authorizationId = UUID.fromString(authorization.textValue());
+        require(authorizationId.toString().equalsIgnoreCase(authorization.textValue()), "invalid authorizationId");
+        return new ExceptionalAccess(access, scope, authorizationId);
     }
 
     private JsonNode parse(String segment) throws Exception {

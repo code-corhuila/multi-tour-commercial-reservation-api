@@ -13,6 +13,8 @@ public final class CustomerAuthorization {
     // RN-07: authorized by the token claim "permissions", never by role. Manager, Accountant and Analyst
     // can never hold it, so they are refused even with a forged claim (plan D-07); so is the Final Customer.
     public static void requireSensitiveRead(CustomerActor actor) {
+        // HU-SEC-007: the read only support actor has no permission claim; the scope SENSITIVE of its token is checked by the gate of the service.
+        if (actor != null && actor.role() == Role.PLATFORM_SUPPORT && actor.tenantId() != null && actor.actorId() != null) return;
         if (actor == null || actor.tenantId() == null || actor.actorId() == null
                 || (actor.role() != Role.TENANT_ADMINISTRATOR && actor.role() != Role.OPERATIONAL_COLLABORATOR)
                 || !actor.permissions().contains(SENSITIVE_DATA_PERMISSION))
@@ -24,7 +26,7 @@ public final class CustomerAuthorization {
     public static void requireRead(CustomerActor actor) {
         if (actor == null || actor.tenantId() == null || actor.actorId() == null
                 || (actor.role() != Role.TENANT_ADMINISTRATOR && actor.role() != Role.OPERATIONAL_COLLABORATOR
-                && actor.role() != Role.MANAGER && actor.role() != Role.ANALYST))
+                && actor.role() != Role.MANAGER && actor.role() != Role.ANALYST && actor.role() != Role.PLATFORM_SUPPORT))
             throw new CustomerAccessDeniedException();
     }
 
