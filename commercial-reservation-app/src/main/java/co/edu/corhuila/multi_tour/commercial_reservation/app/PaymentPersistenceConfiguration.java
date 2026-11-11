@@ -2,6 +2,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashSession;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDuePaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialWaitPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentConditionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentEventOutbox;
@@ -13,6 +15,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredPaymentSettlement;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialWaitPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentConditionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
@@ -106,6 +110,17 @@ class PaymentPersistenceConfiguration {
     @Bean
     DuePaymentQueries duePaymentQueries(JdbcTemplate jdbc) {
         return new JdbcDuePaymentQueries(jdbc);
+    }
+
+    // HU-COM-011 RN-01: the creation writes the initial deadline from the initial wait of the payment condition.
+    @Bean
+    InitialWaitPolicy initialWaitPolicy(JdbcTemplate jdbc) {
+        return new JdbcInitialWaitPolicy(jdbc);
+    }
+
+    @Bean
+    InitialDeadlineRecorder initialDeadlineRecorder(JdbcTemplate jdbc) {
+        return new JdbcInitialDeadlineRecorder(jdbc);
     }
 
     @Bean
