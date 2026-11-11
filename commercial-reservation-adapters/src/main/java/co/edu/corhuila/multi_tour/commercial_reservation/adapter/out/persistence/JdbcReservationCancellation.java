@@ -18,7 +18,7 @@ public final class JdbcReservationCancellation implements ReservationCancellatio
 
     public JdbcReservationCancellation(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        this.outbox = new JdbcPaymentEventOutbox(jdbc);
+        this.outbox = new JdbcPaymentEventOutbox(jdbc, new JdbcClientNoticeOutbox(jdbc));
     }
 
     @Override
