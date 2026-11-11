@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CreateReservationCommand;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterLeadCustomer;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Companion;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DocumentNumber;
@@ -13,10 +14,21 @@ import java.util.List;
 import java.util.UUID;
 
 // Closed request: the body carries no value, tenant, state or creator (RN-13), and the strict mapper refuses them.
-// Boxed values keep absence, so the core names every missing field at once (AC-07.2). The holder block of a Final Customer
-// whose account has no record is the next slice of HU-COM-008 (AC-08.13); until then the core names "holder".
+// Boxed values keep absence, so the core names every missing field at once (AC-07.2). The holder is the new lead customer sent
+// inline, the alternative to customerId; for a Final Customer whose account has no record it is required (AC-08.13).
 public record CreateReservationRequest(UUID customerId, UUID serviceId, UUID salidaId, Integer people, String paymentType,
-        String paymentMethod, List<CompanionRequest> companions) {
+        String paymentMethod, List<CompanionRequest> companions, HolderRequest holder) {
+
+    // Same fields and validations as RegisterCustomerRequest without serviceId: the risk mark is the tour's, never typed.
+    public record HolderRequest(String fullName, String documentNumber, LocalDate birthDate, Integer age,
+            RegisterCustomerRequest.Contact contact, Boolean termsAccepted, Boolean informedConsentSigned,
+            RegisterCustomerRequest.EmergencyInfo emergencyInfo) {
+
+        RegisterLeadCustomer.Command toCommand() {
+            return new RegisterCustomerRequest(fullName, documentNumber, birthDate, age, contact, termsAccepted, null,
+                    informedConsentSigned, emergencyInfo).toCommand();
+        }
+    }
 
     public record CompanionRequest(String fullName, String documentNumber, LocalDate birthDate, Integer age,
             Boolean informedConsentSigned, RegisterCustomerRequest.EmergencyInfo emergencyInfo) {
@@ -54,13 +66,14 @@ public record CreateReservationRequest(UUID customerId, UUID serviceId, UUID sal
             group.add(item.toCompanion(i, today));
         }
         return new CreateReservationCommand(tenantId, actorId, customerId, serviceId, salidaId, people == null ? 0 : people,
-                paymentType, paymentMethod, group);
+                paymentType, paymentMethod, group, null, holder == null ? null : holder.toCommand());
     }
 
     // The door of a Final Customer: the customer is the one of the account, so a customerId in the body is refused (AC-08.9).
     public CreateReservationCommand toOwnCommand(UUID tenantId, UUID accountId, LocalDate today) {
         var command = toCommand(tenantId, accountId, today);
         return new CreateReservationCommand(command.tenantId(), command.actorId(), command.customerId(), command.serviceId(),
-                command.departureId(), command.people(), command.paymentType(), command.paymentMethod(), command.companions(), accountId);
+                command.departureId(), command.people(), command.paymentType(), command.paymentMethod(), command.companions(), accountId,
+                command.holder());
     }
 }
