@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
@@ -27,7 +28,7 @@ class CustomerHttpFixture {
     @Bean @Primary MemoryCustomers memoryCustomers() { return new MemoryCustomers(); }
 
     static final class MemoryCustomers implements CustomerRepository, CustomerProfileReader, CustomerRegisteredOutbox,
-            SensitiveDataAccessOutbox, CustomerTransaction, ServiceRiskReader, CustomerByAccount {
+            SensitiveDataAccessOutbox, CustomerTransaction, ServiceRiskReader, CustomerByAccount, CustomerByEmail {
         record Service(UUID tenant, boolean highRisk) {}
         final Map<UUID, Customer> customers = new HashMap<>();
         final Map<UUID, Service> services = new HashMap<>();
@@ -44,6 +45,10 @@ class CustomerHttpFixture {
             return customers.values().stream().filter(found -> found.tenantId().equals(tenant) && account.equals(found.accountId())).findFirst();
         }
         public void save(Customer customer) { customers.put(customer.customerId(), customer); }
+        public Optional<EmailMatch> findByTenantAndEmail(UUID tenant, String email) {
+            return customers.values().stream().filter(found -> found.tenantId().equals(tenant) && email.equals(found.contact().email()))
+                    .findFirst().map(found -> new EmailMatch(found.customerId(), found.accountId() != null));
+        }
         public Optional<Customer> findByTenantAndId(UUID tenant, UUID id) {
             fullReads++;
             return Optional.ofNullable(customers.get(id)).filter(found -> found.tenantId().equals(tenant));

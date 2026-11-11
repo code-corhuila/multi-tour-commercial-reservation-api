@@ -1,5 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FieldCipher;
@@ -25,7 +27,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 // Sensitive values are encrypted here, before they reach the SQL, and decrypted only when a row is read. The
 // associated data binds each envelope to its tenant, customer and column, so it cannot be moved to another row.
 // It writes inside the transaction of the caller (JdbcCustomerTransaction) and holds no value in any message.
-public final class JdbcCustomerRepository implements CustomerRepository, CustomerProfileReader {
+public final class JdbcCustomerRepository implements CustomerRepository, CustomerProfileReader, CustomerByAccount, CustomerByEmail {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String STATUS = "ACTIVE"; // DP-D5-6 placeholder: the status catalogue is not decided
     private final JdbcTemplate jdbc;
@@ -42,13 +44,13 @@ public final class JdbcCustomerRepository implements CustomerRepository, Custome
         UUID tenant = customer.tenantId();
         UUID id = customer.customerId();
         jdbc.update("INSERT INTO commercial_reservation.customer (customer_id, tenant_id, full_name, created_at, "
-                + "document_number, birth_date_or_age, contact_info, status, terms_accepted, terms_accepted_at) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)",
+                + "document_number, birth_date_or_age, contact_info, status, terms_accepted, terms_accepted_at, account_id) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)",
                 id, tenant, customer.fullName(), timestamp(customer.createdAt()),
                 seal(customer.documentNumber().value(), tenant, id, "document_number"),
                 seal(birth(customer.birthDateOrAge()), tenant, id, "birth_date_or_age"),
                 envelopeJson(seal(contact(customer.contact()), tenant, id, "contact_info")), STATUS,
-                customer.termsAccepted(), timestamp(customer.termsAcceptedAt()));
+                customer.termsAccepted(), timestamp(customer.termsAcceptedAt()), customer.accountId());
         if (customer.highRiskData() != null) {
             jdbc.update("INSERT INTO commercial_reservation.customer_sensitive_data (customer_id, tenant_id, "
                     + "emergency_info) VALUES (?, ?, ?::jsonb)", id, tenant,
@@ -58,7 +60,7 @@ public final class JdbcCustomerRepository implements CustomerRepository, Custome
 
     @Override
     public Optional<Customer> findByTenantAndId(UUID tenantId, UUID customerId) {
-        return jdbc.query("SELECT c.full_name, c.created_at, c.terms_accepted_at, c.document_number, c.birth_date_or_age, "
+        return jdbc.query("SELECT c.full_name, c.created_at, c.terms_accepted_at, c.document_number, c.birth_date_or_age, c.account_id, "
                 + "c.contact_info ->> 'envelope' AS contact_envelope, s.emergency_info ->> 'envelope' AS emergency_envelope "
                 + "FROM commercial_reservation.customer c LEFT JOIN commercial_reservation.customer_sensitive_data s "
                 + "ON s.tenant_id = c.tenant_id AND s.customer_id = c.customer_id "
@@ -71,8 +73,29 @@ public final class JdbcCustomerRepository implements CustomerRepository, Custome
                             contact(open(row.getString("contact_envelope"), tenantId, customerId, "contact_info")),
                             row.getObject("created_at", OffsetDateTime.class).toInstant(),
                             row.getObject("terms_accepted_at", OffsetDateTime.class).toInstant(),
-                            emergency == null ? null : risk(open(emergency, tenantId, customerId, "emergency_info")));
+                            emergency == null ? null : risk(open(emergency, tenantId, customerId, "emergency_info")),
+                            row.getObject("account_id", UUID.class));
                 }, tenantId, customerId).stream().findFirst();
+    }
+
+    // The record linked to an account of the tenant (HU-COM-008, at most one: the -db unique index).
+    @Override
+    public Optional<Customer> findByTenantAndAccount(UUID tenantId, UUID accountId) {
+        return jdbc.queryForList("SELECT customer_id FROM commercial_reservation.customer WHERE tenant_id = ? AND account_id = ?",
+                UUID.class, tenantId, accountId).stream().findFirst().flatMap(id -> findByTenantAndId(tenantId, id));
+    }
+
+    // The e-mail is sealed with the rest of the contact, so no column can be searched (the keyed hash is DP-D5-2/3, open): the
+    // tenant's records are opened and compared. A record of a verified account wins over an unverified one.
+    @Override
+    public Optional<EmailMatch> findByTenantAndEmail(UUID tenantId, String normalizedEmail) {
+        return jdbc.query("SELECT customer_id, account_id, contact_info ->> 'envelope' AS contact_envelope "
+                + "FROM commercial_reservation.customer WHERE tenant_id = ?", (row, index) -> {
+                    UUID id = row.getObject("customer_id", UUID.class);
+                    ContactInfo stored = contact(open(row.getString("contact_envelope"), tenantId, id, "contact_info"));
+                    return normalizedEmail.equals(stored.email()) ? new EmailMatch(id, row.getObject("account_id") != null) : null;
+                }, tenantId).stream().filter(java.util.Objects::nonNull)
+                .reduce((first, second) -> first.verified() ? first : second);
     }
 
     // The general read: the sensitive table is neither joined nor decrypted, so no risk data can leave through it.
