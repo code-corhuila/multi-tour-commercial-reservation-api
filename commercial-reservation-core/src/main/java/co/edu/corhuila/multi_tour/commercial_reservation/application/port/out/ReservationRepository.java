@@ -13,6 +13,15 @@ public interface ReservationRepository {
         throw new UnsupportedOperationException("the reservation lookup needs the adapter override");
     }
 
+    // Several reservations of one tenant in one read, for the lists that show one row per attempt (the review list of HU-COM-010): the map
+    // holds only the ones found, the id of another tenant is absent like a missing one. The adapter overrides it with a fixed number of
+    // statements; a double may keep this default.
+    default java.util.Map<java.util.UUID, Reservation> findByTenantAndIds(java.util.UUID tenantId, java.util.Collection<java.util.UUID> reservationIds) {
+        java.util.Map<java.util.UUID, Reservation> found = new java.util.LinkedHashMap<>();
+        reservationIds.forEach(id -> findByTenantAndId(tenantId, id).ifPresent(reservation -> found.put(id, reservation)));
+        return found;
+    }
+
     // The reservation that holds a payment attempt, for the review routes that name only the attempt; empty for another tenant.
     default java.util.Optional<Reservation> findByTenantAndAttempt(java.util.UUID tenantId, java.util.UUID attemptId) {
         throw new UnsupportedOperationException("the attempt lookup needs the adapter override");
