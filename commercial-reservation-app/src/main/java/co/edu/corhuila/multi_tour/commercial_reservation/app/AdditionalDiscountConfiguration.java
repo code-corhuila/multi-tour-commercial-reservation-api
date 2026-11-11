@@ -1,8 +1,10 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyStore;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AdditionalDiscountController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthorizableReasonController;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentAdditionalDiscountRegistration;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentAdditionalDiscountRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReservationDiscountBreakdownController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalAuthorizableReasons;
@@ -73,8 +75,8 @@ class AdditionalDiscountConfiguration {
 
     @Bean IdempotentAdditionalDiscountRegistration idempotentAdditionalDiscountRegistration(
             RegisterAdditionalDiscount discounts, AdditionalDiscountRepository stored, IdempotencyKeys keys,
-            PlatformTransactionManager manager) {
-        return new IdempotentAdditionalDiscountRegistration(discounts, stored, keys, new TransactionTemplate(manager));
+            IdempotentWrites writes) {
+        return new IdempotentAdditionalDiscountRegistration(discounts, stored, new JdbcIdempotencyStore(keys), writes);
     }
 
     @Bean AdditionalDiscountController additionalDiscountController(RegisterAdditionalDiscount discounts,
