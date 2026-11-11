@@ -1,6 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 
-// Only the birth state exists here (plan D-02): HU-COM-009 to HU-COM-013 add their states with their transitions.
+// The codes of the db (chk_reservation_status). Each story adds the transitions it owns: HU-COM-009 and HU-COM-010 confirm.
 public enum ReservationStatus {
-    PENDING_PAYMENT
+    PENDING_PAYMENT, CONFIRMED, IN_EXECUTION, COMPLETED, CANCELLED
 }
