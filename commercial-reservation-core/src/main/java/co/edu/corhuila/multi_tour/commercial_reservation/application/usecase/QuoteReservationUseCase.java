@@ -12,17 +12,21 @@ public class QuoteReservationUseCase implements QuoteReservation {
 
     private final CatalogServiceRepository catalog;
     private final ReservationPricing pricing;
+    private final ReservableDeparture departures;
     private final Clock clock;
 
-    public QuoteReservationUseCase(CatalogServiceRepository catalog, ReservationPricing pricing, Clock clock) {
+    public QuoteReservationUseCase(CatalogServiceRepository catalog, ReservationPricing pricing, ReservableDeparture departures,
+            Clock clock) {
         this.catalog = catalog;
         this.pricing = pricing;
+        this.departures = departures;
         this.clock = clock;
     }
 
     @Override
     public ReservationQuote quote(UUID tenantId, UUID serviceId, UUID departureId, int people) {
-        return pricing.quote(tenantId, CatalogLookup.require(catalog, tenantId, serviceId), departureId, people,
-                LocalDate.now(clock));
+        var tour = CatalogLookup.require(catalog, tenantId, serviceId);
+        departures.requireOpen(tenantId, departureId, serviceId);
+        return pricing.quote(tenantId, tour, departureId, people, LocalDate.now(clock));
     }
 }
