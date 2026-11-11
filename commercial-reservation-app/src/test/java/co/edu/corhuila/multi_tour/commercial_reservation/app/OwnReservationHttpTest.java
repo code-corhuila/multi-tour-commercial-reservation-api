@@ -57,7 +57,7 @@ class OwnReservationHttpTest extends ReservationHttpBase {
         });
     }
 
-    @Test void aFinalCustomerCannotQuoteUntilTheQuoteRouteOfTheirOwnExists() throws Exception {
+    @Test void aFinalCustomerCannotUseTheOperatorQuoteRoute() throws Exception {
         var error = CatalogHttpTest.json(exchange(quote(quoteBody(2), FINAL_CUSTOMER), 403));
         assertThat(error.get("error").asText()).isEqualTo("FORBIDDEN");
         assertThat(error.has("tourLine")).isFalse();

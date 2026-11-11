@@ -138,7 +138,8 @@ class CreateReservationTest {
     void aPaymentOptionNotEnabledForTheTenantIsRefusedAndNothingIsStored() {
         optionsEnabled = false;
 
-        assertThatThrownBy(() -> create.create(valid())).isInstanceOf(BusinessRuleViolation.class);
+        assertThatThrownBy(() -> create.create(valid())).isInstanceOfSatisfying(DomainException.class,
+                refused -> assertThat(refused.field()).isEqualTo("paymentType")); // nothing is enabled, so the type is the one named
         assertThat(stored).isEmpty();
     }
 

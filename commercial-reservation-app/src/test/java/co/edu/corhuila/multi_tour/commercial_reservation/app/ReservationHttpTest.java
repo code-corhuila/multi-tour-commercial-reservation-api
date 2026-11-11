@@ -91,6 +91,17 @@ class ReservationHttpTest extends ReservationHttpBase {
         assertThat(store.reservations).isEmpty();
     }
 
+    // AC-08.4: a method or a type not enabled is refused naming the field, and no reservation is stored.
+    @Test void aMethodOrATypeNotEnabledIsRefusedNamingTheFieldAndStoresNothing() throws Exception {
+        store.disabledMethods.add(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod.CASH);
+        var cash = createBody(); cash.put("paymentMethod", "CASH");
+        CatalogHttpTest.assertField(exchange(create(cash, "reservation-key-0040", ADMIN), 400), "paymentMethod");
+
+        store.disabledTypes.add(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType.DEPOSIT);
+        CatalogHttpTest.assertField(exchange(create(createBody(), "reservation-key-0041", ADMIN), 400), "paymentType");
+        assertThat(store.reservations).isEmpty();
+    }
+
     @Test void everyMissingMandatoryFieldIsNamedAtOnce() throws Exception {
         var error = CatalogHttpTest.json(exchange(create(Map.of("people", 2), "reservation-key-4", ADMIN), 400));
         var fields = new ArrayList<String>();

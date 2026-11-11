@@ -6,6 +6,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FieldCipher;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DocumentNumber;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 // Sensitive values are encrypted here, before they reach the SQL, and decrypted only when a row is read. The
@@ -30,6 +32,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 public final class JdbcCustomerRepository implements CustomerRepository, CustomerProfileReader, CustomerByAccount, CustomerByEmail {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String STATUS = "ACTIVE"; // DP-D5-6 placeholder: the status catalogue is not decided
+    private static final String ACCOUNT_KEY = "uq_customer_tenant_id_account_id";
     private final JdbcTemplate jdbc;
     private final FieldCipher cipher;
 
@@ -39,8 +42,20 @@ public final class JdbcCustomerRepository implements CustomerRepository, Custome
     }
 
     // Registration only: a customer id that exists, in any tenant, is refused by the primary key.
+    // Two registrations of one account at once (HU-COM-008) collide on the unique key of the account: the loser is a business refusal.
     @Override
     public void save(Customer customer) {
+        try {
+            insert(customer);
+        } catch (DuplicateKeyException collision) {
+            if (collision.getMessage() != null && collision.getMessage().contains(ACCOUNT_KEY)) {
+                throw new BusinessRuleViolation("the account already has a customer record");
+            }
+            throw collision;
+        }
+    }
+
+    private void insert(Customer customer) {
         UUID tenant = customer.tenantId();
         UUID id = customer.customerId();
         jdbc.update("INSERT INTO commercial_reservation.customer (customer_id, tenant_id, full_name, created_at, "
