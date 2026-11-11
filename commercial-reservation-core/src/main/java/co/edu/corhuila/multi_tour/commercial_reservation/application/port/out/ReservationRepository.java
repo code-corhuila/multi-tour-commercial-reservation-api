@@ -6,4 +6,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservatio
 public interface ReservationRepository {
 
     void save(Reservation reservation);
+
+    // Scoped to the tenant: another tenant's reservation is empty, like a missing one. Until the JDBC adapter overrides it
+    // the payment use cases are refused instead of silently passing.
+    default java.util.Optional<Reservation> findByTenantAndId(java.util.UUID tenantId, java.util.UUID reservationId) {
+        throw new UnsupportedOperationException("the reservation lookup needs the adapter override");
+    }
 }

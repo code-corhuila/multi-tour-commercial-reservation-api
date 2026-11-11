@@ -144,7 +144,9 @@ public final class Reservation {
 
     private void requireAmount(Cents amount, Cents minimumDeposit) {
         if (amount == null || amount.amount() <= 0) throw new DomainException("amountCents", "amountCents must be greater than zero");
-        boolean firstPayment = pendingBalance.equals(finalValue) && reservationStatus == ReservationStatus.PENDING_PAYMENT;
+        boolean firstPayment = pendingBalance.equals(finalValue) && reservationStatus == ReservationStatus.PENDING_PAYMENT
+                && attempts.stream().noneMatch(a -> a.validationStatus() == ValidationStatus.IN_VALIDATION
+                        || a.validationStatus() == ValidationStatus.APPROVED);
         if (expectedPaymentType == PaymentType.DEPOSIT && minimumDeposit == null)
             throw new DomainException("minimumDeposit", "a deposit needs its minimum");
         if (firstPayment && expectedPaymentType == PaymentType.DEPOSIT && amount.amount() < minimumDeposit.amount())
