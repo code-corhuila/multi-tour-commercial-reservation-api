@@ -7,4 +7,7 @@ import java.util.UUID;
 public interface PaymentProofStore {
 
     void save(UUID tenantId, UUID attemptId, ProofFile proof);
+
+    // The download is a use case of its own, never part of a decision or a list (010 plan D-07, G-I). Another tenant's is empty.
+    java.util.Optional<ProofFile> read(UUID tenantId, UUID attemptId);
 }
