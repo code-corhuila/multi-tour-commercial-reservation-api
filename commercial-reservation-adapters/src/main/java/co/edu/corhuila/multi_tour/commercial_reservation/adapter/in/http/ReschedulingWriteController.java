@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ConcludeRescheduling;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentReschedulingWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;

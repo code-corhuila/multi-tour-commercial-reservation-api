@@ -1,9 +1,9 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentReschedulingWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentReschedulingWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReschedulingHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReschedulingWriteController;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineFreezes;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReschedulingRecords;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.AnswerReschedulingProposal;
@@ -26,8 +26,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -56,9 +54,8 @@ class ReschedulingWriteConfiguration {
     }
 
     @Bean
-    IdempotentReschedulingWrites idempotentReschedulingWrites(SendReschedulingProposal proposals, RespondToReschedulingProposal responses, IdempotencyKeys keys,
-            PlatformTransactionManager manager) {
-        return new IdempotentReschedulingWrites(proposals, responses, keys, new TransactionTemplate(manager));
+    IdempotentReschedulingWrites idempotentReschedulingWrites(SendReschedulingProposal proposals, RespondToReschedulingProposal responses, IdempotentWrites writes) {
+        return new IdempotentReschedulingWrites(proposals, responses, writes);
     }
 
     @Bean
