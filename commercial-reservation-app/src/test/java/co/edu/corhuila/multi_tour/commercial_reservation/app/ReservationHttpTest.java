@@ -110,7 +110,7 @@ class ReservationHttpTest extends ReservationHttpBase {
     }
 
     @Test void anInactiveTenantCreatesNothing() throws Exception {
-        store.tenants.put(tenant, new TenantRef(tenant, false));
+        directory.tenants.put(tenant.toString(), new TenantRef(tenant, false));
         exchange(create(createBody(), "reservation-key-11", ADMIN), 422);
         assertThat(store.reservations).isEmpty();
     }
