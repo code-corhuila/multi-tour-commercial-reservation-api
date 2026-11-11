@@ -25,16 +25,16 @@ public final class ReschedulingReadController {
     }
 
     @GetMapping("/reschedulings")
-    public ReservationListResponses<ReschedulingEpisodeResponse> list(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+    public ReservationListResponses<ReschedulingResponse> list(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @RequestParam Map<String, String> query) {
         var paging = new PageQuery(query, Set.of("page", "limit", "reservationId", "departureId", "state"));
         var page = read.page(PaymentActors.of(principal), uuid(query, "reservationId"), uuid(query, "departureId"), state(query), paging.page, paging.limit);
-        return new ReservationListResponses<>(page.items().stream().map(ReschedulingEpisodeResponse::of).toList(), paging.meta(page.total()));
+        return new ReservationListResponses<>(page.items().stream().map(ReschedulingResponse::of).toList(), paging.meta(page.total()));
     }
 
     @GetMapping("/reschedulings/{reschedulingId}")
-    public ReschedulingEpisodeResponse detail(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal, @PathVariable("reschedulingId") UUID id) {
-        return ReschedulingEpisodeResponse.of(read.get(PaymentActors.of(principal), id));
+    public ReschedulingResponse detail(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal, @PathVariable("reschedulingId") UUID id) {
+        return ReschedulingResponse.of(read.get(PaymentActors.of(principal), id));
     }
 
     private static UUID uuid(Map<String, String> query, String name) {
