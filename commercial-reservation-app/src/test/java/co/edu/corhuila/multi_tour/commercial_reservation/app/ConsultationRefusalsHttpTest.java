@@ -101,4 +101,24 @@ class ConsultationRefusalsHttpTest extends ReservationHttpBase {
         assertThat(payments.events).isEmpty();
         assertThat(output.getAll()).doesNotContain("Persona Ficticia", "persona@example.invalid", "CC12345", "3000000000", "Otra Persona");
     }
+
+    // AC-14.5 (RN-09), the part the six-route test above does not cover: the service has no separate rescheduling route, so a date change is
+    // a modification of type DATE_CHANGE; the customer is refused on both types, on the quote and on the history, and nothing changes.
+    @Test void theFinalCustomerCannotModifyOrRescheduleAndNothingChanges() throws Exception {
+        String id = createOwn("reservation-key-158");
+        int saves = store.saves;
+        var modification = java.util.Map.of("changeType", "MODIFICATION", "people", 2, "reason", "One traveller less");
+        var dateChange = java.util.Map.of("changeType", "DATE_CHANGE", "departureId", departure.toString(), "reason", "Another date");
+        for (var body : java.util.List.of(modification, dateChange)) {
+            exchange(withToken(post(BASE + "/reservations/" + id + "/modifications"), FINAL_CUSTOMER).contentType(MediaType.APPLICATION_JSON)
+                    .content(TestJwtKeys.JSON.writeValueAsBytes(body)).header("Idempotency-Key", "refused-key-0002"), 403);
+            exchange(withToken(post(BASE + "/reservations/" + id + "/modification-quote"), FINAL_CUSTOMER).contentType(MediaType.APPLICATION_JSON)
+                    .content(TestJwtKeys.JSON.writeValueAsBytes(body)), 403);
+        }
+        exchange(withToken(get(BASE + "/reservations/" + id + "/modifications"), FINAL_CUSTOMER), 403);
+        assertThat(store.saves).isEqualTo(saves);
+        var stored = store.reservations.get(UUID.fromString(id));
+        assertThat(stored.people()).isEqualTo(3);
+        assertThat(stored.departureId()).isEqualTo(departure);
+    }
 }
