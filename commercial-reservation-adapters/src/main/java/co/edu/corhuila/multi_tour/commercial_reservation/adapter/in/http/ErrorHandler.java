@@ -28,6 +28,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import java.util.List;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -53,7 +54,15 @@ public class ErrorHandler {
         ApiError.Code code = ApiError.Code.INTERNAL_ERROR;
         String message = "an unexpected error occurred";
         List<ApiError.Detail> details = null;
-        if (ex instanceof SeatsUnavailableException) {
+        HttpHeaders headers = new HttpHeaders();
+        if (ex instanceof RetryLaterException held) {
+            // DP-16, DD-8: not a failure of this service. A warning by event id and trace, never the payload.
+            code = ApiError.Code.SERVICE_UNAVAILABLE;
+            message = held.getMessage();
+            headers.set(HttpHeaders.RETRY_AFTER, "5");
+            LoggerFactory.getLogger(ErrorHandler.class).warn("Departure event held back until its departure exists, eventId={}, traceId={}",
+                    held.eventId(), request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE));
+        } else if (ex instanceof SeatsUnavailableException) {
             // AC-07.8: the departure is full or too small; the client can tell the customer (PROPOSED code of the contract).
             code = ApiError.Code.SEATS_UNAVAILABLE;
             message = ex.getMessage();
@@ -148,7 +157,7 @@ public class ErrorHandler {
         int status = ex instanceof EstablishmentImageContent.Rejected image ? image.status
                 : ex instanceof RejectedRequest rejected ? rejected.status() : code.status();
         if (ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException || ex instanceof co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProofTooLargeException) status = 413;
-        return ResponseEntity.status(status).body(errors.body(request, code, message, details));
+        return ResponseEntity.status(status).headers(headers).body(errors.body(request, code, message, details));
     }
 
     private static boolean reservationRule(HttpServletRequest request) {
