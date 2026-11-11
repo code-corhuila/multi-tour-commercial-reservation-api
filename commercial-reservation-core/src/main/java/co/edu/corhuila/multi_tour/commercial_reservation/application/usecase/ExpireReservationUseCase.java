@@ -3,6 +3,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ExpiryResult;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentDeadline;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExpireReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancelledValueRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancelledValueRecorder.Origin;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
@@ -36,10 +38,18 @@ public class ExpireReservationUseCase implements ExpireReservation {
     private final PaymentEventOutbox outbox;
     private final PaymentTransaction transaction;
     private final Clock clock;
+    private final TenantStatusReader statuses;
 
     public ExpireReservationUseCase(ReservationRepository reservations, PaymentDeadlineReader deadlines, DepartureReader departures,
             SalidaCapacityHolder holder, CancelledValueRecorder cancelledValues, PaymentEventOutbox outbox, PaymentTransaction transaction,
             Clock clock) {
+        this(reservations, deadlines, departures, holder, cancelledValues, outbox, transaction, clock, tenantId -> java.util.Optional.empty());
+    }
+
+    // HU-COM-020 RN-01, AC-20.1: while the copy says INACTIVE nothing is cancelled for non-payment; the answer is expired=false with the reason TENANT_INACTIVE.
+    public ExpireReservationUseCase(ReservationRepository reservations, PaymentDeadlineReader deadlines, DepartureReader departures,
+            SalidaCapacityHolder holder, CancelledValueRecorder cancelledValues, PaymentEventOutbox outbox, PaymentTransaction transaction,
+            Clock clock, TenantStatusReader statuses) {
         this.reservations = reservations;
         this.deadlines = deadlines;
         this.departures = departures;
@@ -48,6 +58,7 @@ public class ExpireReservationUseCase implements ExpireReservation {
         this.outbox = outbox;
         this.transaction = transaction;
         this.clock = clock;
+        this.statuses = statuses;
     }
 
     @Override
@@ -55,6 +66,7 @@ public class ExpireReservationUseCase implements ExpireReservation {
         return transaction.inTransaction(() -> {
             Reservation reservation = reservations.lockByTenantAndId(tenantId, reservationId)
                     .orElseThrow(() -> new ReservationNotFoundException(reservationId));
+            if (statuses.statusOf(tenantId).filter(status -> status == TenantStatus.INACTIVE).isPresent()) return refused(reservation, ExpiryVerdict.TENANT_INACTIVE);
             Instant now = Instant.now(clock);
             List<PaymentDeadline> rows = deadlines.openDeadlines(tenantId, reservationId);
             if (rows.isEmpty()) return refused(reservation, reservation.reservationStatus() == ReservationStatus.CANCELLED

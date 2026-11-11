@@ -44,6 +44,10 @@ public class AuthFilter extends OncePerRequestFilter {
             if (authorization == null || !authorization.startsWith("Bearer ")) throw new InvalidTokenException();
             AuthenticatedPrincipal principal = verifier.verify(authorization.substring(7));
             request.setAttribute(PRINCIPAL_ATTRIBUTE, principal);
+            if (principal.restricted() && !RestrictedAccessPolicy.allows(request.getMethod(), request.getRequestURI().substring(request.getContextPath().length()), principal.roles())) {
+                errors.write(request, response, ApiError.Code.FORBIDDEN, "the access is restricted to the work of an inactive tenant");
+                return;
+            }
             if (inactive(request, principal)) {
                 errors.write(request, response, ApiError.Code.UNAUTHORIZED, "authentication is required");
                 return;

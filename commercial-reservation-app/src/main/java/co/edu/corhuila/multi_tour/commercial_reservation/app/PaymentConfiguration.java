@@ -253,13 +253,15 @@ class PaymentConfiguration {
     @Bean
     ExpireReservation expireReservation(@Lazy ReservationRepository reservations, @Lazy PaymentDeadlineReader deadlines,
             @Lazy DepartureReader departures, @Lazy SalidaCapacityHolder holder, @Lazy CancelledValueRecorder cancelledValues,
-            @Lazy PaymentEventOutbox outbox, @Lazy PaymentTransaction transaction, Clock clock) {
-        return new ExpireReservationUseCase(reservations, deadlines, departures, holder, cancelledValues, outbox, transaction, clock);
+            @Lazy PaymentEventOutbox outbox, @Lazy PaymentTransaction transaction, Clock clock,
+            @Lazy TenantStatusReader statuses) {
+        return new ExpireReservationUseCase(reservations, deadlines, departures, holder, cancelledValues, outbox, transaction, clock,
+                statuses);
     }
 
     @Bean
-    ListDuePaymentDeadlines listDuePaymentDeadlines(@Lazy DuePaymentQueries queries, Clock clock) {
-        return new ListDuePaymentDeadlinesUseCase(queries, clock);
+    ListDuePaymentDeadlines listDuePaymentDeadlines(@Lazy DuePaymentQueries queries, Clock clock, @Lazy TenantStatusReader statuses) {
+        return new ListDuePaymentDeadlinesUseCase(queries, clock, statuses);
     }
 
     @Bean

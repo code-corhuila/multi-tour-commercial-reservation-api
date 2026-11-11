@@ -108,7 +108,7 @@ class PaymentDeadlinePersistenceTest {
     void aFrozenDeadlineReadsItsFreeze() {
         Reservation reservation = stored();
         deadline(reservation, "INITIAL_PAYMENT", NOW.plusSeconds(86_400));
-        fixture.jdbc.update("UPDATE commercial_reservation.payment_deadline SET frozen_at = ?, remaining_at_freeze_minutes = 90 WHERE reservation_id = ?",
+        fixture.jdbc.update("UPDATE commercial_reservation.payment_deadline SET frozen_at = ?, remaining_at_freeze_minutes = 90, freeze_cause = 'TENANT_INACTIVE' WHERE reservation_id = ?",
                 OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC), reservation.reservationId());
 
         var found = deadlines.openDeadline(fixture.tenant, reservation.reservationId()).orElseThrow();
@@ -168,7 +168,7 @@ class PaymentDeadlinePersistenceTest {
         Reservation frozen = stored();
         deadline(open, "INITIAL_PAYMENT", NOW.plusSeconds(86_400));
         deadline(frozen, "INITIAL_PAYMENT", NOW.plusSeconds(86_400));
-        fixture.jdbc.update("UPDATE commercial_reservation.payment_deadline SET frozen_at = ?, remaining_at_freeze_minutes = 5 WHERE reservation_id = ?",
+        fixture.jdbc.update("UPDATE commercial_reservation.payment_deadline SET frozen_at = ?, remaining_at_freeze_minutes = 5, freeze_cause = 'TENANT_INACTIVE' WHERE reservation_id = ?",
                 OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC), frozen.reservationId());
         var queries = new JdbcPendingPaymentQueries(fixture.jdbc);
 

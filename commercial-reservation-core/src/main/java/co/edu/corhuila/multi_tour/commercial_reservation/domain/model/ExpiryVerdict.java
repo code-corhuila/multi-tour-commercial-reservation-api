@@ -2,5 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 
 // Why a reservation may or may not be cancelled for non-payment at a given instant (RN-04, RN-08, RN-09).
 public enum ExpiryVerdict {
-    EXPIRABLE, NOT_DUE, PAID, PROOF_IN_VALIDATION, FROZEN, ALREADY_CANCELLED
+    EXPIRABLE, NOT_DUE, PAID, PROOF_IN_VALIDATION, FROZEN, ALREADY_CANCELLED,
+    // HU-COM-020 RN-01, AC-20.1: the tenant is inactive, so nothing runs out and nothing is cancelled for non-payment.
+    TENANT_INACTIVE
 }
