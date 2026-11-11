@@ -10,8 +10,8 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
-// The effective deadline of the open one, as the deadline read derives it (PaymentDeadline.effective). A frozen deadline is still the
-// open one (RN-17): freezing stops it from expiring, it does not remove it.
+// The deadline in force of the open one (PaymentDeadline.inForce), as the payment answers show it. A frozen deadline has no running
+// instant (RN-17), so it is empty and the answer omits paymentDeadline.
 public class ResolveReservationDeadlineUseCase implements ResolveReservationDeadline {
 
     private final PaymentDeadlineReader deadlines;
@@ -34,6 +34,6 @@ public class ResolveReservationDeadlineUseCase implements ResolveReservationDead
     }
 
     private Optional<Instant> inForce(UUID tenantId, UUID reservationId, Instant departureStart) {
-        return deadlines.openDeadline(tenantId, reservationId).map(open -> open.effective(departureStart));
+        return deadlines.openDeadline(tenantId, reservationId).map(open -> open.inForce(departureStart));
     }
 }
