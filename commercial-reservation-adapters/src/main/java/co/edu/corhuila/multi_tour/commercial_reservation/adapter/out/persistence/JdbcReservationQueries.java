@@ -87,7 +87,7 @@ public final class JdbcReservationQueries implements ReservationQueries, OwnRese
                         PaymentStatus.valueOf(row.getString("payment_status")), new Cents(row.getLong("pending_balance_cents")),
                         row.getBoolean("seat_held")), arguments.toArray()).stream().findFirst()
                 .flatMap(stored -> reader.findAsCreated(tenantId, reservationId).map(created -> created.restoredAs(
-                        stored.status(), stored.payment(), stored.pending(), stored.seatHeld(), List.of())));
+                        stored.status(), stored.payment(), stored.pending(), stored.seatHeld(), new JdbcPaymentAttempts(jdbc).read(tenantId, reservationId))));
     }
 
     private record Stored(ReservationStatus status, PaymentStatus payment, Cents pending, boolean seatHeld) {
