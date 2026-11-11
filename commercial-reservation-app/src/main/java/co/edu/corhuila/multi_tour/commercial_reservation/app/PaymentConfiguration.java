@@ -22,6 +22,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Rea
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterCashPayment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterTransfer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancelledValueRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashIncomeRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashSessionStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRecorder;
@@ -127,8 +128,9 @@ class PaymentConfiguration {
     }
 
     @Bean
-    ReadPaymentProofFile readPaymentProofFile(@Lazy ReservationRepository reservations, @Lazy PaymentProofStore proofs) {
-        return new ReadPaymentProofFileUseCase(reservations, proofs);
+    ReadPaymentProofFile readPaymentProofFile(@Lazy ReservationRepository reservations, @Lazy PaymentProofStore proofs,
+            @Lazy CustomerByAccount accounts) {
+        return new ReadPaymentProofFileUseCase(reservations, proofs, accounts);
     }
 
     @Bean
@@ -138,11 +140,11 @@ class PaymentConfiguration {
     }
 
     @Bean
-    DecidePaymentProofUseCase decidePaymentProof(@Lazy ReservationRepository reservations, @Lazy PaymentDeadlineReader deadlines,
+    DecidePaymentProofUseCase decidePaymentProof(@Lazy ReservationRepository reservations, @Lazy PaymentDeadlineReader deadlines, @Lazy DepartureReader departures,
             @Lazy PaymentConditionReader conditions, @Lazy SalidaCapacityHolder holder, @Lazy ReservationCancellation cancellation,
             @Lazy CancelledValueRecorder cancelledValues, @Lazy CreditBalanceRecorder credit, @Lazy PaymentEventOutbox outbox,
             @Lazy PaymentTransaction transaction, Clock clock) {
-        return new DecidePaymentProofUseCase(reservations, deadlines, conditions, holder, cancellation, cancelledValues, credit, outbox,
+        return new DecidePaymentProofUseCase(reservations, deadlines, departures, conditions, holder, cancellation, cancelledValues, credit, outbox,
                 transaction, clock);
     }
 
