@@ -7,16 +7,19 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Authori
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentAdditionalDiscountRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReservationDiscountBreakdownController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalAuthorizableReasons;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAdditionalDiscountRepository;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.AuthorizableReasonTimes;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAuthorizableReasonRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationModifiedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.SpringRequestTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetOwnReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservationDiscountBreakdown;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageAuthorizableReasons;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.TransactionalAuthorizableReasons;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonTimes;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RequestTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterAdditionalDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AdditionalDiscountRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonRepository;
@@ -65,8 +68,8 @@ class AdditionalDiscountConfiguration {
     }
 
     @Bean TransactionalAuthorizableReasons transactionalAuthorizableReasons(ManageAuthorizableReasons reasons,
-            AuthorizableReasonTimes times, IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new TransactionalAuthorizableReasons(reasons, times, keys, new TransactionTemplate(manager));
+            AuthorizableReasonTimes times, IdempotentWrites writes, PlatformTransactionManager manager) {
+        return new TransactionalAuthorizableReasons(reasons, times, writes, new SpringRequestTransaction(new TransactionTemplate(manager)));
     }
 
     @Bean AuthorizableReasonController authorizableReasonController(TransactionalAuthorizableReasons reasons) {
