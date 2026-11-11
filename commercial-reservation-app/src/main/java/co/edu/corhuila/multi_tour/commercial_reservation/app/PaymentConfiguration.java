@@ -133,8 +133,8 @@ class PaymentConfiguration {
 
     @Bean
     GetPaymentQuote getPaymentQuote(@Lazy ReservationRepository reservations, @Lazy EnabledPaymentOptions options,
-            @Lazy PaymentConditionReader conditions, @Lazy PaymentDeadlineReader deadlines) {
-        return new GetPaymentQuoteUseCase(reservations, options, conditions, deadlines);
+            @Lazy PaymentConditionReader conditions, @Lazy PaymentDeadlineReader deadlines, @Lazy DepartureReader departures) {
+        return new GetPaymentQuoteUseCase(reservations, options, conditions, deadlines, departures);
     }
 
     @Bean
