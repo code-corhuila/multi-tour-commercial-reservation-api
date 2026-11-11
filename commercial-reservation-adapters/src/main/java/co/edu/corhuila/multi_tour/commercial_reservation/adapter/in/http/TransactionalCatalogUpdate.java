@@ -33,7 +33,7 @@ public final class TransactionalCatalogUpdate {
             if (request.hasTerms()) {
                 result = terms.update(tenantId, serviceId, new CommercialTermsChange(request.baseRateCents,
                         request.baseOperationalCostCents, request.configuredCapacity,
-                        request.transportRequired, request.highRisk));
+                        request.transportRequired, request.highRisk, request.transportRatePerPersonCents));
             }
             return result;
         });

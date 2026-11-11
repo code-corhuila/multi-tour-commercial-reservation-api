@@ -11,6 +11,12 @@ public interface RegisterCatalogService {
     // Money and capacity arrive boxed so a missing value reaches the domain and is named there (AC-01.2).
     record Command(UUID tenantId, CatalogServiceType serviceType, String commercialName, Long baseRateCents,
             Long baseOperationalCostCents, Integer configuredCapacity, boolean transportRequired,
-            boolean highRisk) {
+            boolean highRisk, Long transportRatePerPersonCents) {
+        public Command(UUID tenantId, CatalogServiceType serviceType, String commercialName, Long baseRateCents,
+                Long baseOperationalCostCents, Integer configuredCapacity, boolean transportRequired,
+                boolean highRisk) {
+            this(tenantId, serviceType, commercialName, baseRateCents, baseOperationalCostCents, configuredCapacity,
+                    transportRequired, highRisk, null);
+        }
     }
 }

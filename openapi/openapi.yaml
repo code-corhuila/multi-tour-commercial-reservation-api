@@ -897,6 +897,15 @@ components:
           type: boolean
           description: Whether the activity is marked high risk (gap G-3)
           example: false
+        transportRatePerPersonCents:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: |
+            Optional per-person transport rate in minor units (RN-TRA-002, RN-10; gap G-E closed by default in
+            `06-data`). `null` means not parametrized; `0` is transport at no charge.
+          example: 25000
         createdAt:
           $ref: './_shared.yaml#/components/schemas/Timestamp'
         updatedAt:
@@ -939,6 +948,11 @@ components:
           type: boolean
         highRisk:
           type: boolean
+        transportRatePerPersonCents:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional per-person transport rate in minor units (RN-10); omit it to leave it not parametrized
 
     UpdateCatalogServiceRequest:
       type: object
@@ -967,6 +981,11 @@ components:
           type: boolean
         highRisk:
           type: boolean
+        transportRatePerPersonCents:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional per-person transport rate in minor units (RN-10); omitting it leaves the stored value as is
 
   parameters:
     AssociationIdPath:
