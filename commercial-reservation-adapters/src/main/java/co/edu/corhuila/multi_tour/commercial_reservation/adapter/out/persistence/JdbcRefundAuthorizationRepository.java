@@ -20,7 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 // columns and the overdue mark (the authorization columns are immutable in the engine) and inserts when the row does not exist yet. cash_movement_id is a
 // logical reference with no key (Annex J.3.4). Every query leads with the tenant. The reason is stored and read, never logged.
 public final class JdbcRefundAuthorizationRepository implements RefundAuthorizationRepository {
-    private static final String COLUMNS = "refund_authorization_id, tenant_id, reservation_id, refund_origin, financial_decision_id, "
+    static final String COLUMNS = "refund_authorization_id, tenant_id, reservation_id, refund_origin, financial_decision_id, "
             + "potential_refund_value_cents, authorized_amount_cents, reason, authorization_mode, authorized_by, authorized_at, execution_due_at, "
             + "execution_state, executing_at, executed_by, outflow_method, executed_at, cash_movement_id, overdue_marked_at";
     private final JdbcTemplate jdbc;
@@ -56,7 +56,7 @@ public final class JdbcRefundAuthorizationRepository implements RefundAuthorizat
         }
     }
 
-    private static RefundAuthorization map(ResultSet row) throws SQLException {
+    static RefundAuthorization map(ResultSet row) throws SQLException {
         String method = row.getString("outflow_method");
         return new RefundAuthorization(row.getObject("refund_authorization_id", UUID.class), row.getObject("tenant_id", UUID.class),
                 row.getObject("reservation_id", UUID.class), RefundOrigin.valueOf(row.getString("refund_origin")),
