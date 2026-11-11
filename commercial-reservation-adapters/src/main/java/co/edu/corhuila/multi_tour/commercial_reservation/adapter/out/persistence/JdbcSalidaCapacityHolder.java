@@ -27,14 +27,14 @@ public final class JdbcSalidaCapacityHolder implements SalidaCapacityHolder {
     @Override
     public int release(UUID tenantId, UUID reservationId) {
         List<int[]> open = jdbc.query("SELECT salida_id, party_size FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? "
-                + "AND reservation_id = ? AND released_at IS NULL FOR UPDATE", (row, index) -> new int[] {row.getInt("party_size")},
+                + "AND reservation_id = ? AND released_at IS NULL AND allocation_kind = 'RESERVATION' FOR UPDATE", (row, index) -> new int[] {row.getInt("party_size")},
                 tenantId, reservationId);
         if (open.isEmpty()) return 0;
         UUID salida = jdbc.queryForObject("SELECT salida_id FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? "
-                + "AND reservation_id = ? AND released_at IS NULL", UUID.class, tenantId, reservationId);
+                + "AND reservation_id = ? AND released_at IS NULL AND allocation_kind = 'RESERVATION'", UUID.class, tenantId, reservationId);
         int seats = open.get(0)[0];
         jdbc.update("UPDATE commercial_reservation.capacity_allocation SET released_at = ? WHERE tenant_id = ? AND reservation_id = ? "
-                + "AND released_at IS NULL", OffsetDateTime.now(ZoneOffset.UTC), tenantId, reservationId);
+                + "AND released_at IS NULL AND allocation_kind = 'RESERVATION'", OffsetDateTime.now(ZoneOffset.UTC), tenantId, reservationId);
         jdbc.update("UPDATE commercial_reservation.salida_capacity SET held_seats = GREATEST(held_seats - ?, 0) WHERE tenant_id = ? "
                 + "AND salida_id = ?", seats, tenantId, salida);
         return seats;
@@ -45,7 +45,7 @@ public final class JdbcSalidaCapacityHolder implements SalidaCapacityHolder {
     @Override
     public int releaseSeats(UUID tenantId, UUID reservationId, int seats) {
         List<UUID> open = jdbc.queryForList("SELECT salida_id FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? "
-                + "AND reservation_id = ? AND released_at IS NULL FOR UPDATE", UUID.class, tenantId, reservationId);
+                + "AND reservation_id = ? AND released_at IS NULL AND allocation_kind = 'RESERVATION' FOR UPDATE", UUID.class, tenantId, reservationId);
         if (open.isEmpty()) return 0;
         jdbc.update("UPDATE commercial_reservation.salida_capacity SET held_seats = GREATEST(held_seats - ?, 0) WHERE tenant_id = ? "
                 + "AND salida_id = ?", seats, tenantId, open.get(0));
@@ -60,5 +60,37 @@ public final class JdbcSalidaCapacityHolder implements SalidaCapacityHolder {
         jdbc.update("UPDATE commercial_reservation.salida_capacity SET held_seats = GREATEST(held_seats - ?, 0) WHERE tenant_id = ? "
                 + "AND salida_id = ?", seats, tenantId, fromSalidaId);
         return true;
+    }
+
+    // HU-COM-018 D-04, AC-18.9: the hold of a proposal is the same conditional update of the proposed departure plus its own allocation row of kind REPROGRAMMING_HOLD, so it is never taken for the
+    // seat of the reservation (the unique key of the db allows one active hold per reservation). False, and nothing written, when the departure has no room.
+    @Override
+    public boolean holdForRescheduling(UUID tenantId, UUID reservationId, UUID salidaId, int seats) {
+        if (!hold(tenantId, salidaId, seats)) return false;
+        jdbc.update("INSERT INTO commercial_reservation.capacity_allocation (capacity_allocation_id, tenant_id, salida_id, reservation_id, party_size, allocation_kind, allocated_at) "
+                + "VALUES (?, ?, ?, ?, ?, 'REPROGRAMMING_HOLD', ?)", UUID.randomUUID(), tenantId, salidaId, reservationId, seats, OffsetDateTime.now(ZoneOffset.UTC));
+        return true;
+    }
+
+    // HU-COM-018 AC-18.1: the customer accepted; the hold becomes the seat of the reservation (the kind changes, the seats stay where they were held), in the transaction of the caller.
+    @Override
+    public void acceptReschedulingHold(UUID tenantId, UUID reservationId, UUID salidaId) {
+        jdbc.update("UPDATE commercial_reservation.capacity_allocation SET allocation_kind = 'RESERVATION' WHERE tenant_id = ? AND reservation_id = ? AND salida_id = ? "
+                + "AND allocation_kind = 'REPROGRAMMING_HOLD' AND released_at IS NULL", tenantId, reservationId, salidaId);
+    }
+
+    // HU-COM-018 AC-18.7, AC-18.12: a rejected, void or expired proposal gives its seats back by conditional update; zero when nothing was held, so a repeat is safe.
+    @Override
+    public int releaseReschedulingHold(UUID tenantId, UUID reservationId) {
+        List<int[]> open = jdbc.query("SELECT party_size FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? AND reservation_id = ? AND allocation_kind = 'REPROGRAMMING_HOLD' "
+                + "AND released_at IS NULL FOR UPDATE", (row, index) -> new int[] {row.getInt("party_size")}, tenantId, reservationId);
+        if (open.isEmpty()) return 0;
+        UUID salida = jdbc.queryForObject("SELECT salida_id FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? AND reservation_id = ? AND allocation_kind = 'REPROGRAMMING_HOLD' "
+                + "AND released_at IS NULL", UUID.class, tenantId, reservationId);
+        int seats = open.get(0)[0];
+        jdbc.update("UPDATE commercial_reservation.capacity_allocation SET released_at = ? WHERE tenant_id = ? AND reservation_id = ? AND allocation_kind = 'REPROGRAMMING_HOLD' AND released_at IS NULL",
+                OffsetDateTime.now(ZoneOffset.UTC), tenantId, reservationId);
+        jdbc.update("UPDATE commercial_reservation.salida_capacity SET held_seats = GREATEST(held_seats - ?, 0) WHERE tenant_id = ? AND salida_id = ?", seats, tenantId, salida);
+        return seats;
     }
 }
