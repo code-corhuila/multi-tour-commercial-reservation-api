@@ -11,9 +11,12 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogSer
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CustomerRegistered;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingReservationDataException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 // The inline holder of a reservation (contract CreateReservationRequest.holder): the lead is built and checked first, written
@@ -40,6 +43,7 @@ final class ReservationHolder {
         RegisterLeadCustomer.Command holder = command.holder();
         Instant now = clock.instant();
         LocalDate today = LocalDate.now(clock);
+        requireEveryDatum(holder);
         Customer built = Customer.registerLead(newId, command.tenantId(), holder.documentNumber(), holder.fullName(),
                 birth(holder, today), new ContactInfo(holder.email(), holder.phone()), holder.termsAccepted(), now,
                 tour.terms().highRisk(), holder.highRiskData());
@@ -62,6 +66,21 @@ final class ReservationHolder {
         if (!lead.isNew()) return;
         customers.save(lead.customer());
         outbox.append(new CustomerRegistered(lead.customer().tenantId(), lead.customer().customerId(), actorId, clock.instant()));
+    }
+
+    // AC-08.13: each missing datum is named at once, as the companions do; the values are checked by the customer itself.
+    private static void requireEveryDatum(RegisterLeadCustomer.Command holder) {
+        List<String> missing = new ArrayList<>();
+        if (blank(holder.documentNumber())) missing.add("documentNumber");
+        if (blank(holder.fullName())) missing.add("fullName");
+        if (holder.birthDate() == null && holder.age() == null) missing.add("birthDateOrAge");
+        if (blank(holder.email()) && blank(holder.phone())) missing.add("contact");
+        if (!holder.termsAccepted()) missing.add("termsAccepted");
+        if (!missing.isEmpty()) throw new MissingReservationDataException(missing);
+    }
+
+    private static boolean blank(String value) {
+        return value == null || value.isBlank();
     }
 
     private static BirthDateOrAge birth(RegisterLeadCustomer.Command holder, LocalDate today) {

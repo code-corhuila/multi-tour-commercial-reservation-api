@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// The five routes of the Reservations tag (PROPOSED in the contract). There is no delete and no 409: a reservation changes state.
+// The six routes of the Reservations tag (PROPOSED in the contract). There is no delete and no 409: a reservation changes state.
 // The role is checked before the body is bound (ReservationHttpAccess); the tenant is only the token's.
 @RestController
 @RequestMapping("/api/v1/commercial-reservation")
