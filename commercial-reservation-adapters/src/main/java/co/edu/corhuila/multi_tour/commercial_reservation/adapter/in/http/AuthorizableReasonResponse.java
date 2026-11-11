@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.TransactionalAuthorizableReasons;
 import java.util.UUID;
 
 // tenantId is never exposed.
