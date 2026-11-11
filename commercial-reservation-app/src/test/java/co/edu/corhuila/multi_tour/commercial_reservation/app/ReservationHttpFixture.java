@@ -10,6 +10,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TransportRateReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentAttempt;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
@@ -50,7 +51,10 @@ class ReservationHttpFixture {
                     .filter(found -> found.tenantId().equals(tenant)).sorted(Comparator.comparing(Reservation::createdAt).reversed())
                     .map(found -> new ReservationListItem(found.reservationId(), "Persona Ficticia", "Tour Ficticio",
                             Instant.parse("2026-11-20T13:00:00Z"), found.reservationStatus(), found.paymentStatus(),
-                            found.pendingBalance())).toList());
+                            found.pendingBalance(), found.expectedPaymentType(), found.expectedPaymentMethod(),
+                            new Cents(found.finalValue().amount() - found.pendingBalance().amount()),
+                            found.attempts().stream().max(Comparator.comparing(PaymentAttempt::registeredAt))
+                                    .flatMap(last -> Optional.ofNullable(last.validationStatus())))).toList());
             return new ReservationPage(rows.stream().skip((page - 1L) * limit).limit(limit).toList(), rows.size());
         }
         public ReservationPage page(UUID tenant, UUID customer, boolean includeArchived, int page, int limit) {
