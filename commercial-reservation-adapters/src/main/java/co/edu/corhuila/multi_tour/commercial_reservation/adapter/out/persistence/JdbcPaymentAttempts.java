@@ -58,7 +58,7 @@ final class JdbcPaymentAttempts {
 
     boolean openSeat(UUID tenantId, UUID reservationId) {
         return jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? "
-                + "AND reservation_id = ? AND released_at IS NULL", Integer.class, tenantId, reservationId) > 0;
+                + "AND reservation_id = ? AND released_at IS NULL AND allocation_kind = 'RESERVATION'", Integer.class, tenantId, reservationId) > 0;
     }
 
     // The batch of openSeat: the reservations, among the ones named, that hold an open seat. One statement.
