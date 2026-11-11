@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.SendProposalCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RespondToReschedulingProposal;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.SendReschedulingProposal;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdempotencyStore;
