@@ -91,6 +91,19 @@ class PaymentCapacityProofPersistenceTest {
         assertThat(holder.hold(fixture.tenant, UUID.randomUUID(), 1)).isFalse();
     }
 
+    // ADR-004 D4: a cancelled departure accepts no hold, judged by the same statement that holds, so a cancellation that lands between the
+    // read and the hold cannot leave a seat on it. A move onto a cancelled departure keeps the seats where they were.
+    @Test
+    void aCancelledDepartureAcceptsNoHoldAndKeepsItsSeats() {
+        fixture.jdbc.update("UPDATE commercial_reservation.salida_capacity SET status = 'CANCELLED' WHERE tenant_id = ? AND salida_id = ?",
+                fixture.tenant, fixture.salida);
+
+        assertThat(holder.hold(fixture.tenant, fixture.salida, 1)).isFalse();
+        assertThat(held()).isEqualTo(7);
+        assertThat(holder.move(fixture.tenant, UUID.randomUUID(), UUID.randomUUID(), fixture.salida, 1)).isFalse();
+        assertThat(held()).isEqualTo(7);
+    }
+
     @Test
     void theReleaseClosesTheOpenSeatAndGivesTheSeatsBackOnce() {
         holder.hold(fixture.tenant, fixture.salida, 3);
