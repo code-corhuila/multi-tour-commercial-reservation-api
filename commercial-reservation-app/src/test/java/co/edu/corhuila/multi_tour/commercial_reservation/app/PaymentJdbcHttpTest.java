@@ -98,7 +98,7 @@ class PaymentJdbcHttpTest {
     void configure() throws Exception {
         var row = Map.of("paymentType", "DEPOSIT", "initialWaitHours", 24, "additionalWaitHours", 48, "minimumDepositBp", 3000,
                 "transferEnabled", true, "cashEnabled", true);
-        exchange(put(BASE + "/payment-parameters").contentType(MediaType.APPLICATION_JSON)
+        exchange(put(BASE + "/payment-parameters").header("Idempotency-Key", "param-jdbc-0001").contentType(MediaType.APPLICATION_JSON)
                 .content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("reason", "Opening season", "parameters", List.of(row)))), admin(), 200);
     }
 

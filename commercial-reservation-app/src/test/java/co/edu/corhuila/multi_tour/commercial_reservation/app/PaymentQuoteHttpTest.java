@@ -36,7 +36,11 @@ class PaymentQuoteHttpTest extends ReservationHttpBase {
     }
 
     private MockHttpServletRequestBuilder change(Map<String, Object> body, String role) throws Exception {
-        return withToken(put(BASE + "/payment-parameters"), role).contentType(MediaType.APPLICATION_JSON)
+        return change(body, role, "param-key-" + UUID.randomUUID());
+    }
+
+    private MockHttpServletRequestBuilder change(Map<String, Object> body, String role, String key) throws Exception {
+        return withToken(put(BASE + "/payment-parameters"), role).header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON)
                 .content(TestJwtKeys.JSON.writeValueAsBytes(body));
     }
 
@@ -114,5 +118,37 @@ class PaymentQuoteHttpTest extends ReservationHttpBase {
         CatalogHttpTest.assertField(exchange(change(Map.of("reason", "r", "parameters", List.of(row("FULL_PAYMENT")), "penalty", 5), ADMIN), 400), "penalty");
         CatalogHttpTest.assertField(exchange(change(Map.of("reason", "r", "parameters", List.of()), ADMIN), 400), "parameters");
         assertThat(payments.parameters).isEmpty();
+    }
+
+    // The contract requires Idempotency-Key on the change (norm 5.3.8): a missing or out-of-range key is a 400 that names the header.
+    @Test void theChangeRequiresAnIdempotencyKeyOfEightToOneHundredTwentyEightCharacters() throws Exception {
+        var body = new LinkedHashMap<String, Object>();
+        body.put("reason", "New season"); body.put("parameters", List.of(row("FULL_PAYMENT")));
+
+        CatalogHttpTest.assertField(exchange(withToken(put(BASE + "/payment-parameters"), ADMIN)
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(body)), 400), "Idempotency-Key");
+        CatalogHttpTest.assertField(exchange(change(body, ADMIN, "short"), 400), "Idempotency-Key");
+        CatalogHttpTest.assertField(exchange(change(body, ADMIN, "k".repeat(129)), 400), "Idempotency-Key");
+        assertThat(payments.parameters).isEmpty();
+        exchange(change(body, ADMIN, "k".repeat(8)), 200);
+        exchange(change(body, ADMIN, "k".repeat(128)), 200);
+    }
+
+    // The repetition answers and writes nothing; the same key with another body is refused. The repetition returns the rows in force now.
+    @Test void theSameKeyAndBodyAnswersWithoutWritingAgainAndAnotherBodyIsRefused() throws Exception {
+        var first = new LinkedHashMap<String, Object>();
+        first.put("reason", "New season"); first.put("parameters", List.of(row("DEPOSIT"), row("FULL_PAYMENT")));
+        var other = new LinkedHashMap<String, Object>();
+        other.put("reason", "Another reason"); other.put("parameters", List.of(row("FULL_PAYMENT")));
+
+        var original = CatalogHttpTest.json(exchange(change(first, ADMIN, "param-key-same-1"), 200));
+        int written = payments.parameters.size();
+        var replay = CatalogHttpTest.json(exchange(change(first, ADMIN, "param-key-same-1"), 200));
+
+        assertThat(replay).isEqualTo(original);
+        assertThat(payments.parameters).hasSize(written);
+        var refused = CatalogHttpTest.json(exchange(change(other, ADMIN, "param-key-same-1"), 422));
+        assertThat(refused.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(payments.parameters).hasSize(written);
     }
 }

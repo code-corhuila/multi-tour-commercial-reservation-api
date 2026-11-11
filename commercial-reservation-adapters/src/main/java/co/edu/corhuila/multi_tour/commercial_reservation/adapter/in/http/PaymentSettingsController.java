@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,11 +31,14 @@ public final class PaymentSettingsController {
     private final GetPaymentQuote quote;
     private final GetOwnReservation getOwn;
     private final ManagePaymentParameters parameters;
+    private final IdempotentPaymentParameterChange changes;
 
-    public PaymentSettingsController(GetPaymentQuote quote, GetOwnReservation getOwn, ManagePaymentParameters parameters) {
+    public PaymentSettingsController(GetPaymentQuote quote, GetOwnReservation getOwn, ManagePaymentParameters parameters,
+            IdempotentPaymentParameterChange changes) {
         this.quote = quote;
         this.getOwn = getOwn;
         this.parameters = parameters;
+        this.changes = changes;
     }
 
     @GetMapping("/reservations/{reservationId}/payment-quote")
@@ -68,9 +72,13 @@ public final class PaymentSettingsController {
     @PutMapping("/payment-parameters")
     public Map<String, List<PaymentParameterResponse>> change(
             @RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @RequestBody ChangePaymentParametersRequest request) {
+        if (key == null || key.length() < 8 || key.length() > 128) {
+            throw new DomainException("Idempotency-Key", "header required, 8 to 128 characters");
+        }
         PaymentActor actor = PaymentActors.of(principal);
-        var changed = parameters.change(new ChangePaymentParametersCommand(actor, request.reason(), request.values()));
+        var changed = changes.change(new ChangePaymentParametersCommand(actor, request.reason(), request.values()), key);
         return Map.of("data", changed.stream().map(PaymentParameterResponse::of).toList());
     }
 }

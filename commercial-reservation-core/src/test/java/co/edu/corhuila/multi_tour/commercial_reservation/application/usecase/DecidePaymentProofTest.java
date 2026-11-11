@@ -144,6 +144,24 @@ class DecidePaymentProofTest {
         assertThat(fakes.reservations.get(RESERVATION).paymentStatus()).isEqualTo(PaymentStatus.FULLY_PAID);
     }
 
+    // Audit P3-1: cash is money received at once, never a proof, so a decision on a cash attempt is refused (Reservation.requireInValidation) and moves nothing.
+    @Test
+    void aCashAttemptIsNotAProofToApproveOrRejectAndNothingMoves() {
+        Reservation reservation = planted(PaymentType.FULL_PAYMENT, 100_000);
+        reservation.registerCash(CASH, new Cents(150_000), null, ADMIN, REGISTERED);
+        reservation.pullEvents();
+        Cents pending = fakes.reservations.get(RESERVATION).pendingBalance();
+
+        assertThatThrownBy(() -> decide.approve(new ApproveProofCommand(admin(), CASH, 150_000L, null)))
+                .isInstanceOf(InvalidStatusTransitionException.class).hasMessage("cash is not a proof to review");
+        assertThatThrownBy(() -> decide.reject(new RejectProofCommand(admin(), CASH, "not legible")))
+                .isInstanceOf(InvalidStatusTransitionException.class).hasMessage("cash is not a proof to review");
+
+        assertThat(fakes.events).isEmpty();
+        assertThat(cash.excess).isEmpty();
+        assertThat(fakes.reservations.get(RESERVATION).pendingBalance()).isEqualTo(pending);
+    }
+
     @Test
     void rejectingTheFirstPaymentReleasesTheHeldSeatsInTheSameTransaction() {
         planted(PaymentType.DEPOSIT, 100_000);
