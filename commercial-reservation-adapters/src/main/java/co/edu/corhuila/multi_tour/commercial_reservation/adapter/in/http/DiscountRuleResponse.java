@@ -11,13 +11,13 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DiscountRuleResponse(UUID discountRuleId, String name, String validFrom, String validTo, int priority,
         DiscountBase calculationBase, Integer percentageBasisPoints, Long amountCents, String serviceCoverage,
-        List<UUID> serviceIds, Long capCents, DiscountStatus ruleStatus, String createdAt, String updatedAt) {
+        List<UUID> serviceIds, Long capCents, boolean stackable, DiscountStatus ruleStatus, String createdAt, String updatedAt) {
     public static DiscountRuleResponse from(DiscountRule rule) {
         var coverage = rule.serviceCoverage();
         return new DiscountRuleResponse(rule.ruleId(), rule.name(), rule.validFrom().toString(),
                 rule.validTo().toString(), rule.priority(), rule.calculationBase(), rule.percentageBasisPoints(),
                 rule.amountCents(), coverage.isAll() ? "ALL" : "SELECTED",
-                coverage.serviceIds().stream().sorted().toList(), rule.capCents(), rule.status(),
+                coverage.serviceIds().stream().sorted().toList(), rule.capCents(), rule.stackable(), rule.status(),
                 rule.createdAt().toString(), rule.updatedAt().toString());
     }
 }
