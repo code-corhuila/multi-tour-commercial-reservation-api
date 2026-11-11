@@ -8,7 +8,8 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 // RN-14: the medium must be enabled for the tenant and, when configured, for the service. The condition of the service wins over
-// the one of the tenant; with neither (DP-05 left the default open, HU-COM-009 owns the configuration) everything is enabled.
+// the one of the tenant; with neither nothing is enabled (DP-11, AC-09.3): a row is what enables a type, so a tenant that was never
+// configured offers no type and no medium.
 public final class JdbcEnabledPaymentOptions implements EnabledPaymentOptions {
     private final JdbcTemplate jdbc;
 
@@ -22,6 +23,6 @@ public final class JdbcEnabledPaymentOptions implements EnabledPaymentOptions {
                 + "FROM commercial_reservation.payment_condition WHERE tenant_id = ? AND payment_type = ? "
                 + "AND (service_id = ? OR service_id IS NULL) ORDER BY service_id IS NULL, changed_at DESC LIMIT 1",
                 (row, index) -> row.getBoolean(1), method.name(), tenantId, type.name(), serviceId);
-        return found.isEmpty() || found.get(0);
+        return !found.isEmpty() && found.get(0);
     }
 }

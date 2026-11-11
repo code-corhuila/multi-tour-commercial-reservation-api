@@ -9,6 +9,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Reg
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentAttempt;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -35,16 +36,19 @@ public final class IdempotentPaymentRegistration {
     }
 
     public Result transfer(RegisterTransferCommand command, String key) {
-        return run(command.tenantId(), command.reservationId(), key, () -> transfers.register(command));
+        return run(command.tenantId(), command.reservationId(), key, PaymentMethod.TRANSFER, command.amountCents(),
+                () -> transfers.register(command));
     }
 
     public Result cash(RegisterCashCommand command, String key) {
-        return run(command.tenantId(), command.reservationId(), key, () -> cash.register(command));
+        return run(command.tenantId(), command.reservationId(), key, PaymentMethod.CASH, command.amountCents(),
+                () -> cash.register(command));
     }
 
-    private Result run(UUID tenant, UUID reservationId, String key, Supplier<RegisteredPayment> work) {
+    private Result run(UUID tenant, UUID reservationId, String key, PaymentMethod method, Long amountCents,
+            Supplier<RegisteredPayment> work) {
         var known = keys.findResourceId(tenant, key);
-        if (known.isPresent()) return replay(tenant, reservationId, known.get());
+        if (known.isPresent()) return replay(tenant, reservationId, known.get(), method, amountCents);
         Result result = transactions.execute(status -> {
             RegisteredPayment registered = work.get();
             if (keys.tryRegister(tenant, key, "payment", registered.attempt().attemptId())) {
@@ -55,16 +59,20 @@ public final class IdempotentPaymentRegistration {
         });
         if (result.created()) return result;
         return replay(tenant, reservationId,
-                keys.findResourceId(tenant, key).orElseThrow(() -> new IllegalStateException("registered key has no resource")));
+                keys.findResourceId(tenant, key).orElseThrow(() -> new IllegalStateException("registered key has no resource")),
+                method, amountCents);
     }
 
-    // A key belongs to one payment of one reservation: used anywhere else it is a rule violation, not a replay.
-    private Result replay(UUID tenant, UUID reservationId, UUID attemptId) {
+    // A key belongs to one payment of one reservation: used anywhere else, or with another medium or amount, it is a rule violation,
+    // not a replay (AC-09.12): answering the first payment would tell the caller it registered what it did not send.
+    private Result replay(UUID tenant, UUID reservationId, UUID attemptId, PaymentMethod method, Long amountCents) {
         Reservation reservation = reservations.findByTenantAndAttempt(tenant, attemptId)
                 .filter(found -> found.reservationId().equals(reservationId))
                 .orElseThrow(() -> new BusinessRuleViolation("the Idempotency-Key was already used by another request"));
         PaymentAttempt attempt = reservation.attempts().stream().filter(found -> found.attemptId().equals(attemptId)).findFirst()
                 .orElseThrow(() -> new BusinessRuleViolation("the Idempotency-Key was already used by another request"));
+        boolean same = attempt.method() == method && amountCents != null && attempt.amount().amount() == amountCents;
+        if (!same) throw new BusinessRuleViolation("the Idempotency-Key was already used with another request");
         return new Result(reservation, attempt, false);
     }
 }

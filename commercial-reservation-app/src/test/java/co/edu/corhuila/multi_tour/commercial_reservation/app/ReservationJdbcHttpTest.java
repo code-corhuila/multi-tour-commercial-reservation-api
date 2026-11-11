@@ -84,6 +84,15 @@ class ReservationJdbcHttpTest {
                 UUID.randomUUID(), tenant, departure, tour, now.plusDays(1));
         customers.save(Customer.registerLead(customer, tenant, "CC12345", "Persona Ficticia", BirthDateOrAge.ofAge(30),
                 new ContactInfo("persona@example.invalid", "3000000000"), true, TestJwtKeys.NOW));
+        enable("DEPOSIT", 3000); // DP-11: a tenant with no payment condition offers no type, so the creation needs the rows
+        enable("FULL_PAYMENT", null);
+    }
+
+    void enable(String type, Integer minimumBp) {
+        jdbc.update("INSERT INTO commercial_reservation.payment_condition (payment_condition_id, tenant_id, service_id, payment_type, "
+                + "initial_wait_hours, additional_wait_hours, minimum_deposit_bp, balance_deadline_advance_hours, transfer_enabled, "
+                + "cash_enabled, changed_by, change_reason, changed_at) VALUES (?, ?, null, ?, 24, 12, ?, 48, true, true, ?, 'test', now())",
+                UUID.randomUUID(), tenant, type, minimumBp, UUID.randomUUID());
     }
 
     MvcResult exchange(MockHttpServletRequestBuilder request, String role, int code) throws Exception {
