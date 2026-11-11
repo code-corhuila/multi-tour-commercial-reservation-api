@@ -82,6 +82,13 @@ public final class Reservation {
     public ReservedService service() { return service; }
     public Cents projectedValue() { return projectedValue; }
     public Cents finalValue() { return finalValue; }
+
+    // AC-04.4, DP-01: the registered additional discount takes its amount from the final value the charge reads. The fixed lines stay
+    // as they were (AC-04.12); a later modification recalculates from them and does not carry this discount (declared limit).
+    public Reservation withAdditionalDiscount(Cents amount) {
+        finalValue = new Cents(finalValue.amount() - amount.amount());
+        return this;
+    }
     public Cents pendingBalance() { return pendingBalance; }
     public Cents creditBalance() { return new Cents(0); }
     public List<FixedDiscount> fixedDiscounts() { return fixedDiscounts; }
