@@ -122,4 +122,50 @@ class EvaluateApplicableDiscountRulesTest {
         applicable(1);
         assertThat(evaluate().rules().get(0).capCents()).isEqualTo(5_000L);
     }
+
+    private DiscountRule stopping(int priority) {
+        DiscountRule rule = DiscountRule.create(new UUID(2, seq++), TENANT, "rule", FROM, TO, priority,
+                DiscountBase.values()[0], 1000, null, ServiceCoverage.all(), null, false, CREATED);
+        fakes.save(rule);
+        return rule;
+    }
+
+    @Test
+    void AC_03_7_theRulesAfterANonStackableOneAreNotReturned() {
+        DiscountRule first = applicable(1), stops = stopping(2);
+        applicable(3); applicable(4);
+        assertThat(evaluate().rules()).containsExactly(first, stops);
+    }
+
+    @Test
+    void AC_03_7_aNonStackableRuleThatDoesNotApplyCutsNothing() {
+        DiscountRule first = applicable(1);
+        DiscountRule expired = DiscountRule.create(new UUID(2, seq++), TENANT, "rule", FROM, LocalDate.of(2026, 6, 14), 2,
+                DiscountBase.values()[0], 1000, null, ServiceCoverage.all(), null, false, CREATED);
+        fakes.save(expired);
+        DiscountRule after = applicable(3);
+        assertThat(evaluate().rules()).containsExactly(first, after);
+    }
+
+    @Test
+    void AC_03_7_theCutFollowsTheOrderOfPriorityNotTheOrderOfCreation() {
+        DiscountRule stops = stopping(1);
+        applicable(2);
+        assertThat(evaluate().rules()).containsExactly(stops);
+    }
+
+    @Test
+    void AC_03_7_aTieBeforeTheCutIsStillReportedAndOneAfterItIsNot() {
+        DiscountRule a = applicable(1), b = applicable(1), stops = stopping(2);
+        applicable(3); applicable(3);
+        ApplicableDiscountRules result = evaluate();
+        assertThat(result.rules()).containsExactly(a, b, stops);
+        assertThat(result.tiedPriorities()).containsExactly(1);
+    }
+
+    @Test
+    void AC_03_7_rulesWithTheFlagOnNeverCutTheChain() {
+        DiscountRule one = applicable(1), two = applicable(2), three = applicable(3);
+        assertThat(evaluate().rules()).containsExactly(one, two, three);
+    }
 }

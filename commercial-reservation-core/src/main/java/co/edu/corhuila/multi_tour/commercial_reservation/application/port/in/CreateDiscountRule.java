@@ -10,6 +10,10 @@ public interface CreateDiscountRule {
     DiscountRule create(DiscountRuleActor actor, Command command);
 
     record Command(String name, LocalDate validFrom, LocalDate validTo, Integer priority, DiscountBase calculationBase,
-            Integer percentageBasisPoints, Long amountCents, ServiceCoverage serviceCoverage, Long capCents) {
+            Integer percentageBasisPoints, Long amountCents, ServiceCoverage serviceCoverage, Long capCents, Boolean stackable) {
+        public Command(String name, LocalDate validFrom, LocalDate validTo, Integer priority, DiscountBase calculationBase,
+                Integer percentageBasisPoints, Long amountCents, ServiceCoverage serviceCoverage, Long capCents) {
+            this(name, validFrom, validTo, priority, calculationBase, percentageBasisPoints, amountCents, serviceCoverage, capCents, null);
+        }
     }
 }

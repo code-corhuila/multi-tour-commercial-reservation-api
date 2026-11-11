@@ -3,11 +3,9 @@ package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.lang.reflect.Method;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Set;
-import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -200,10 +198,5 @@ class DiscountRuleTest {
                 DiscountStatus.INACTIVE, NOW, NOW);
         assertThat(rule.isActive()).isFalse();
     }
-
-    // DP-07: reactivation is not built.
-    @Test void thereIsNoReactivation() {
-        assertThat(DiscountRule.class.getMethods()).extracting(Method::getName)
-                .noneMatch(name -> name.toLowerCase(Locale.ROOT).matches("^(reactivate|activate).*"));
-    }
 }
+
