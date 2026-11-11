@@ -11,7 +11,12 @@ import java.util.UUID;
 // never a state of the reservation. It holds the clocks (counted from the cancellation instant) and its proposals; substitute proposals never restart the limit.
 // Immutable: every move returns the next episode.
 public record ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UUID originalSalidaId, Instant cancelledAt, Instant openedAt, EpisodeState state,
-        ClosingReason reason, Instant closedAt, Instant periodStart, Duration frozen, List<ReschedulingProposal> proposals) {
+        ClosingReason reason, Instant closedAt, Instant periodStart, Duration frozen, List<ReschedulingProposal> proposals, Instant frozenAt, Long remainingEpisodeMinutes) {
+
+    public ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UUID originalSalidaId, Instant cancelledAt, Instant openedAt, EpisodeState state, ClosingReason reason,
+            Instant closedAt, Instant periodStart, Duration frozen, List<ReschedulingProposal> proposals) {
+        this(id, tenantId, reservationId, originalSalidaId, cancelledAt, openedAt, state, reason, closedAt, periodStart, frozen, proposals, null, null);
+    }
 
     public ReschedulingEpisode {
         if (id == null || tenantId == null || reservationId == null || originalSalidaId == null || cancelledAt == null || openedAt == null || state == null
@@ -19,7 +24,34 @@ public record ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UU
             throw new DomainException("episode", "the rescheduling episode data is incomplete");
         if ((state == EpisodeState.OPEN) != (closedAt == null && reason == null))
             throw new DomainException("closedAt", "only a closed episode has a closing instant and a reason");
+        if ((frozenAt == null) != (remainingEpisodeMinutes == null)) throw new DomainException("frozenAt", "the freeze instant and the remaining minutes go together");
         proposals = List.copyOf(proposals);
+    }
+
+    public boolean isFrozen() {
+        return frozenAt != null;
+    }
+
+    // HU-COM-020 AC-18.13 (2), AC-20.2: only an open episode with a proposal pending freezes (with no proposal the 24 hours and the episode keep running): the response deadline and the episode
+    // remainder freeze together, each with the minutes it had left. A frozen or closed episode does not change.
+    public ReschedulingEpisode freeze(Instant at) {
+        if (state != EpisodeState.OPEN || isFrozen() || pendingProposal().isEmpty()) return this;
+        List<ReschedulingProposal> next = proposals.stream().map(p -> p.frozenAt(at)).toList();
+        return new ReschedulingEpisode(id, tenantId, reservationId, originalSalidaId, cancelledAt, openedAt, state, reason, closedAt, periodStart, frozen, next, at,
+                Math.max(0, Duration.between(at, episodeLimit()).toMinutes()));
+    }
+
+    // AC-20.3: the reactivation resumes both clocks with what remained. The whole minutes spent frozen are added to the total, because the start never changes: the limit moves by it.
+    public ReschedulingEpisode resumed(Instant at) {
+        if (!isFrozen() || state != EpisodeState.OPEN) return this;
+        Duration spent = Duration.ofMinutes(Math.max(0, Duration.between(frozenAt, at).toMinutes()));
+        List<ReschedulingProposal> next = proposals.stream().map(p -> p.resumedAt(at)).toList();
+        return new ReschedulingEpisode(id, tenantId, reservationId, originalSalidaId, cancelledAt, openedAt, state, reason, closedAt, periodStart, frozen.plus(spent), next, null, null);
+    }
+
+    // Every move of a frozen episode that is not the freeze itself starts from its resumed clocks, so a closed episode keeps no freeze behind.
+    private ReschedulingEpisode thawed(Instant now) {
+        return resumed(now);
     }
 
     public static ReschedulingEpisode open(UUID id, UUID tenantId, UUID reservationId, UUID originalSalidaId, Instant cancelledAt, Instant openedAt) {
@@ -50,12 +82,13 @@ public record ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UU
                 ReschedulingDeadlines.responseDeadline(now, episodeLimit(), proposedStart), ProposalState.PENDING, null, null);
         List<ReschedulingProposal> next = new ArrayList<>(proposals);
         next.add(proposal);
-        return new ReschedulingEpisode(id, tenantId, reservationId, originalSalidaId, cancelledAt, openedAt, state, reason, closedAt, periodStart, frozen, next);
+        return new ReschedulingEpisode(id, tenantId, reservationId, originalSalidaId, cancelledAt, openedAt, state, reason, closedAt, periodStart, frozen, next, frozenAt, remainingEpisodeMinutes);
     }
 
     // GAP-008, AC-18.14: accept or reject is the whole answer, once, before the response deadline. Accepting closes the episode as RESCHEDULED (reason ACCEPTED); rejecting closes it as
     // CANCELLED (reason REJECTED_BY_CUSTOMER) and the use case cancels the reservation. The instant of an outside answer cannot be in the future nor before the notification.
     public ReschedulingEpisode answer(ProposalAnswer answer, Instant now) {
+        if (isFrozen()) return thawed(now).answer(answer, now);
         ReschedulingProposal pending = pendingProposal().orElseThrow(() -> new InvalidStatusTransitionException("the episode has no pending proposal: it was answered, voided or expired"));
         if (!now.isBefore(pending.responseDeadlineAt())) throw new BusinessRuleViolation("the response deadline has passed: the expiry applies");
         ProposalAnswer stamped = answer.stampedAt(now);
@@ -79,6 +112,7 @@ public record ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UU
     // nothing is due it answers that nothing is due. The episode limit wins over a response deadline that is the episode remainder.
     public ReschedulingEpisode expire(Instant now) {
         requireOpen();
+        if (isFrozen()) throw new BusinessRuleViolation("nothing is due: the clocks of the episode are frozen");
         Optional<ReschedulingProposal> pending = pendingProposal();
         if (!now.isBefore(episodeLimit())) return closedAs(ClosingReason.EPISODE_LIMIT_REACHED, now, expiredWith(pending, now));
         if (pending.isPresent() && !now.isBefore(pending.get().responseDeadlineAt())) return closedAs(ClosingReason.RESPONSE_DEADLINE_EXPIRED, now, expiredWith(pending, now));
@@ -89,6 +123,7 @@ public record ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UU
     // AC-18.13 (I1): the proposed departure was cancelled while the tenant is inactive: the proposal is void and the episode is cancelled at once, with no new period.
     public ReschedulingEpisode voidAndCancel(Instant now) {
         requireOpen();
+        if (isFrozen()) return thawed(now).voidAndCancel(now);
         ReschedulingProposal pending = pendingProposal().orElseThrow(() -> new InvalidStatusTransitionException("the episode has no pending proposal"));
         List<ReschedulingProposal> next = new ArrayList<>(proposals);
         next.set(next.indexOf(pending), pending.closed(ProposalState.VOID, now, null));
@@ -111,6 +146,7 @@ public record ReschedulingEpisode(UUID id, UUID tenantId, UUID reservationId, UU
 
     // The proposed departure was cancelled: the proposal is void (not a rejection) and a new period of the lowest of 24 hours and the remainder starts at that instant.
     public ReschedulingEpisode voidPending(Instant now) {
+        if (isFrozen()) return thawed(now).voidPending(now);
         ReschedulingProposal pending = pendingProposal().orElseThrow(() -> new InvalidStatusTransitionException("the episode has no pending proposal"));
         List<ReschedulingProposal> next = new ArrayList<>(proposals);
         next.set(next.indexOf(pending), pending.closed(ProposalState.VOID, now, null));

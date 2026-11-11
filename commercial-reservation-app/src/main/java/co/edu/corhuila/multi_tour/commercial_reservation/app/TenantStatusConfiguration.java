@@ -6,6 +6,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantEventTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantDeadlines;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantDecisions;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantEpisodes;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantStatusDirectory;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantStatusStore;
@@ -53,7 +54,7 @@ class TenantStatusConfiguration {
     @Bean
     TenantInactivityEffects tenantInactivityEffects(JdbcTemplate jdbc) {
         // HU-COM-020: the inactivation freezes the deadlines of the tenant and the reactivation resumes them, in the transaction of the copy.
-        return new TenantInactivityUseCase(new JdbcTenantSuspensions(jdbc), new JdbcTenantDeadlines(jdbc), new JdbcTenantDecisions(jdbc), new UuidGenerator());
+        return new TenantInactivityUseCase(new JdbcTenantSuspensions(jdbc), new JdbcTenantDeadlines(jdbc), new JdbcTenantDecisions(jdbc), new JdbcTenantEpisodes(jdbc), new UuidGenerator());
     }
 
     @Bean
