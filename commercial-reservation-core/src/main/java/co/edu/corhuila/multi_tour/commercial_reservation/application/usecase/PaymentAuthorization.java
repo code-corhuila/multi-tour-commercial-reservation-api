@@ -27,6 +27,15 @@ public final class PaymentAuthorization {
     public static void requireExtend(PaymentActor actor) {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR);
     }
+    // HU-COM-011 (RF-015): the Administrator and the Collaborator record the follow-up; DP-02 lets the reading roles see deadlines and history.
+    public static void requireFollowUp(PaymentActor actor) {
+        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR);
+    }
+
+    public static void requireReadDeadlines(PaymentActor actor) {
+        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST);
+    }
+
     public static void requireReadParameters(PaymentActor actor) {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST);
     }
