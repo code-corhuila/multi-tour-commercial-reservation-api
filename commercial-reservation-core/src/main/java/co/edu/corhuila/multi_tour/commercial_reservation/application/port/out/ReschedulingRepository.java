@@ -13,4 +13,9 @@ public interface ReschedulingRepository {
     Optional<ReschedulingEpisode> find(UUID tenantId, UUID episodeId);
 
     void save(ReschedulingEpisode episode);
+
+    // HU-COM-018 AC-18.12: the open episodes whose pending proposal is for the given departure, to void them when it is cancelled.
+    default java.util.List<ReschedulingEpisode> findPendingOn(UUID tenantId, UUID proposedSalidaId) {
+        throw new UnsupportedOperationException("the lookup of the proposals of a departure needs the adapter override");
+    }
 }
