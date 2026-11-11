@@ -12,7 +12,7 @@ import java.util.UUID;
 // Boxed values keep absence, so the domain names the missing field (AC-03.3, AC-03.4). Field names are PROPOSED.
 public record CreateDiscountRuleRequest(String name, LocalDate validFrom, LocalDate validTo, Integer priority,
         DiscountBase calculationBase, Integer percentageBasisPoints, Long amountCents, Coverage serviceCoverage,
-        List<UUID> serviceIds, Long capCents) {
+        List<UUID> serviceIds, Long capCents, Boolean stackable) {
     public enum Coverage { ALL, SELECTED }
 
     public CreateDiscountRule.Command toCommand() {
@@ -25,6 +25,6 @@ public record CreateDiscountRuleRequest(String name, LocalDate validFrom, LocalD
             coverage = ServiceCoverage.all();
         }
         return new CreateDiscountRule.Command(name, validFrom, validTo, priority, calculationBase,
-                percentageBasisPoints, amountCents, coverage, capCents);
+                percentageBasisPoints, amountCents, coverage, capCents, stackable);
     }
 }
