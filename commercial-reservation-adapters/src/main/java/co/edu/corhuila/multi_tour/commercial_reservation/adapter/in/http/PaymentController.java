@@ -4,8 +4,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RegisterCashCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RegisterTransferCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetOwnReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetPaymentDeadline;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentAttempt;
@@ -13,6 +15,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMet
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import java.io.IOException;
 import java.net.URI;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -41,11 +44,14 @@ public final class PaymentController {
     private final IdempotentPaymentRegistration registration;
     private final GetReservation get;
     private final GetOwnReservation getOwn;
+    private final GetPaymentDeadline deadlines;
 
-    public PaymentController(IdempotentPaymentRegistration registration, GetReservation get, GetOwnReservation getOwn) {
+    public PaymentController(IdempotentPaymentRegistration registration, GetReservation get, GetOwnReservation getOwn,
+            GetPaymentDeadline deadlines) {
         this.registration = registration;
         this.get = get;
         this.getOwn = getOwn;
+        this.deadlines = deadlines;
     }
 
     @PostMapping(value = "/reservations/{reservationId}/payments", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -68,19 +74,23 @@ public final class PaymentController {
     public ReservationListResponses<PaymentResponse> list(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("reservationId") UUID reservationId, @RequestParam Map<String, String> query) {
         var paging = new PageQuery(query, Set.of("page", "limit"));
-        Reservation reservation = reservation(PaymentActors.of(principal), reservationId);
+        PaymentActor actor = PaymentActors.of(principal);
+        Reservation reservation = reservation(actor, reservationId);
+        Instant dueAt = dueAt(actor, reservationId);
         List<PaymentAttempt> attempts = reservation.attempts().stream().sorted(Comparator.comparing(PaymentAttempt::registeredAt).reversed()).toList();
         var data = attempts.stream().skip((paging.page - 1L) * paging.limit).limit(paging.limit)
-                .map(attempt -> PaymentResponse.of(reservation, attempt)).toList();
+                .map(attempt -> PaymentResponse.of(reservation, attempt, dueAt)).toList();
         return new ReservationListResponses<>(data, paging.meta(attempts.size()));
     }
 
     @GetMapping("/reservations/{reservationId}/payments/{paymentId}")
     public PaymentResponse read(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("reservationId") UUID reservationId, @PathVariable("paymentId") UUID paymentId) {
-        Reservation reservation = reservation(PaymentActors.of(principal), reservationId);
+        PaymentActor actor = PaymentActors.of(principal);
+        Reservation reservation = reservation(actor, reservationId);
+        Instant dueAt = dueAt(actor, reservationId);
         return reservation.attempts().stream().filter(found -> found.attemptId().equals(paymentId)).findFirst()
-                .map(attempt -> PaymentResponse.of(reservation, attempt)).orElseThrow(() -> new PaymentProofNotFoundException(paymentId));
+                .map(attempt -> PaymentResponse.of(reservation, attempt, dueAt)).orElseThrow(() -> new PaymentProofNotFoundException(paymentId));
     }
 
     private ResponseEntity<PaymentResponse> register(AuthenticatedPrincipal principal, UUID reservationId, String key,
@@ -96,7 +106,7 @@ public final class PaymentController {
         var result = method == PaymentMethod.TRANSFER
                 ? registration.transfer(new RegisterTransferCommand(actor.tenantId(), actor.actorId(), reservationId, request.amountCents(), proof), key)
                 : registration.cash(new RegisterCashCommand(actor.tenantId(), actor.actorId(), reservationId, request.amountCents()), key);
-        var body = PaymentResponse.of(result.reservation(), result.attempt());
+        var body = PaymentResponse.of(result.reservation(), result.attempt(), dueAt(actor, reservationId));
         return result.created() ? ResponseEntity.created(URI.create(RESERVATIONS + reservationId + "/payments/" + body.paymentId())).body(body)
                 : ResponseEntity.ok(body);
     }
@@ -105,5 +115,14 @@ public final class PaymentController {
     private Reservation reservation(PaymentActor actor, UUID reservationId) {
         return actor.role() == PaymentActor.Role.FINAL_CUSTOMER ? getOwn.get(actor.tenantId(), actor.actorId(), reservationId)
                 : get.get(actor.tenantId(), reservationId);
+    }
+
+    // The same value the quote shows. A reservation with no open deadline row, or a role that cannot read deadlines, leaves it out.
+    private Instant dueAt(PaymentActor actor, UUID reservationId) {
+        try {
+            return deadlines.get(actor, reservationId).deadline().dueAt();
+        } catch (ReservationNotFoundException | PaymentAccessDeniedException none) {
+            return null;
+        }
     }
 }

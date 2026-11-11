@@ -112,8 +112,9 @@ class PaymentConfiguration {
     }
 
     @Bean
-    PaymentController paymentController(IdempotentPaymentRegistration registration, GetReservation get, GetOwnReservation getOwn) {
-        return new PaymentController(registration, get, getOwn);
+    PaymentController paymentController(IdempotentPaymentRegistration registration, GetReservation get, GetOwnReservation getOwn,
+            GetPaymentDeadline deadlines) {
+        return new PaymentController(registration, get, getOwn, deadlines);
     }
 
     @Bean

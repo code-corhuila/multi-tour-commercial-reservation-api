@@ -7,9 +7,10 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-// DOCUMENTED STAND-IN (declared debts DD-5, DD-9): the credit balance (HU-COM-017), the treatment of the value of a cancelled
-// reservation (HU-COM-016) are other stories; the cancellation for non-payment is JdbcReservationCancellation (HU-COM-011). The excess and the treatment value are
-// not lost: the decided attempt keeps them (excess_amount_cents, treatment_amount_cents), and only a reference is logged. The
+// DOCUMENTED STAND-IN (declared debts DD-5, DD-9): the credit balance (HU-COM-017) and the treatment of the value of a cancelled
+// reservation (HU-COM-016) are other stories and have no adapter yet. The cancellation for non-payment is already real
+// (JdbcReservationCancellation, HU-COM-011). The excess and the treatment value are not lost: the decided attempt keeps them
+// (excess_amount_cents, treatment_amount_cents), and only a reference is logged.
 public final class DeferredPaymentSettlement implements CreditBalanceRecorder, CancelledValueRecorder {
     private static final Logger LOG = LoggerFactory.getLogger(DeferredPaymentSettlement.class);
 
