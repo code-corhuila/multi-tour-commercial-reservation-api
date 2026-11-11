@@ -99,10 +99,14 @@ class ModificationHttpTest extends ReservationHttpBase {
         assertThat(quote.get("differenceCents").asLong()).isEqualTo(-100_000);
         assertThat(quote.get("seatDelta").asInt()).isEqualTo(-1);
         assertThat(quote.get("seatsAvailable").asBoolean()).isTrue();
+        assertThat(quote.get("projectedValueCents").asLong()).isEqualTo(200_000);
+        assertThat(quote.get("discountCents").asLong()).isZero();
         modifications.policy = Optional.empty();
         var refused = CatalogHttpTest.json(exchange(quoteOf(reservationId, Map.of("changeType", "MODIFICATION", "people", 4), ADMIN), 200));
         assertThat(refused.get("allowed").asBoolean()).isFalse();
         assertThat(refused.get("refusalReason").asText()).isEqualTo("NO_POLICY");
+        assertThat(refused.get("projectedValueCents").asLong()).isEqualTo(300_000);
+        assertThat(refused.get("discountCents").asLong()).isZero();
         assertThat(store.reservations.get(reservationId).people()).isEqualTo(3);
         assertThat(modifications.rows).isEmpty();
         assertThat(payments.events).isEmpty();
