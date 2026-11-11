@@ -367,6 +367,8 @@ class PaymentJdbcHttpTest {
         JsonNode theirList = CatalogHttpTest.json(exchange(get(BASE + "/payment-proofs"), otherAdmin, 200));
         assertThat(myList.at("/meta/total").asInt()).isEqualTo(1);
         assertThat(myList.at("/data/0/paymentId").asText()).isEqualTo(mine);
+        assertThat(myList.at("/data/0/paymentType").asText()).isEqualTo("DEPOSIT");
+        assertThat(myList.at("/data/0/paymentMethod").asText()).isEqualTo("TRANSFER");
         assertThat(theirList.at("/meta/total").asInt()).isEqualTo(1);
         assertThat(theirList.at("/data/0/paymentId").asText()).isEqualTo(theirs);
         assertThat(exchange(get(BASE + "/payment-proofs/" + mine + "/file"), admin(), 200).getResponse().getContentAsByteArray()).isEqualTo(PNG);

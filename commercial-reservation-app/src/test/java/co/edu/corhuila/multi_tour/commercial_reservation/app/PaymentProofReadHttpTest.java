@@ -46,6 +46,8 @@ class PaymentProofReadHttpTest extends ReservationHttpBase {
             assertThat(page.at("/data/1/reviewOverdue").asBoolean()).isFalse();
             assertThat(page.at("/data/0/customerName").asText()).isEqualTo("Persona Ficticia");
             assertThat(page.at("/data/0/declaredAmountCents").asLong()).isEqualTo(90_000L);
+            assertThat(page.at("/data/0/paymentType").asText()).isEqualTo("DEPOSIT");
+            assertThat(page.at("/data/0/paymentMethod").asText()).as("the method the reservation expects, so the panel reads no reservation per row").isEqualTo("TRANSFER");
             assertThat(page.at("/data/0/validationStatus").asText()).isEqualTo("IN_VALIDATION");
         }
         var overdue = CatalogHttpTest.json(exchange(withToken(get(BASE + "/payment-proofs").param("overdue", "true"), ADMIN), 200));

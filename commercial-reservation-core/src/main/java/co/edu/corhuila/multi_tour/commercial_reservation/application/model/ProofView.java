@@ -13,12 +13,13 @@ import java.util.UUID;
 
 // One attempt as the review and the history show it: the declared amount, what the reviewer set, the decision and the 24 hour
 // mark derived from the clock (AC-10.6, AC-10.14). Neither the file nor its name is part of it. The customer display name of
-// the list (HU-COM-005) is read by the adapter and is not part of this view.
+// the list (HU-COM-005) is read by the adapter and is not part of this view. `expectedMethod` is the method the reservation expects,
+// not the method of the attempt, so the panel row needs no read of the reservation.
 public record ProofView(UUID reservationId, UUID customerId, UUID attemptId, PaymentType paymentType, PaymentMethod method,
         Cents declaredAmount, Cents verifiedAmount, Cents appliedAmount, Cents excessAmount, Cents treatmentAmount,
         ValidationStatus status, Instant presentedAt, Instant reviewDueAt, boolean reviewOverdue, UUID registeredBy, UUID decidedBy,
         Instant decidedAt, String decisionReason, Cents pendingBalance, ReservationStatus reservationStatus,
-        PaymentStatus paymentStatus) {
+        PaymentStatus paymentStatus, PaymentMethod expectedMethod) {
 
     public static ProofView of(Reservation reservation, PaymentAttempt attempt, Instant now) {
         boolean transfer = attempt.method() == PaymentMethod.TRANSFER;
@@ -26,6 +27,6 @@ public record ProofView(UUID reservationId, UUID customerId, UUID attemptId, Pay
                 attempt.method(), attempt.amount(), attempt.verifiedAmount(), attempt.appliedAmount(), attempt.excessAmount(),
                 attempt.treatmentAmount(), attempt.validationStatus(), attempt.registeredAt(), transfer ? attempt.reviewDueAt() : null,
                 attempt.reviewOverdue(now), attempt.registeredBy(), attempt.decidedBy(), attempt.decidedAt(), attempt.decisionReason(),
-                reservation.pendingBalance(), reservation.reservationStatus(), reservation.paymentStatus());
+                reservation.pendingBalance(), reservation.reservationStatus(), reservation.paymentStatus(), reservation.expectedPaymentMethod());
     }
 }

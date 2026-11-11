@@ -26,7 +26,6 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Du
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentParameterChange;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentController;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentProofDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentProofDecisionController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentProofController;
@@ -34,6 +33,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Payment
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentSettingsController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.DecidePaymentProof;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.DecidePaymentProofWithKey;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetOwnReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetPaymentQuote;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
@@ -66,6 +66,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DecidePaymentProofUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentDecidePaymentProofUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetPaymentQuoteUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListReservationPaymentsUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReadCustomerNameUseCase;
@@ -192,13 +194,13 @@ class PaymentConfiguration {
     }
 
     @Bean
-    IdempotentProofDecision idempotentProofDecision(DecidePaymentProof decisions, @Lazy ReservationRepository reservations,
-            IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentProofDecision(decisions, reservations, keys, new TransactionTemplate(manager));
+    DecidePaymentProofWithKey decidePaymentProofWithKey(DecidePaymentProof decisions, @Lazy ReservationRepository reservations,
+            IdempotencyKeys keys, @Lazy PaymentTransaction transaction) {
+        return new IdempotentDecidePaymentProofUseCase(decisions, reservations, new JdbcIdempotencyStore(keys), transaction);
     }
 
     @Bean
-    PaymentProofDecisionController paymentProofDecisionController(IdempotentProofDecision decisions, RecordValidatedPayment validated,
+    PaymentProofDecisionController paymentProofDecisionController(DecidePaymentProofWithKey decisions, RecordValidatedPayment validated,
             ReadCustomerName customers, Clock clock) {
         return new PaymentProofDecisionController(decisions, validated, customers, clock);
     }
