@@ -56,7 +56,7 @@ class ReadSensitiveCustomerDataUseCaseTest {
 
     @Test
     void sensitiveDataIsDeniedWithoutThePermission() {
-        for (Role role : Role.values()) {
+        for (Role role : EnumSet.complementOf(EnumSet.of(Role.PLATFORM_SUPPORT))) {
             var noClaim = new CustomerActor(TENANT, ACTOR, role, Set.of());
             assertThrows(CustomerAccessDeniedException.class, () -> useCase.read(noClaim, CUSTOMER, null), role.name());
         }
@@ -64,6 +64,13 @@ class ReadSensitiveCustomerDataUseCaseTest {
                 () -> useCase.read(new CustomerActor(TENANT, ACTOR, Role.TENANT_ADMINISTRATOR, Set.of("OTHER")),
                         CUSTOMER, null));
         assertTrue(audit.isEmpty(), "a denied consultation writes no event");
+    }
+
+    // HU-SEC-007: the read only support actor has no permission claim; the scope of its token is checked by the gate of the service.
+    @Test
+    void thePlatformSupportActorReadsWithoutTheClaim() {
+        var support = new CustomerActor(TENANT, ACTOR, Role.PLATFORM_SUPPORT, Set.of());
+        assertEquals(DATA, useCase.read(support, CUSTOMER, null).orElseThrow());
     }
 
     @Test
