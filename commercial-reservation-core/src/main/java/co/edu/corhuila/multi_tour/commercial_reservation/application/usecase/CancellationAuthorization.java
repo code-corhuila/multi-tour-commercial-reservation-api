@@ -6,15 +6,15 @@ import java.util.Set;
 
 // HU-COM-013 RN-06, AC-13.5: only the Administrator and the Collaborator quote and cancel; never the Final Customer, whatever the matrix
 // cell says (RN-M-13). The record follows Consult reservations (DP-03). The check runs before any load.
-final class CancellationAuthorization {
+public final class CancellationAuthorization {
 
     private CancellationAuthorization() {}
 
-    static void requireCancel(PaymentActor actor) {
+    public static void requireCancel(PaymentActor actor) {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR);
     }
 
-    static void requireRead(PaymentActor actor) {
+    public static void requireRead(PaymentActor actor) {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST);
     }
 

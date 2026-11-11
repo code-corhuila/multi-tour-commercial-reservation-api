@@ -163,7 +163,7 @@ public class ErrorHandler {
     private static boolean reservationRule(HttpServletRequest request) {
         String path = request.getRequestURI();
         return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && (path.endsWith("/reservations") || path.endsWith("/customers"))
-                || path.contains("/additional-discount") || path.contains("/payments") || path.contains("/payment-proofs");
+                || path.contains("/additional-discount") || path.contains("/payments") || path.contains("/payment-proofs") || path.endsWith("/cancellation");
     }
 
     private static String jsonField(Throwable error) {
