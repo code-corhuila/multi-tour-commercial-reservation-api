@@ -1,9 +1,11 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentRefundDetermination;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentRefundWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RefundHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RefundInternalController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RefundReadController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RefundWriteController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.calendar.WeekdayBusinessCalendar;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcFinancialDecisionRepository;
@@ -91,6 +93,16 @@ class RefundConfiguration {
     @Bean
     RefundReadController refundReadController(ReadRefunds read) {
         return new RefundReadController(read);
+    }
+
+    @Bean
+    IdempotentRefundWrites idempotentRefundWrites(ManageRefundDecisions manage, ReadRefunds read, IdempotencyKeys keys, PlatformTransactionManager manager) {
+        return new IdempotentRefundWrites(manage, read, keys, new TransactionTemplate(manager));
+    }
+
+    @Bean
+    RefundWriteController refundWriteController(IdempotentRefundWrites writes) {
+        return new RefundWriteController(writes);
     }
 
     // The role gate of the public routes runs before the body and before any load (AC-16.3). The internal routes judge the SERVICE role themselves.
