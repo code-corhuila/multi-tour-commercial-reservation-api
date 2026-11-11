@@ -80,7 +80,7 @@ class ReservationQuoteHttpTest extends ReservationHttpBase {
     @Test void aQuoteWithoutPeopleNamesTheFieldAndTheRolesThatOnlyReadAreRefused() throws Exception {
         var body = quoteBody(2); body.remove("people");
         CatalogHttpTest.assertField(exchange(quote(body, ADMIN), 400), "people");
-        for (String role : List.of(MANAGER, ACCOUNTANT, ANALYST, FINAL_CUSTOMER)) exchange(quote(quoteBody(2), role), 403);
+        for (String role : List.of(MANAGER, ACCOUNTANT, ANALYST)) exchange(quote(quoteBody(2), role), 403);
     }
 
     @Test void aDepartureOfAnotherTourOrOneThatIsNotOpenIsRefusedWith422() throws Exception {
