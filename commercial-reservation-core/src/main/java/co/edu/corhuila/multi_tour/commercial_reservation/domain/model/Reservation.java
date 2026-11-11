@@ -66,7 +66,7 @@ public final class Reservation {
         if (projected == null || !projected.equals(service.projectedFor(people)))
             throw new DomainException("projectedValue", "projectedValue must be the tour plus the transport of every person");
         List<FixedDiscount> lines = discounts == null ? List.of() : discounts;
-        Cents left = lines.isEmpty() ? projected : lines.get(lines.size() - 1).subtotal();
+        Cents left = DiscountChain.lastSubtotal(projected, lines);
         if (finalValue == null || !finalValue.equals(left))
             throw new DomainException("finalValue", "finalValue must be what the discounts leave of the projected value");
         return new Reservation(id, tenant, customer, departure, creator, people, service, projected, finalValue, lines, type, method, now, group);
