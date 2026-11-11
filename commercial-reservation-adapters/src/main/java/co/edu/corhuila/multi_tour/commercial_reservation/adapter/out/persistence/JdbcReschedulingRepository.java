@@ -43,6 +43,14 @@ public final class JdbcReschedulingRepository implements ReschedulingRepository 
         return one("rescheduling_episode_id = ?", tenantId, episodeId);
     }
 
+
+    // HU-COM-018 AC-18.12: the open episodes of the tenant whose pending proposal is for the cancelled departure, found by the partial index of the pending proposals.
+    @Override
+    public List<ReschedulingEpisode> findPendingOn(UUID tenantId, UUID proposedSalidaId) {
+        return jdbc.query(EPISODE + "rescheduling_episode_id IN (SELECT rescheduling_episode_id FROM commercial_reservation.rescheduling_proposal WHERE tenant_id = ? AND proposed_salida_id = ? AND proposal_state = 'PENDING') "
+                + "ORDER BY rescheduling_episode_id", (row, index) -> row(row), tenantId, tenantId, proposedSalidaId).stream().map(this::withProposals).toList();
+    }
+
     @Override
     public void save(ReschedulingEpisode e) {
         jdbc.update("INSERT INTO commercial_reservation.rescheduling_episode (rescheduling_episode_id, tenant_id, reservation_id, original_salida_id, episode_started_at, "
