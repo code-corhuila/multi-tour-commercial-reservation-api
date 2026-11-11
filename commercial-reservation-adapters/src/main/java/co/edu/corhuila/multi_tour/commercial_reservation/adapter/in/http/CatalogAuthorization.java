@@ -19,6 +19,8 @@ public final class CatalogAuthorization implements HandlerInterceptor {
         var principal = (AuthenticatedPrincipal) request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE);
         if (principal.tenantId() == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         if (principal.roles().contains("TENANT_ADMINISTRATOR")) return true;
+        // The settings of the catalog, with the collaborator-editing flag, are read and set by the Administrator only (RF-004).
+        if (request.getRequestURI().endsWith("/catalog/settings")) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         boolean collaborator = principal.roles().contains("OPERATIONAL_COLLABORATOR");
         boolean read = "GET".equals(request.getMethod());
         // Manager and Analyst only consult the catalog; the Accountant is denied (AC-01.11, RN-07).

@@ -7,12 +7,14 @@ import java.util.UUID;
 
 public record CatalogServiceResponse(UUID serviceId, CatalogServiceType serviceType, String commercialName,
         CatalogStatus catalogStatus, long baseRateCents, long baseOperationalCostCents, Integer configuredCapacity,
-        boolean transportRequired, boolean highRisk, String createdAt, String updatedAt) {
+        boolean transportRequired, boolean highRisk, Long transportRatePerPersonCents, String createdAt,
+        String updatedAt) {
     public static CatalogServiceResponse from(CatalogService item) {
         var terms = item.terms();
         return new CatalogServiceResponse(item.serviceId(), item.serviceType(), item.commercialName(),
                 item.catalogStatus(), terms.baseRate().amount(), terms.baseOperationalCost().amount(),
                 terms.configuredCapacity(), terms.transportRequired(), terms.highRisk(),
+                terms.transportRatePerPerson() == null ? null : terms.transportRatePerPerson().amount(),
                 item.createdAt().toString(), item.updatedAt().toString());
     }
 }

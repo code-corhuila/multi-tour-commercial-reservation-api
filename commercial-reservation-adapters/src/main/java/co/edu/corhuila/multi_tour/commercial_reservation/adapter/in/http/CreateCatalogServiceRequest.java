@@ -17,7 +17,7 @@ public record CreateCatalogServiceRequest(
         String commercialName, Long baseRateCents, Long baseOperationalCostCents,
         @JsonDeserialize(using = OptionalCapacity.class) Integer configuredCapacity,
         @JsonProperty(required = true) boolean transportRequired,
-        @JsonProperty(required = true) boolean highRisk) {
+        @JsonProperty(required = true) boolean highRisk, Long transportRatePerPersonCents) {
     // The contract permits omission, but not an explicit null; creator defaults must distinguish them.
     public static final class OptionalCapacity extends JsonDeserializer<Integer> {
         @Override

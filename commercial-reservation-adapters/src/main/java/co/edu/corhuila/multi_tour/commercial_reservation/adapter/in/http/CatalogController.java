@@ -58,7 +58,8 @@ public final class CatalogController {
         }
         var command = new RegisterCatalogService.Command(principal.tenantId(), request.serviceType(),
                 request.commercialName(), request.baseRateCents(), request.baseOperationalCostCents(),
-                request.configuredCapacity(), request.transportRequired(), request.highRisk());
+                request.configuredCapacity(), request.transportRequired(), request.highRisk(),
+                request.transportRatePerPersonCents());
         var result = registration.register(command, key);
         var body = CatalogServiceResponse.from(result.item());
         return result.created() ? ResponseEntity.created(URI.create("/api/v1/commercial-reservation/catalog/services/" + body.serviceId()))
@@ -113,7 +114,7 @@ public final class CatalogController {
         return CatalogServiceResponse.from(reactivate.reactivate(principal.tenantId(), serviceId, actor(principal)));
     }
 
-    private static UUID actor(AuthenticatedPrincipal principal) {
+    static UUID actor(AuthenticatedPrincipal principal) {
         try {
             UUID actor = UUID.fromString(principal.sub());
             // UUID.fromString accepts abbreviated groups; account claims must use the full UUID form.

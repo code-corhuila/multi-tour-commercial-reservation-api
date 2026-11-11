@@ -22,7 +22,8 @@ public class RegisterCatalogServiceUseCase implements RegisterCatalogService {
     @Override
     public CatalogService register(Command command) {
         CommercialTerms terms = CommercialTerms.of(command.baseRateCents(), command.baseOperationalCostCents(),
-                command.configuredCapacity(), command.transportRequired(), command.highRisk());
+                command.configuredCapacity(), command.transportRequired(), command.highRisk(),
+                command.transportRatePerPersonCents());
         CatalogService service = CatalogService.register(ids.newId(), command.tenantId(), command.serviceType(),
                 command.commercialName(), terms, clock.instant());
         repository.save(service);

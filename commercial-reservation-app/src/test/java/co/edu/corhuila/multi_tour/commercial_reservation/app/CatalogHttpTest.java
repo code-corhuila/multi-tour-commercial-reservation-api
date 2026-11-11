@@ -48,7 +48,7 @@ class CatalogHttpTest {
     static final String BASE = "/api/v1/commercial-reservation/catalog/services";
     static final String TRACE = "catalog-http-test";
     static final List<String> FIELDS = List.of("serviceId", "serviceType", "commercialName", "catalogStatus",
-            "baseRateCents", "baseOperationalCostCents", "configuredCapacity", "transportRequired",
+            "baseRateCents", "baseOperationalCostCents", "configuredCapacity", "transportRequired", "transportRatePerPersonCents",
             "highRisk", "createdAt", "updatedAt");
     final CatalogContract contract = new CatalogContract();
     @Autowired MockMvc mvc;
@@ -544,6 +544,40 @@ class CatalogHttpTest {
         status().isNotFound().match(result);
         assertError(result, "NOT_FOUND", "resource not found");
         exchange(read(item.serviceId().toString(), TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false);
+    }
+
+    // RN-10 (gap G-E): the per-person transport rate is optional, whole cents, never negative.
+    @Test void transportRatePerPersonIsStoredAndReturnedOverHttp() throws Exception {
+        var withoutRate = json(exchange(create(body(), "no-rate-key", TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 201, false));
+        assertDto(withoutRate);
+        assertThat(withoutRate.get("transportRatePerPersonCents").isNull()).isTrue();
+
+        var payload = body(); payload.put("transportRatePerPersonCents", 25000L);
+        var created = json(exchange(create(payload, "rate-key", TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 201, false));
+        assertDto(created);
+        assertThat(created.get("transportRatePerPersonCents").longValue()).isEqualTo(25000L);
+        String id = created.get("serviceId").asText();
+
+        var changed = json(exchange(update(id, Map.of("transportRatePerPersonCents", 0L), TestJwtKeys.TENANT,
+                "TENANT_ADMINISTRATOR"), 200, false));
+        assertThat(changed.get("transportRatePerPersonCents").longValue()).isZero();
+        assertThat(changed.get("baseRateCents").longValue()).isEqualTo(35000000L);
+
+        var read = json(exchange(read(id, TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 200, false));
+        assertThat(read.get("transportRatePerPersonCents").longValue()).isZero();
+    }
+
+    @Test void aNegativeTransportRateIsRefusedWithItsFieldName() throws Exception {
+        var payload = body(); payload.put("transportRatePerPersonCents", -1L);
+        assertField(exchange(create(payload, "negative-key", TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 400, true),
+                "transportRatePerPersonCents");
+        assertField(exchange(update(seed().serviceId().toString(), Map.of("transportRatePerPersonCents", -1L),
+                TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"), 400, true), "transportRatePerPersonCents");
+    }
+
+    @Test void aCollaboratorCannotChangeTheTransportRate() throws Exception {
+        assertForbidden(exchange(update(seed().serviceId().toString(), Map.of("transportRatePerPersonCents", 1L),
+                TestJwtKeys.TENANT, "OPERATIONAL_COLLABORATOR"), 403, false));
     }
 
     @Test @Order(Integer.MAX_VALUE)
