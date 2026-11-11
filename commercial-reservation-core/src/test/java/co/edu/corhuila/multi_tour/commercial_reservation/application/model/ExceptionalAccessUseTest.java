@@ -16,9 +16,9 @@ class ExceptionalAccessUseTest {
 
         var payload = use.payload();
 
-        assertThat(payload.keySet()).containsExactlyInAnyOrderElementsOf(List.of("authorizationId", "platformAdministratorId", "tenantId", "method", "route", "area", "occurredAt", "correlationId"));
+        assertThat(payload.keySet()).containsExactlyInAnyOrderElementsOf(List.of("authorizationId", "platformAdministratorId", "tenantId", "method", "route", "area", "usedAt", "correlationId"));
         assertThat(payload).containsEntry("authorizationId", authorization.toString()).containsEntry("platformAdministratorId", administrator.toString())
                 .containsEntry("tenantId", tenant.toString()).containsEntry("method", "GET").containsEntry("route", "/api/v1/x/{id}")
-                .containsEntry("area", "CASH").containsEntry("occurredAt", "2026-11-11T10:00:00Z").containsEntry("correlationId", "c-1");
+                .containsEntry("area", "CASH").containsEntry("usedAt", "2026-11-11T10:00:00Z").containsEntry("correlationId", "c-1");
     }
 }
