@@ -15,6 +15,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredPaymentSettlement;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialWaitPolicy;
@@ -137,7 +138,8 @@ class PaymentPersistenceConfiguration {
 
     // HU-COM-016 and HU-COM-017 are not built (declared debts DD-5 and DD-9); the cancellation for non-payment is real above. The amounts stay on the decided attempt.
     @Bean
-    DeferredPaymentSettlement deferredPaymentSettlement() {
-        return new DeferredPaymentSettlement();
+    CreditBalanceRecorder deferredPaymentSettlement() {
+        DeferredPaymentSettlement standIn = new DeferredPaymentSettlement();
+        return standIn::recordExcess; // only the credit balance stays a stand-in: the treatment of a value is the real FinancialDecisionOpening
     }
 }
