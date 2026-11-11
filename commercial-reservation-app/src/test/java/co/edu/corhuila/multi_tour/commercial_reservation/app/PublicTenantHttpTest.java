@@ -5,20 +5,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantRef;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantDirectory;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,23 +21,14 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ContextConfiguration(initializers = TestJwtKeys.class)
-@Import({CatalogHttpFixture.class, PublicTenantHttpTest.Directory.class})
+@Import(CatalogHttpFixture.class)
 class PublicTenantHttpTest {
     static final String PUBLIC = "/api/v1/commercial-reservation/public/tenants/";
     static final UUID TENANT = UUID.fromString(TestJwtKeys.TENANT);
 
-    @TestConfiguration
-    static class Directory {
-        @Bean @Primary MemoryDirectory memoryDirectory() { return new MemoryDirectory(); }
-    }
-
-    static final class MemoryDirectory implements TenantDirectory {
-        final Map<String, TenantRef> tenants = new HashMap<>();
-        public Optional<TenantRef> resolve(String identifier) { return Optional.ofNullable(tenants.get(identifier)); }
-    }
 
     @Autowired MockMvc mvc;
-    @Autowired MemoryDirectory directory;
+    @Autowired TenantDirectoryHttpFixture.MemoryDirectory directory;
     String association;
 
     @BeforeEach void plant() throws Exception {

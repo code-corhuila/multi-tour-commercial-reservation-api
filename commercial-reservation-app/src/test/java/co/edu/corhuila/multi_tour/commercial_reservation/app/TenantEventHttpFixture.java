@@ -1,12 +1,9 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TenantEventController;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ProcessedEvents;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantEventTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusStore;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ApplyTenantEventUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatusCopy;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -23,13 +20,7 @@ import org.springframework.context.annotation.Primary;
 class TenantEventHttpFixture {
     @Bean @Primary MemoryTenants memoryTenants() { return new MemoryTenants(); }
 
-    @Bean ApplyTenantEventUseCase applyTenantEvent(MemoryTenants memory) {
-        return new ApplyTenantEventUseCase(memory, memory, memory);
-    }
 
-    @Bean TenantEventController tenantEventController(ApplyTenantEventUseCase apply, ObjectMapper json) {
-        return new TenantEventController(apply, json);
-    }
 
     static final class MemoryTenants implements TenantStatusStore, ProcessedEvents, TenantEventTransaction {
         final Map<UUID, TenantStatusCopy> copies = new HashMap<>();
