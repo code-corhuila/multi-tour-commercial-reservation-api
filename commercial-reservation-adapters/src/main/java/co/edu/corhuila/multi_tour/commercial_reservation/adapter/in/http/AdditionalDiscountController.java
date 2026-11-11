@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentAdditionalDiscountRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterAdditionalDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
