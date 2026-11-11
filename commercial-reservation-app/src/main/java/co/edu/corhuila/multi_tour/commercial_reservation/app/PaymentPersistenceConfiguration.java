@@ -19,6 +19,16 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentExtensionPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentFollowupRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPendingPaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCancellation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentExtensionPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentFollowupRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PendingPaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -70,13 +80,39 @@ class PaymentPersistenceConfiguration {
         return new JdbcPaymentDeadlineReader(jdbc);
     }
 
+    // HU-COM-011: the adapters of the deadline, the follow-up, the pending list and the cancellation. The routes come with the next slice.
+    @Bean
+    PaymentDeadlineWriter paymentDeadlineWriter(JdbcTemplate jdbc) {
+        return new JdbcPaymentDeadlineWriter(jdbc);
+    }
+
+    @Bean
+    PaymentExtensionPolicy paymentExtensionPolicy(JdbcTemplate jdbc) {
+        return new JdbcPaymentExtensionPolicy(jdbc);
+    }
+
+    @Bean
+    PaymentFollowupRepository paymentFollowupRepository(JdbcTemplate jdbc) {
+        return new JdbcPaymentFollowupRepository(jdbc);
+    }
+
+    @Bean
+    PendingPaymentQueries pendingPaymentQueries(JdbcTemplate jdbc) {
+        return new JdbcPendingPaymentQueries(jdbc);
+    }
+
+    @Bean
+    ReservationCancellation reservationCancellation(JdbcTemplate jdbc) {
+        return new JdbcReservationCancellation(jdbc);
+    }
+
     // The cash domain does not exist yet: this stand-in refuses every cash payment (declared debt DD-2) and never invents an income.
     @Bean
     UnverifiedCashSession unverifiedCashSession() {
         return new UnverifiedCashSession();
     }
 
-    // HU-COM-011, HU-COM-016 and HU-COM-017 are not built (declared debts DD-5 and DD-9): the amounts stay on the decided attempt.
+    // HU-COM-016 and HU-COM-017 are not built (declared debts DD-5 and DD-9): the amounts stay on the decided attempt.
     @Bean
     DeferredPaymentSettlement deferredPaymentSettlement() {
         return new DeferredPaymentSettlement();
