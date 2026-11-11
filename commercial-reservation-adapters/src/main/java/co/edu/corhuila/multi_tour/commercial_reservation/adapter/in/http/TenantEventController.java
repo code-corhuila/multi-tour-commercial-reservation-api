@@ -1,7 +1,10 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.AccountLinkOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantEventOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyTenantEvent;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.LinkAccountOnEmailVerified;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AccountEmailVerified;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantEventType;
@@ -23,17 +26,19 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 // Operation receiveEvent of the contract (plan D-03): the one route job 7 posts the tenant events to. It only maps the
-// body to a TenantEvent and answers 201 or 200; the rules live in the use case. The body is read as a tree because the
+// body to a TenantEvent (or to an AccountEmailVerified, HU-COM-005 AC-05.7) and answers 201 or 200; the rules live in the use case. The body is read as a tree because the
 // contract tolerates fields it does not name, while the strict mapper of the service would refuse them.
 @RestController
 public final class TenantEventController {
     private static final int MAX_BYTES = 16 * 1024;
 
     private final ApplyTenantEvent apply;
+    private final LinkAccountOnEmailVerified link;
     private final ObjectMapper json;
 
-    public TenantEventController(ApplyTenantEvent apply, ObjectMapper json) {
+    public TenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link, ObjectMapper json) {
         this.apply = apply;
+        this.link = link;
         this.json = json;
     }
 
@@ -52,11 +57,21 @@ public final class TenantEventController {
         if (raw.length > MAX_BYTES) {
             throw new RejectedRequest(413, "body must not exceed 16384 bytes");
         }
-        TenantEvent event = toEvent(read(raw), tenantId);
-        if (key == null || !key.equalsIgnoreCase(event.eventId().toString())) {
+        JsonNode body = read(raw);
+        if ("AccountEmailVerified".equals(body.path("eventType").asText(null))) {
+            AccountEmailVerified verified = toAccountEmailVerified(body, tenantId);
+            sameKey(key, verified.eventId());
+            return ResponseEntity.status(link.link(verified) == AccountLinkOutcome.ALREADY_PROCESSED ? HttpStatus.OK : HttpStatus.CREATED).build();
+        }
+        TenantEvent event = toEvent(body, tenantId);
+        sameKey(key, event.eventId());
+        return ResponseEntity.status(apply.apply(event) == TenantEventOutcome.APPLIED ? HttpStatus.CREATED : HttpStatus.OK).build();
+    }
+
+    private static void sameKey(String key, UUID eventId) {
+        if (key == null || !key.equalsIgnoreCase(eventId.toString())) {
             throw new DomainException("Idempotency-Key", "must be the eventId of the body");
         }
-        return ResponseEntity.status(apply.apply(event) == TenantEventOutcome.APPLIED ? HttpStatus.CREATED : HttpStatus.OK).build();
     }
 
     private JsonNode read(byte[] raw) {
@@ -90,6 +105,25 @@ public final class TenantEventController {
         }
         return new TenantEvent(eventId, type, tenantId, occurredAt, optional(payload, "identifier"),
                 status(optional(payload, "tenantStatus")), optional(payload, "timeZone"), optional(payload, "country"));
+    }
+
+    // The aggregate of this event is the account, not the tenant; the payload carries tenantId, accountId and the e-mail.
+    private static AccountEmailVerified toAccountEmailVerified(JsonNode body, UUID pathTenant) {
+        UUID eventId = uuid(body, "eventId");
+        JsonNode version = body.path("eventVersion");
+        if (!version.isIntegralNumber() || version.asInt() < 1) throw new DomainException("eventVersion", "must be an integer of 1 or more");
+        UUID tenantId = uuid(body, "tenantId");
+        JsonNode payload = body.path("payload");
+        if (!tenantId.equals(pathTenant) || !payload.isObject() || !uuid(payload, "tenantId").equals(tenantId)) {
+            throw new DomainException("tenantId", "must be the tenant of the path");
+        }
+        UUID accountId = uuid(payload, "accountId");
+        if (!uuid(body, "aggregateId").equals(accountId)) throw new DomainException("aggregateId", "must be the account of the payload");
+        try {
+            return new AccountEmailVerified(eventId, tenantId, accountId, text(payload, "email"), Instant.parse(text(body, "occurredAt")));
+        } catch (DateTimeParseException invalid) {
+            throw new DomainException("occurredAt", "must be an ISO 8601 UTC timestamp");
+        }
     }
 
     private static TenantEventType type(String name) {

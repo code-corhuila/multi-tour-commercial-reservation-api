@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerAccountLink;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
@@ -28,7 +29,7 @@ class CustomerHttpFixture {
     @Bean @Primary MemoryCustomers memoryCustomers() { return new MemoryCustomers(); }
 
     static final class MemoryCustomers implements CustomerRepository, CustomerProfileReader, CustomerRegisteredOutbox,
-            SensitiveDataAccessOutbox, CustomerTransaction, ServiceRiskReader, CustomerByAccount, CustomerByEmail {
+            SensitiveDataAccessOutbox, CustomerTransaction, ServiceRiskReader, CustomerByAccount, CustomerByEmail, CustomerAccountLink {
         record Service(UUID tenant, boolean highRisk) {}
         final Map<UUID, Customer> customers = new HashMap<>();
         final Map<UUID, Service> services = new HashMap<>();
@@ -45,6 +46,12 @@ class CustomerHttpFixture {
             return customers.values().stream().filter(found -> found.tenantId().equals(tenant) && account.equals(found.accountId())).findFirst();
         }
         public void save(Customer customer) { customers.put(customer.customerId(), customer); }
+        public boolean linkIfUnlinked(UUID tenant, UUID customerId, UUID account) {
+            Customer found = customers.get(customerId);
+            if (found == null || !found.tenantId().equals(tenant) || found.accountId() != null) return false;
+            customers.put(customerId, found.linkedTo(account));
+            return true;
+        }
         public Optional<EmailMatch> findByTenantAndEmail(UUID tenant, String email) {
             return customers.values().stream().filter(found -> found.tenantId().equals(tenant) && email.equals(found.contact().email()))
                     .findFirst().map(found -> new EmailMatch(found.customerId(), found.accountId() != null));
