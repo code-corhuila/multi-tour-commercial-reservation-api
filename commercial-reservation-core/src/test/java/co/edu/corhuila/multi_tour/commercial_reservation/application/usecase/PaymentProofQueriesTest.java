@@ -241,6 +241,15 @@ class PaymentProofQueriesTest {
     }
 
     @Test
+    void theReadOnlyPlatformSupportActorReadsTheProofFileWithoutTheDecidePermission() {
+        // HU-SEC-007 (Project Lead, 2026-11-11): the proof file is a read inside the scope RESERVATIONS; the actor of the exceptional access reads it and is still refused every decision.
+        PaymentActor support = actor(Role.PLATFORM_SUPPORT);
+
+        assertThat(file.read(support, OLD).contentType()).isEqualTo("image/png");
+        assertThatThrownBy(() -> PaymentProofAuthorization.requireDecide(support)).isInstanceOf(PaymentAccessDeniedException.class);
+    }
+
+    @Test
     void theFileOfAnotherTenantOrWithoutAFileAnswersNotFound() {
         assertThatThrownBy(() -> file.read(new PaymentActor(OTHER_TENANT, ADMIN, Role.TENANT_ADMINISTRATOR), OLD))
                 .isInstanceOf(PaymentProofNotFoundException.class);
