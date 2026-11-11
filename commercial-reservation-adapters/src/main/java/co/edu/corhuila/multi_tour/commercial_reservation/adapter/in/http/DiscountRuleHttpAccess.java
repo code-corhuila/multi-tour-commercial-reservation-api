@@ -16,8 +16,9 @@ public final class DiscountRuleHttpAccess implements HandlerInterceptor {
             account = UUID.fromString(principal.sub());
             if (!account.toString().equalsIgnoreCase(principal.sub())) throw new IllegalArgumentException();
         } catch (IllegalArgumentException invalid) { throw new InvalidTokenException(); }
+        if (principal.exceptional() != null) return new DiscountRuleActor(principal.tenantId(), account, DiscountRuleActor.Role.PLATFORM_SUPPORT);
         for (var role : DiscountRuleActor.Role.values()) {
-            if (principal.roles().contains(role.name())) return new DiscountRuleActor(principal.tenantId(), account, role);
+            if (role != DiscountRuleActor.Role.PLATFORM_SUPPORT && principal.roles().contains(role.name())) return new DiscountRuleActor(principal.tenantId(), account, role);
         }
         throw new DiscountRuleAccessDeniedException();
     }
