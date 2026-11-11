@@ -30,10 +30,7 @@ class ArchitectureRulesTest {
     private static final Map<String, Set<String>> KNOWN_HTTP_EXCEPTIONS = Map.ofEntries(
             Map.entry("IdempotentAdditionalDiscountRegistration", Set.of(KEYS)),
             Map.entry("IdempotentCancellation", Set.of(KEYS)),
-            Map.entry("IdempotentCatalogRegistration", Set.of(KEYS)),
-            Map.entry("IdempotentCustomerRegistration", Set.of(KEYS)),
             Map.entry("IdempotentDeadlineWrites", Set.of(KEYS)),
-            Map.entry("IdempotentDiscountRuleCreation", Set.of(KEYS)),
             Map.entry("IdempotentExpiry", Set.of(KEYS)),
             Map.entry("IdempotentModification", Set.of(KEYS)),
             Map.entry("IdempotentPaymentParameterChange", Set.of(KEYS)),

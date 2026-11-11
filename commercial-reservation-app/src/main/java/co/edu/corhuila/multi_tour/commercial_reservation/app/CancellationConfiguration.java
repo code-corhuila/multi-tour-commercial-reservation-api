@@ -4,9 +4,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Cancell
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CancellationHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.NoCancellationPenaltyPolicy;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.NoReprogrammingMark;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCancellationRecords;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReprogrammingMark;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CancelReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCancellationRecord;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.QuoteCancellation;
@@ -22,6 +22,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Sa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CancelReservationUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCancellationRecordUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.QuoteCancellationUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,8 +34,8 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 // HU-COM-013: the quote, the cancellation at the customer's request and its record. Only this class knows which adapter backs each port:
-// the record is real (JDBC); the penalty policy, the rescheduling mark and the financial decision are documented stand-ins until their
-// stories exist (declared debts DD-3, DD-5, DD-2). The ports of the reservation stack are injected lazily, as in PaymentConfiguration.
+// the record, the rescheduling mark (the open episode of HU-COM-018) and the financial decision (HU-COM-016) are real; the penalty policy is still
+// a documented stand-in (declared debt DD-3). The ports of the reservation stack are injected lazily, as in PaymentConfiguration.
 @Configuration
 class CancellationConfiguration {
 
@@ -49,8 +50,8 @@ class CancellationConfiguration {
     }
 
     @Bean
-    ReprogrammingMarkReader reprogrammingMarkReader() {
-        return new NoReprogrammingMark();
+    ReprogrammingMarkReader reprogrammingMarkReader(JdbcTemplate jdbc) {
+        return new JdbcReprogrammingMark(jdbc);
     }
 
     @Bean
@@ -63,8 +64,8 @@ class CancellationConfiguration {
     CancelReservation cancelReservation(@Lazy ReservationRepository reservations, @Lazy DepartureReader departures,
             @Lazy SalidaCapacityHolder holder, CancellationPolicyReader policy, ReprogrammingMarkReader marks,
             FinancialDecisionOpener decisions, @Lazy CancellationRecords records, @Lazy PaymentEventOutbox outbox,
-            @Lazy PaymentTransaction transaction, Clock clock) {
-        return new CancelReservationUseCase(reservations, departures, holder, policy, marks, decisions, records, outbox, transaction, clock);
+            @Lazy PaymentTransaction transaction, Clock clock, @Lazy TenantStatusReader statuses) {
+        return new CancelReservationUseCase(reservations, departures, holder, policy, marks, decisions, records, outbox, transaction, clock, statuses);
     }
 
     @Bean

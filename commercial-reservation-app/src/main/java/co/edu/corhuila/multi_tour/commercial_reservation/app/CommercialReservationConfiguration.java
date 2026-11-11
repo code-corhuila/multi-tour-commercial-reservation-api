@@ -2,19 +2,24 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.HealthController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ApiErrorWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ExceptionalAccessAudit;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.LoggingExceptionalAccessAudit;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogAuthorization;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalCatalogUpdate;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CorrelationFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ErrorHandler;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCatalogRegistration;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCatalogRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.JwtPublicKeyLoader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Rs256Verifier;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyKeys;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyStore;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.SpringRequestTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.UuidGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateCatalogService;
@@ -73,8 +78,8 @@ class CommercialReservationConfiguration {
 
     @Bean
     IdempotentCatalogRegistration catalogRegistration(RegisterCatalogService register, GetCatalogService get,
-            IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentCatalogRegistration(register, get, keys, new TransactionTemplate(manager));
+            IdempotentWrites writes) {
+        return new IdempotentCatalogRegistration(register, get, writes);
     }
 
     @Bean
@@ -141,6 +146,11 @@ class CommercialReservationConfiguration {
     @Bean
     SalidaCapacityReader salidaCapacityReader(JdbcTemplate jdbc) {
         return new JdbcSalidaCapacityReader(jdbc);
+    }
+
+    @Bean
+    IdempotentWrites idempotentWrites(IdempotencyKeys keys, PlatformTransactionManager manager) {
+        return new IdempotentWrites(new JdbcIdempotencyStore(keys), new SpringRequestTransaction(new TransactionTemplate(manager)));
     }
 
     @Bean
@@ -223,9 +233,14 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors,
+    ExceptionalAccessAudit exceptionalAccessAudit() {
+        return new LoggingExceptionalAccessAudit();
+    }
+
+    @Bean
+    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors, ExceptionalAccessAudit audit,
             TenantStatusReader statuses) {
-        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses));
+        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses, audit));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }
