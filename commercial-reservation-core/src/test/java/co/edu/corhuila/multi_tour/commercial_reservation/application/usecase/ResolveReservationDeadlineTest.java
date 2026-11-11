@@ -22,7 +22,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 // HU-COM-008: the reservation answers carry the deadline in force (RN-02: the extension counts, never past the departure start).
-// A frozen deadline is still the open one (RN-17); a reservation with no open deadline row has none (G-DL).
+// A frozen deadline has no running instant, as in the payment answers (RN-17); a reservation with no open deadline row has none (G-DL).
 class ResolveReservationDeadlineTest {
 
     private static final UUID TENANT = new UUID(8, 1), CUSTOMER = new UUID(8, 2), SERVICE = new UUID(8, 3), DEPARTURE = new UUID(8, 4),
@@ -76,9 +76,10 @@ class ResolveReservationDeadlineTest {
     }
 
     @Test
-    void aFrozenDeadlineIsStillTheOpenOne() {
+    void aFrozenDeadlineHasNoRunningInstantToShow() {
         Instant due = NOW.plus(Duration.ofHours(2));
         fakes.deadlines.put(RESERVATION, new PaymentDeadline(DeadlineKind.INITIAL_PAYMENT, due, null, null, null, NOW, 120));
-        assertThat(resolver.forReservation(reservation())).contains(due);
+        assertThat(resolver.forReservation(reservation())).isEmpty();
+        assertThat(resolver.forRow(TENANT, row())).isEmpty();
     }
 }

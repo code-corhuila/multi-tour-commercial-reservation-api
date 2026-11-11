@@ -61,4 +61,12 @@ class ReservationDeadlineHttpTest extends ReservationHttpBase {
         var created = createOwn("reservation-key-084");
         assertThat(Instant.parse(created.get("paymentDeadline").asText())).isEqualTo(due);
     }
+
+    @Test void aFrozenDeadlineIsOmittedFromTheReadAndTheOwnList() throws Exception {
+        var created = createOwn("reservation-key-085");
+        payments.deadline = new PaymentDeadline(DeadlineKind.INITIAL_PAYMENT, NOW.plus(Duration.ofHours(6)), null, null, null, NOW, 120);
+        assertThat(read(created).has("paymentDeadline")).isFalse();
+        assertThat(CatalogHttpTest.json(exchange(withToken(get(BASE + "/reservations"), FINAL_CUSTOMER), 200))
+                .at("/data/0").has("paymentDeadline")).isFalse();
+    }
 }
