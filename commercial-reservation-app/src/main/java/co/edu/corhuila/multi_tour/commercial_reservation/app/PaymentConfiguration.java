@@ -16,6 +16,13 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentExtensionPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentFollowupRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PendingPaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentExpiry;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentExpiryController;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExpireReservationUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListDuePaymentDeadlinesUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExpireReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDuePaymentDeadlines;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentParameterChange;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentController;
@@ -221,6 +228,29 @@ class PaymentConfiguration {
     PaymentDeadlineController paymentDeadlineController(ListPendingPayments pending, GetPaymentDeadline deadline, ListPaymentFollowups history,
             IdempotentDeadlineWrites writes) {
         return new PaymentDeadlineController(pending, deadline, history, writes);
+    }
+
+    // HU-COM-011: the internal routes of job 1. The job asks and the service decides; the cancellation, the seat and the events commit together.
+    @Bean
+    ExpireReservation expireReservation(@Lazy ReservationRepository reservations, @Lazy PaymentDeadlineReader deadlines,
+            @Lazy DepartureReader departures, @Lazy SalidaCapacityHolder holder, @Lazy CancelledValueRecorder cancelledValues,
+            @Lazy PaymentEventOutbox outbox, @Lazy PaymentTransaction transaction, Clock clock) {
+        return new ExpireReservationUseCase(reservations, deadlines, departures, holder, cancelledValues, outbox, transaction, clock);
+    }
+
+    @Bean
+    ListDuePaymentDeadlines listDuePaymentDeadlines(@Lazy DuePaymentQueries queries, Clock clock) {
+        return new ListDuePaymentDeadlinesUseCase(queries, clock);
+    }
+
+    @Bean
+    IdempotentExpiry idempotentExpiry(ExpireReservation expiry, IdempotencyKeys keys, PlatformTransactionManager manager) {
+        return new IdempotentExpiry(expiry, keys, new TransactionTemplate(manager));
+    }
+
+    @Bean
+    PaymentExpiryController paymentExpiryController(ListDuePaymentDeadlines due, IdempotentExpiry expiry) {
+        return new PaymentExpiryController(due, expiry);
     }
 
     @Bean

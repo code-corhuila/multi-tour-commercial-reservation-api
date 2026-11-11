@@ -3,6 +3,9 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.FollowupPage;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentDeadline;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PendingPaymentPage;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DeadlineView;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DueDeadlinePage;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineWriter;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentExtensionPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentFollowupRepository;
@@ -26,15 +29,16 @@ import org.springframework.context.annotation.Primary;
 class PaymentDeadlineHttpFixture {
     @Bean @Primary MemoryDeadlines memoryDeadlines(PaymentHttpFixture.MemoryPayments payments) { return new MemoryDeadlines(payments); }
 
-    static final class MemoryDeadlines implements PaymentExtensionPolicy, PaymentDeadlineWriter, PaymentFollowupRepository, PendingPaymentQueries {
+    static final class MemoryDeadlines implements PaymentExtensionPolicy, PaymentDeadlineWriter, PaymentFollowupRepository, PendingPaymentQueries, DuePaymentQueries {
         private final PaymentHttpFixture.MemoryPayments payments;
         final List<PaymentFollowup> followups = new ArrayList<>();
         final List<String> asked = new ArrayList<>();
+        final List<DeadlineView> due = new ArrayList<>();
         Integer maximum = 48;
 
         MemoryDeadlines(PaymentHttpFixture.MemoryPayments payments) { this.payments = payments; }
 
-        void clear() { followups.clear(); asked.clear(); maximum = 48; }
+        void clear() { followups.clear(); asked.clear(); due.clear(); maximum = 48; }
         public Optional<Integer> maximumHours(UUID tenant, Reservation reservation) { return Optional.ofNullable(maximum); }
         public void saveExtension(UUID tenant, UUID reservation, int hours, Instant at, UUID by) {
             PaymentDeadline now = payments.deadline;
@@ -48,6 +52,10 @@ class PaymentDeadlineHttpFixture {
             var all = followups.stream().filter(f -> f.tenantId().equals(tenant) && f.reservationId().equals(reservation))
                     .sorted(Comparator.comparing(PaymentFollowup::contactedAt).reversed()).toList();
             return new FollowupPage(all.stream().skip((page - 1L) * limit).limit(limit).toList(), all.size());
+        }
+        public DueDeadlinePage page(UUID tenant, Instant now, int page, int limit) {
+            asked.add("due:" + tenant + ":" + now + ":" + page + ":" + limit);
+            return new DueDeadlinePage(due.stream().skip((page - 1L) * limit).limit(limit).toList(), due.size());
         }
         public PendingPaymentPage page(UUID tenant, DeadlineKind kind, int page, int limit) {
             asked.add(tenant + ":" + kind + ":" + page + ":" + limit);
