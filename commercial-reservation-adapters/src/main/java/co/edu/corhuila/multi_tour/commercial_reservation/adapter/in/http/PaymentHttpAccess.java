@@ -10,7 +10,13 @@ public final class PaymentHttpAccess implements HandlerInterceptor {
 
     @Override public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         var actor = PaymentActors.of((AuthenticatedPrincipal) request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE));
-        if ("POST".equals(request.getMethod())) PaymentAuthorization.requireRegister(actor);
+        String path = request.getRequestURI();
+        boolean write = "POST".equals(request.getMethod()) || "PUT".equals(request.getMethod());
+        if (path.endsWith("/payment-parameters")) {
+            if (write) PaymentAuthorization.requireChangeParameters(actor);
+            else PaymentAuthorization.requireReadParameters(actor);
+        } else if (path.endsWith("/payment-quote")) PaymentAuthorization.requireQuote(actor);
+        else if (write) PaymentAuthorization.requireRegister(actor);
         else PaymentAuthorization.requireReadPayments(actor);
         return true;
     }

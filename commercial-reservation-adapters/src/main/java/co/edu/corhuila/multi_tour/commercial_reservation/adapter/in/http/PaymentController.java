@@ -8,10 +8,15 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Get
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentAttempt;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -22,12 +27,13 @@ import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 // The payments of a reservation (PROPOSED in the contract): one POST with two bodies (multipart for a transfer with its proof, JSON for
-// cash) and the read of one attempt. The role is checked before the body (PaymentHttpAccess); the user and the tenant are the token.
+// cash), the history and one attempt. The role is checked before the body (PaymentHttpAccess); the user and the tenant are the token.
 @RestController
 @RequestMapping("/api/v1/commercial-reservation")
 public final class PaymentController {
@@ -56,6 +62,17 @@ public final class PaymentController {
             @RequestPart(value = "proof", required = false) MultipartFile proof) throws IOException {
         if (request == null) throw new DomainException("payment", "the payment part is required");
         return register(principal, reservationId, key, request, proof == null ? null : proof.getBytes(), true);
+    }
+
+    @GetMapping("/reservations/{reservationId}/payments")
+    public ReservationListResponses<PaymentResponse> list(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @PathVariable("reservationId") UUID reservationId, @RequestParam Map<String, String> query) {
+        var paging = new PageQuery(query, Set.of("page", "limit"));
+        Reservation reservation = reservation(PaymentActors.of(principal), reservationId);
+        List<PaymentAttempt> attempts = reservation.attempts().stream().sorted(Comparator.comparing(PaymentAttempt::registeredAt).reversed()).toList();
+        var data = attempts.stream().skip((paging.page - 1L) * paging.limit).limit(paging.limit)
+                .map(attempt -> PaymentResponse.of(reservation, attempt)).toList();
+        return new ReservationListResponses<>(data, paging.meta(attempts.size()));
     }
 
     @GetMapping("/reservations/{reservationId}/payments/{paymentId}")
