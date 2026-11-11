@@ -5,6 +5,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureS
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -22,5 +23,13 @@ public final class JdbcDepartureReader implements DepartureReader {
         return jdbc.query(JdbcDepartureStateRepository.SELECT + " WHERE tenant_id = ? AND service_id = ? "
                         + "AND status = 'SCHEDULED' AND hora_inicio > ? ORDER BY hora_inicio, salida_id",
                 JdbcDepartureStateRepository::restore, tenantId, serviceId, now.atOffset(ZoneOffset.UTC));
+    }
+
+    // One row by tenant and id for the creation check (HU-COM-007 plan D-05). It reads the projection only and keeps every
+    // status, full rows included: the use case refuses what cannot be reserved. Another tenant's row is the same empty answer.
+    @Override
+    public Optional<DepartureState> find(UUID tenantId, UUID departureId) {
+        return jdbc.query(JdbcDepartureStateRepository.SELECT + " WHERE tenant_id = ? AND salida_id = ?",
+                JdbcDepartureStateRepository::restore, tenantId, departureId).stream().findFirst();
     }
 }
