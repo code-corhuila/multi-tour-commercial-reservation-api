@@ -136,8 +136,8 @@ class ReservationReadsTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Role.class, names = {"MANAGER", "ACCOUNTANT", "ANALYST", "FINAL_CUSTOMER"})
-    void managerAccountantAnalystAndTheFinalCustomerCannotQuoteOrCreate(Role role) {
+    @EnumSource(value = Role.class, names = {"MANAGER", "ACCOUNTANT", "ANALYST"})
+    void managerAccountantAndAnalystCannotQuoteOrCreate(Role role) {
         assertThatThrownBy(() -> ReservationAuthorization.requireWrite(actor(role)))
                 .isInstanceOf(ReservationAccessDeniedException.class);
     }
@@ -151,10 +151,15 @@ class ReservationReadsTest {
     }
 
     @Test
-    void theReservationsAreReadByEveryOperatorRoleButNotByTheFinalCustomerUntilItsAccountIsLinked() {
+    void theFinalCustomerQuotesCreatesAndReadsThroughTheSameDoor() {
+        ReservationAuthorization.requireWrite(actor(Role.FINAL_CUSTOMER));
+        ReservationAuthorization.requireRead(actor(Role.FINAL_CUSTOMER));
+        ReservationAuthorization.requireDepartures(actor(Role.FINAL_CUSTOMER));
+    }
+
+    @Test
+    void theReservationsAreReadByEveryRoleThatMayRead() {
         for (Role role : List.of(Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST)) ReservationAuthorization.requireRead(actor(role));
-        assertThatThrownBy(() -> ReservationAuthorization.requireRead(actor(Role.FINAL_CUSTOMER)))
-                .isInstanceOf(ReservationAccessDeniedException.class);
         assertThatThrownBy(() -> ReservationAuthorization.requireRead(null)).isInstanceOf(ReservationAccessDeniedException.class);
     }
 

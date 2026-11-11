@@ -5,17 +5,18 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Custo
 import java.util.Set;
 
 // RN-10 (AC-07.13): Administrator and Collaborator quote and create; Manager, Accountant and Analyst read; the departures also
-// go to the Final Customer. TODO(HU-COM-008): the quote, creation and reads of the Final Customer wait for the account link.
+// go to the Final Customer.
+// HU-COM-008: the Final Customer also quotes, creates and reads through the same routes; what they read is their own (own scope).
 public final class ReservationAuthorization {
 
     private ReservationAuthorization() {}
 
     public static void requireWrite(CustomerActor actor) {
-        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR);
+        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.FINAL_CUSTOMER);
     }
 
     public static void requireRead(CustomerActor actor) {
-        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST);
+        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST, Role.FINAL_CUSTOMER);
     }
 
     public static void requireDepartures(CustomerActor actor) {

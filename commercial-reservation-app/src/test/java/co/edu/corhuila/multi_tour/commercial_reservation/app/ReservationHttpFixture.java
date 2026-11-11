@@ -5,6 +5,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Reser
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantRef;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OwnReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TransportRateReader;
@@ -31,7 +32,7 @@ class ReservationHttpFixture {
     @Bean @Primary MemoryReservations memoryReservations() { return new MemoryReservations(); }
 
     static final class MemoryReservations implements ReservationRepository, ReservationQueries, DepartureReader,
-            EnabledPaymentOptions, TransportRateReader {
+            EnabledPaymentOptions, TransportRateReader, OwnReservationQueries {
         final Map<UUID, Reservation> reservations = new HashMap<>();
         final Map<UUID, DepartureState> departures = new HashMap<>();
         Optional<Cents> transportRate = Optional.empty();
@@ -51,6 +52,15 @@ class ReservationHttpFixture {
                             Instant.parse("2026-11-20T13:00:00Z"), found.reservationStatus(), found.paymentStatus(),
                             found.pendingBalance())).toList());
             return new ReservationPage(rows.stream().skip((page - 1L) * limit).limit(limit).toList(), rows.size());
+        }
+        public ReservationPage page(UUID tenant, UUID customer, boolean includeArchived, int page, int limit) {
+            var own = reservations.values().stream().filter(found -> found.customerId().equals(customer)).toList();
+            var all = page(tenant, includeArchived, 1, Integer.MAX_VALUE);
+            var rows = all.items().stream().filter(row -> own.stream().anyMatch(found -> found.reservationId().equals(row.reservationId()))).toList();
+            return new ReservationPage(rows.stream().skip((page - 1L) * limit).limit(limit).toList(), rows.size());
+        }
+        public Optional<Reservation> findByTenantCustomerAndId(UUID tenant, UUID customer, UUID id) {
+            return findByTenantAndId(tenant, id).filter(found -> found.customerId().equals(customer));
         }
         public Optional<Reservation> findByTenantAndId(UUID tenant, UUID id) {
             return Optional.ofNullable(reservations.get(id)).filter(found -> found.tenantId().equals(tenant));
