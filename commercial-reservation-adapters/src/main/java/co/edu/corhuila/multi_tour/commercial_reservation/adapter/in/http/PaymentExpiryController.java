@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentExpiry;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDuePaymentDeadlines;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
