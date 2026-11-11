@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CustomerActor;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
@@ -22,7 +23,7 @@ import java.util.function.Supplier;
 
 // Customers and events share one fake store, so a rollback undoes both (norm 5.3.11).
 final class CustomerFakes implements CustomerRepository, CustomerProfileReader, CustomerRegisteredOutbox, CustomerTransaction,
-        ServiceRiskReader {
+        ServiceRiskReader, CustomerByEmail {
     static final UUID TENANT = new UUID(0, 0xd1), OTHER_TENANT = new UUID(0, 0xd2), ACTOR = new UUID(0, 0xe1);
     static final UUID ORDINARY = new UUID(0, 0xf1), RISKY = new UUID(0, 0xf2), FOREIGN = new UUID(0, 0xf3);
     static final Instant NOW = Instant.parse("2026-10-27T10:00:00Z");
@@ -57,6 +58,12 @@ final class CustomerFakes implements CustomerRepository, CustomerProfileReader, 
         return Optional.ofNullable(customers.get(tenantId + "/" + customerId)).map(found -> Customer.restore(
                 found.customerId(), found.tenantId(), found.documentNumber(), found.fullName(),
                 found.birthDateOrAge(), found.contact(), found.createdAt(), found.termsAcceptedAt(), null));
+    }
+    // A record with an account is the match of a verified e-mail; one without is an unverified match (CA-024).
+    @Override public Optional<EmailMatch> findByTenantAndEmail(UUID tenantId, String normalizedEmail) {
+        return customers.values().stream()
+                .filter(found -> found.tenantId().equals(tenantId) && normalizedEmail.equals(found.contact().email()))
+                .findFirst().map(found -> new EmailMatch(found.customerId(), found.accountId() != null));
     }
     @Override public void append(CustomerRegistered event) {
         if (failOnAppend != null) throw failOnAppend;

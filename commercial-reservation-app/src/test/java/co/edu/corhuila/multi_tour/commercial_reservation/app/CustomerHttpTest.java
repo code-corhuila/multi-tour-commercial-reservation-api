@@ -105,6 +105,24 @@ class CustomerHttpTest {
         assertThat(store.registered).hasSize(1);
     }
 
+    @Test void theEmailOfARecordWithoutAccountIsRefusedWith422NamingTheEmailAndNothingIsStored() throws Exception {
+        exchange(create(body(plainService), "customer-key-11", TestJwtKeys.TENANT, ADMIN), 201);
+        var result = exchange(create(body(plainService), "customer-key-12", TestJwtKeys.TENANT, ADMIN), 422);
+        assertThat(result.getResponse().getContentAsString()).contains("persona.uno@example.invalid");
+        assertThat(store.customers).hasSize(1);
+        assertThat(store.registered).hasSize(1);
+    }
+
+    @Test void theEmailOfAVerifiedAccountAnswersTheExistingCustomerAndRegistersNoSecondOne() throws Exception {
+        var first = CatalogHttpTest.json(exchange(create(body(plainService), "customer-key-13", TestJwtKeys.TENANT, ADMIN), 201));
+        var id = UUID.fromString(first.get("customerId").asText());
+        store.customers.put(id, store.customers.get(id).linkedTo(UUID.randomUUID()));
+        var second = CatalogHttpTest.json(exchange(create(body(plainService), "customer-key-14", TestJwtKeys.TENANT, ADMIN), 201));
+        assertThat(second.get("customerId").asText()).isEqualTo(id.toString());
+        assertThat(store.customers).hasSize(1);
+        assertThat(store.registered).hasSize(1);
+    }
+
     @ParameterizedTest @ValueSource(strings = {"", "short"})
     void aMissingOrShortKeyIsRefusedNamingTheHeader(String key) throws Exception {
         CatalogHttpTest.assertField(exchange(create(body(plainService), key.isEmpty() ? null : key,
