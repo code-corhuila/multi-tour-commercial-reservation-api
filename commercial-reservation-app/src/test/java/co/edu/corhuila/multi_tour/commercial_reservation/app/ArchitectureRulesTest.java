@@ -26,9 +26,7 @@ class ArchitectureRulesTest {
     private static final String CUSTOMERS = ROOT + "application.port.out.CustomerRepository";
 
     // class (simple name, in adapter.in.http) -> the forbidden imports it is still allowed to have
-    private static final Map<String, Set<String>> KNOWN_HTTP_EXCEPTIONS = Map.ofEntries(
-            Map.entry("IdempotentPaymentRegistration", Set.of(KEYS, RESERVATIONS)),
-            Map.entry("IdempotentReservationCreation", Set.of(KEYS, CUSTOMERS)));
+    private static final Map<String, Set<String>> KNOWN_HTTP_EXCEPTIONS = Map.of();
 
     private static final List<String> FORBIDDEN_IN_CORE = List.of("org.springframework.", "java.sql.", "javax.sql.", "com.fasterxml.jackson.",
             "jakarta.", "org.postgresql.", "tools.jackson.");
