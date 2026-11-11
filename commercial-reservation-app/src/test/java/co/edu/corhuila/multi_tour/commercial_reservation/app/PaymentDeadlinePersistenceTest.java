@@ -58,6 +58,24 @@ class PaymentDeadlinePersistenceTest {
         return reservations.findByTenantAndId(fixture.tenant, id).orElseThrow();
     }
 
+    // A second REAL tenant: its own customer, tour, rules, reservation and initial deadline rows, in the same schema.
+    private record Neighbour(ReservationPersistenceFixture fixture, Reservation reservation) {}
+
+    private Neighbour other;
+
+    private Neighbour neighbour() {
+        if (other == null) {
+            var theirs = new ReservationPersistenceFixture();
+            var theirReservations = new JdbcReservationRepository(theirs.jdbc, theirs.cipher, theirs.transactions, new JdbcReservationCreatedOutbox(theirs.jdbc));
+            UUID id = UUID.randomUUID();
+            theirReservations.save(theirs.reservation(id, true));
+            theirs.jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, deadline_kind, due_at) "
+                    + "VALUES (?, ?, ?, 'INITIAL_PAYMENT', ?)", UUID.randomUUID(), theirs.tenant, id, OffsetDateTime.ofInstant(NOW.plusSeconds(3_600), ZoneOffset.UTC));
+            other = new Neighbour(theirs, theirReservations.findByTenantAndId(theirs.tenant, id).orElseThrow());
+        }
+        return other;
+    }
+
     private void deadline(Reservation reservation, String kind, Instant due) {
         fixture.jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, deadline_kind, due_at) "
                 + "VALUES (?, ?, ?, ?, ?)", UUID.randomUUID(), fixture.tenant, reservation.reservationId(), kind,
@@ -77,8 +95,13 @@ class PaymentDeadlinePersistenceTest {
         assertThat(found.extensionGrantedBy()).isEqualTo(fixture.actor);
         assertThat(found.frozen()).isFalse();
         assertThatThrownBy(() -> writer.saveExtension(fixture.tenant, reservation.reservationId(), 1, NOW, fixture.actor)).isInstanceOf(org.springframework.dao.DataAccessException.class);
-        assertThatThrownBy(() -> writer.saveExtension(UUID.randomUUID(), reservation.reservationId(), 1, NOW, fixture.actor))
+        var neighbour = neighbour();
+        assertThatThrownBy(() -> writer.saveExtension(neighbour.fixture.tenant, reservation.reservationId(), 1, NOW, fixture.actor))
                 .isInstanceOf(IllegalStateException.class);
+        assertThat(deadlines.openDeadline(neighbour.fixture.tenant, reservation.reservationId())).isEmpty();
+        writer.saveExtension(neighbour.fixture.tenant, neighbour.reservation.reservationId(), 2, NOW, neighbour.fixture.actor);
+        assertThat(deadlines.openDeadline(fixture.tenant, reservation.reservationId()).orElseThrow().extensionHours()).isEqualTo(24);
+        assertThat(deadlines.openDeadline(neighbour.fixture.tenant, neighbour.reservation.reservationId()).orElseThrow().extensionHours()).isEqualTo(2);
     }
 
     @Test
@@ -108,7 +131,13 @@ class PaymentDeadlinePersistenceTest {
         parameters.save(fixture.tenant, new PaymentParameter(new PaymentParameterValues(PaymentType.DEPOSIT, fixture.service, 24, 12, 3_000, 72, true, true),
                 fixture.actor, "This tour", NOW));
         assertThat(policy.maximumHours(fixture.tenant, reservation)).contains(12);
-        assertThat(policy.maximumHours(UUID.randomUUID(), reservation)).isEmpty();
+        var neighbour = neighbour();
+        assertThat(policy.maximumHours(neighbour.fixture.tenant, reservation)).isEmpty();
+        assertThat(policy.maximumHours(neighbour.fixture.tenant, neighbour.reservation)).isEmpty();
+        new JdbcPaymentParameterRepository(neighbour.fixture.jdbc).save(neighbour.fixture.tenant, new PaymentParameter(
+                new PaymentParameterValues(PaymentType.DEPOSIT, null, 24, 6, 3_000, 72, true, true), neighbour.fixture.actor, "Other tenant", NOW));
+        assertThat(policy.maximumHours(neighbour.fixture.tenant, neighbour.reservation)).contains(6);
+        assertThat(policy.maximumHours(fixture.tenant, reservation)).contains(12);
     }
 
     @Test
@@ -123,7 +152,14 @@ class PaymentDeadlinePersistenceTest {
         assertThat(page.total()).isEqualTo(2);
         assertThat(page.items()).extracting(PaymentFollowup::note).containsExactly("Second call");
         assertThat(followups.page(fixture.tenant, reservation.reservationId(), 2, 1).items()).extracting(PaymentFollowup::note).containsExactly("First call");
-        assertThat(followups.page(UUID.randomUUID(), reservation.reservationId(), 1, 20).total()).isZero();
+        var neighbour = neighbour();
+        assertThat(followups.page(neighbour.fixture.tenant, reservation.reservationId(), 1, 20).total()).isZero();
+        followups.append(new PaymentFollowup(UUID.randomUUID(), neighbour.fixture.tenant, neighbour.reservation.reservationId(), neighbour.fixture.actor,
+                NOW, "Their call"));
+        assertThat(followups.page(neighbour.fixture.tenant, neighbour.reservation.reservationId(), 1, 20).items()).extracting(PaymentFollowup::note)
+                .containsExactly("Their call");
+        assertThat(followups.page(fixture.tenant, neighbour.reservation.reservationId(), 1, 20).total()).isZero();
+        assertThat(followups.page(fixture.tenant, reservation.reservationId(), 1, 20).total()).isEqualTo(2);
     }
 
     @Test
@@ -146,7 +182,10 @@ class PaymentDeadlinePersistenceTest {
         assertThat(row.effectiveDeadline()).isEqualTo(NOW.plusSeconds(86_400));
         assertThat(row.hasProofInValidation()).isFalse();
         assertThat(queries.page(fixture.tenant, DeadlineKind.BALANCE, 1, 20).total()).isZero();
-        assertThat(queries.page(UUID.randomUUID(), null, 1, 20).total()).isZero();
+        var neighbour = neighbour();
+        assertThat(queries.page(neighbour.fixture.tenant, null, 1, 20).total()).isEqualTo(1);
+        assertThat(queries.page(neighbour.fixture.tenant, null, 1, 20).items().get(0).reservationId()).isEqualTo(neighbour.reservation.reservationId());
+        assertThat(queries.page(fixture.tenant, null, 1, 20).total()).isEqualTo(1);
     }
 
     @Test
@@ -154,7 +193,7 @@ class PaymentDeadlinePersistenceTest {
         Reservation reservation = stored();
         var lockedAgain = reservations.lockByTenantAndId(fixture.tenant, reservation.reservationId());
         assertThat(lockedAgain).isPresent();
-        assertThat(reservations.lockByTenantAndId(UUID.randomUUID(), reservation.reservationId())).isEmpty();
+        assertThat(reservations.lockByTenantAndId(neighbour().fixture.tenant, reservation.reservationId())).isEmpty();
         reservation.cancel(CancellationCause.PAYMENT_EXPIRY, null, NOW, 0);
 
         reservations.save(reservation);
@@ -196,7 +235,7 @@ class PaymentDeadlinePersistenceTest {
         followups.append(new PaymentFollowup(id, fixture.tenant, reservation.reservationId(), fixture.actor, NOW, "Replay me"));
 
         assertThat(followups.find(fixture.tenant, id)).map(PaymentFollowup::note).contains("Replay me");
-        assertThat(followups.find(UUID.randomUUID(), id)).isEmpty();
+        assertThat(followups.find(neighbour().fixture.tenant, id)).isEmpty();
         assertThat(followups.find(fixture.tenant, UUID.randomUUID())).isEmpty();
     }
 

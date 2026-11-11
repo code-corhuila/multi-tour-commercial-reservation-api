@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDuePaymentQueries;
@@ -11,6 +12,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredPaymentSettlement;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExpireReservationUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ExpiryVerdict;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
@@ -31,6 +33,8 @@ class PaymentExpiryPersistenceTest {
     private static final Instant NOW = ReservationPersistenceFixture.NOW;
     private ReservationPersistenceFixture fixture;
     private JdbcReservationRepository reservations;
+    private ReservationPersistenceFixture neighbour;
+    private JdbcReservationRepository neighbourReservations;
 
     @BeforeEach
     void connectAsTheApplicationUser() {
@@ -100,7 +104,49 @@ class PaymentExpiryPersistenceTest {
         assertThat(row.effective()).isEqualTo(NOW.plusSeconds(60));
         assertThat(row.deadline().frozen()).isFalse();
         assertThat(queries.page(fixture.tenant, NOW.plusSeconds(10_000), 1, 20).total()).isEqualTo(2);
-        assertThat(queries.page(UUID.randomUUID(), NOW.plusSeconds(10_000), 1, 20).total()).isZero();
         assertThat(future.reservationId()).isNotEqualTo(due.reservationId());
+        UUID theirs = neighbourReservation(NOW.plusSeconds(60));
+        var other = queries.page(neighbour.tenant, NOW.plusSeconds(10_000), 1, 20);
+        assertThat(other.total()).isEqualTo(1);
+        assertThat(other.items().get(0).reservationId()).isEqualTo(theirs);
+        assertThat(queries.page(fixture.tenant, NOW.plusSeconds(10_000), 1, 20).total()).isEqualTo(2);
+    }
+
+    // A second REAL tenant, with its own customer, tour, rules, reservation and deadline rows: the expiry of one never reaches the other.
+    @Test
+    void theExpiryOfOneTenantNeverTouchesTheReservationOfAnotherRealTenant() {
+        Reservation mine = stored(NOW.plusSeconds(60));
+        UUID theirs = neighbourReservation(NOW.plusSeconds(60));
+        var use = expiry(NOW.plusSeconds(120));
+
+        assertThatThrownBy(() -> use.expire(neighbour.tenant, mine.reservationId())).isInstanceOf(ReservationNotFoundException.class);
+        assertThatThrownBy(() -> use.expire(fixture.tenant, theirs)).isInstanceOf(ReservationNotFoundException.class);
+        assertThat(status(fixture, mine.reservationId())).isEqualTo("PENDING_PAYMENT");
+        assertThat(status(neighbour, theirs)).isEqualTo("PENDING_PAYMENT");
+
+        assertThat(use.expire(neighbour.tenant, theirs).expired()).isTrue();
+        assertThat(status(neighbour, theirs)).isEqualTo("CANCELLED");
+        assertThat(status(fixture, mine.reservationId())).isEqualTo("PENDING_PAYMENT");
+        assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event WHERE reservation_id = ? "
+                + "AND event_type = 'ReservationCancelled'", Integer.class, mine.reservationId())).isZero();
+        assertThat(use.expire(fixture.tenant, mine.reservationId()).expired()).isTrue();
+    }
+
+    private UUID neighbourReservation(Instant due) {
+        if (neighbour == null) {
+            neighbour = new ReservationPersistenceFixture();
+            neighbourReservations = new JdbcReservationRepository(neighbour.jdbc, neighbour.cipher, neighbour.transactions,
+                    new JdbcReservationCreatedOutbox(neighbour.jdbc));
+        }
+        UUID id = UUID.randomUUID();
+        neighbourReservations.save(neighbour.reservation(id, true));
+        neighbour.jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, deadline_kind, due_at) "
+                + "VALUES (?, ?, ?, 'INITIAL_PAYMENT', ?)", UUID.randomUUID(), neighbour.tenant, id, OffsetDateTime.ofInstant(due, ZoneOffset.UTC));
+        return id;
+    }
+
+    private static String status(ReservationPersistenceFixture owner, UUID reservationId) {
+        return owner.jdbc.queryForObject("SELECT reservation_status FROM commercial_reservation.reservation WHERE tenant_id = ? AND reservation_id = ?",
+                String.class, owner.tenant, reservationId);
     }
 }

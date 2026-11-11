@@ -29,7 +29,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/commercial-reservation")
 public final class PaymentDeadlineController {
-    public record FollowupRequest(String note) {}
+    // The note is free text about a person: the web layer logs a request body by its toString at DEBUG, so it never prints the note.
+    public record FollowupRequest(String note) {
+        @Override public String toString() { return "FollowupRequest[note=<hidden>]"; }
+    }
 
     public record ExtensionRequest(Integer hours) {}
 
