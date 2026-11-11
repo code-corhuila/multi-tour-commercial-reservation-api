@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAdditionalDiscountRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAuthorizableReasonRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationModifiedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DiscountRuleActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationSnapshot;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RegisterAdditionalDiscount;
@@ -46,9 +48,9 @@ class AdditionalDiscountPersistenceTest {
     private AdditionalDiscountRepository discounts;
     private JdbcAuthorizableReasonRepository reasons;
     private ReservationModifiedOutbox outbox;
-    private final UUID tenant = UUID.randomUUID();
     private final UUID reservation = UUID.randomUUID();
-    private final UUID actor = UUID.randomUUID();
+    private UUID tenant;
+    private UUID actor;
 
     @BeforeEach
     void connectAsTheApplicationUser() {
@@ -62,6 +64,12 @@ class AdditionalDiscountPersistenceTest {
         outbox = new JdbcReservationModifiedOutbox(jdbc, JSON);
         reasons = new JdbcAuthorizableReasonRepository(jdbc, Clock.fixed(NOW, ZoneOffset.UTC));
         assertThat(jdbc.queryForObject("SELECT current_user", String.class)).isEqualTo("commercial_reservation_app");
+        // The discount points to its reservation with a foreign key since the db of HU-COM-007: the reservation must exist.
+        var fixture = new ReservationPersistenceFixture();
+        tenant = fixture.tenant;
+        actor = fixture.actor;
+        new JdbcReservationRepository(jdbc, fixture.cipher, transactions, new JdbcReservationCreatedOutbox(jdbc))
+                .save(fixture.reservation(reservation, true));
     }
 
     @Test
@@ -109,8 +117,8 @@ class AdditionalDiscountPersistenceTest {
         var result = useCase(outbox).register(admin(), new RegisterAdditionalDiscount.Command(reservation, reasonId, 1_000));
 
         assertThat(discounts.existsByReservation(tenant, reservation)).isTrue();
-        var event = jdbc.queryForMap("SELECT * FROM commercial_reservation.outbox_event WHERE reservation_id = ?",
-                reservation);
+        var event = jdbc.queryForMap("SELECT * FROM commercial_reservation.outbox_event WHERE reservation_id = ? "
+                + "AND event_type = 'ReservationModified'", reservation);
         assertThat(event.get("event_type")).isEqualTo("ReservationModified");
         assertThat(event.get("tenant_id")).isEqualTo(tenant);
         assertThat(event.get("actor_id")).isEqualTo(actor);
@@ -139,7 +147,7 @@ class AdditionalDiscountPersistenceTest {
 
         assertThat(discounts.existsByReservation(tenant, reservation)).isFalse();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event "
-                + "WHERE reservation_id = ?", Integer.class, reservation)).isZero();
+                + "WHERE reservation_id = ? AND event_type = 'ReservationModified'", Integer.class, reservation)).isZero();
     }
 
     private RegisterAdditionalDiscountUseCase useCase(ReservationModifiedOutbox events) {
