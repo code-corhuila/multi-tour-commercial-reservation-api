@@ -71,6 +71,31 @@ class PaymentHttpTest extends ReservationHttpBase {
         assertThat(store.reservations.values().iterator().next().attempts()).hasSize(1);
     }
 
+    // The same key with another request is not a replay (AC-09.12): answering the first payment would tell the caller it registered
+    // an amount or a medium it did not send.
+    @Test void theSameKeyWithAnotherAmountIsARuleViolationAndStoresNothingMore() throws Exception {
+        String id = reservation();
+        exchange(transfer(id, 90_000, PNG, "payment-key-0020", ADMIN), 201);
+        int events = payments.events.size();
+
+        var refused = CatalogHttpTest.json(exchange(transfer(id, 100_000, PNG, "payment-key-0020", ADMIN), 422));
+
+        assertThat(refused.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(refused.get("message").asText()).contains("Idempotency-Key");
+        assertThat(payments.events).hasSize(events);
+        assertThat(store.reservations.values().iterator().next().attempts()).hasSize(1);
+    }
+
+    @Test void theSameKeyWithAnotherMediumIsARuleViolationAndRegistersNoCash() throws Exception {
+        String id = reservation();
+        exchange(transfer(id, 90_000, PNG, "payment-key-0021", ADMIN), 201);
+
+        exchange(cash(id, Map.of("paymentMethod", "CASH", "amountCents", 90_000L), "payment-key-0021", ADMIN), 422);
+
+        assertThat(payments.income).isEmpty();
+        assertThat(store.reservations.values().iterator().next().attempts()).hasSize(1);
+    }
+
     @Test void cashIsMoneyReceivedAtOnceAndConfirmsTheReservationWhenTheDepositIsMet() throws Exception {
         String id = reservation();
 

@@ -112,6 +112,9 @@ final class PaymentFakes implements ReservationRepository, PaymentDeadlineReader
     @Override
     public void save(UUID tenantId, UUID attemptId, ProofFile proof) {
         requireTransaction();
+        // The proof table has a foreign key to the attempt, so the attempt has to be stored first.
+        if (saved.stream().noneMatch(reservation -> reservation.attempts().stream().anyMatch(row -> row.attemptId().equals(attemptId))))
+            throw new IllegalStateException("the attempt must be stored before its proof");
         proofs.put(attemptId, proof);
     }
 
