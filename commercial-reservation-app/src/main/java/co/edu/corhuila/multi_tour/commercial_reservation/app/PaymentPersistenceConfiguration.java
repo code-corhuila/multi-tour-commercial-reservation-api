@@ -14,7 +14,11 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityHolder;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.treatment.DeferredPaymentSettlement;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CreditBalanceRecording;
+import java.time.Clock;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
@@ -136,10 +140,14 @@ class PaymentPersistenceConfiguration {
         return new UnverifiedCashSession();
     }
 
-    // HU-COM-016 and HU-COM-017 are not built (declared debts DD-5 and DD-9); the cancellation for non-payment is real above. The amounts stay on the decided attempt.
+    // HU-COM-017: the credit balance is real (rows of the db, available value derived); the excess of a validated payment is recorded as one credit per attempt.
     @Bean
-    CreditBalanceRecorder deferredPaymentSettlement() {
-        DeferredPaymentSettlement standIn = new DeferredPaymentSettlement();
-        return standIn::recordExcess; // only the credit balance stays a stand-in: the treatment of a value is the real FinancialDecisionOpening
+    JdbcCreditBalanceRepository creditBalanceRepository(JdbcTemplate jdbc) {
+        return new JdbcCreditBalanceRepository(jdbc);
+    }
+
+    @Bean
+    CreditBalanceRecorder creditBalanceRecorder(CreditBalanceRepository credits, IdGenerator ids, Clock clock) {
+        return new CreditBalanceRecording(credits, ids, clock);
     }
 }
