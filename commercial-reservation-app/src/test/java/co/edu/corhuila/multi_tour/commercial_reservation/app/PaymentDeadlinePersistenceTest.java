@@ -3,6 +3,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialWaitPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineWriter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentEventOutbox;
@@ -196,5 +198,27 @@ class PaymentDeadlinePersistenceTest {
         assertThat(followups.find(fixture.tenant, id)).map(PaymentFollowup::note).contains("Replay me");
         assertThat(followups.find(UUID.randomUUID(), id)).isEmpty();
         assertThat(followups.find(fixture.tenant, UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void theInitialWaitIsTheServiceRowElseTheTenantRowAndTheInitialDeadlineIsWrittenOnce() {
+        Reservation reservation = stored();
+        var waits = new JdbcInitialWaitPolicy(fixture.jdbc);
+        var parameters = new JdbcPaymentParameterRepository(fixture.jdbc);
+        assertThat(waits.initialWaitHours(fixture.tenant, reservation)).isEmpty();
+        parameters.save(fixture.tenant, new PaymentParameter(new PaymentParameterValues(PaymentType.DEPOSIT, null, 24, 48, 3_000, 72, true, true),
+                fixture.actor, "Tenant level", NOW));
+        assertThat(waits.initialWaitHours(fixture.tenant, reservation)).contains(24);
+        parameters.save(fixture.tenant, new PaymentParameter(new PaymentParameterValues(PaymentType.DEPOSIT, fixture.service, 6, 12, 3_000, 72, true, true),
+                fixture.actor, "This tour", NOW));
+        assertThat(waits.initialWaitHours(fixture.tenant, reservation)).contains(6);
+
+        var recorder = new JdbcInitialDeadlineRecorder(fixture.jdbc);
+        recorder.record(fixture.tenant, reservation.reservationId(), NOW.plusSeconds(6 * 3_600));
+
+        var found = deadlines.openDeadline(fixture.tenant, reservation.reservationId()).orElseThrow();
+        assertThat(found.kind()).isEqualTo(DeadlineKind.INITIAL_PAYMENT);
+        assertThat(found.dueAt()).isEqualTo(NOW.plusSeconds(6 * 3_600));
+        assertThatThrownBy(() -> recorder.record(fixture.tenant, reservation.reservationId(), NOW)).isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
 }

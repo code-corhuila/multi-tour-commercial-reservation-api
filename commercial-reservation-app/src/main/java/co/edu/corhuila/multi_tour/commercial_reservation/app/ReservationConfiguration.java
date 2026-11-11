@@ -21,6 +21,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialWaitPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OwnReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
@@ -71,9 +73,10 @@ class ReservationConfiguration {
     CreateReservation createReservation(@Lazy TenantDirectory tenants, CustomerRepository customers, @Lazy CustomerByAccount accounts,
             CatalogServiceRepository catalog, ReservableDeparture departures, ReservationPricing pricing,
             @Lazy EnabledPaymentOptions options, @Lazy ReservationRepository reservations, IdGenerator ids, Clock clock,
-            CustomerRegisteredOutbox customerEvents, CustomerByEmail emails) {
+            CustomerRegisteredOutbox customerEvents, CustomerByEmail emails, @Lazy InitialWaitPolicy waits,
+            @Lazy InitialDeadlineRecorder initialDeadlines) {
         return new CreateReservationUseCase(tenants, customers, accounts, catalog, departures, pricing, options, reservations, ids, clock,
-                customerEvents, emails);
+                customerEvents, emails, waits, initialDeadlines);
     }
 
     @Bean
