@@ -27,15 +27,16 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
+import java.util.Set;
 
 // The core of the creation (plan D-06): every check runs before the only write, so a refusal stores nothing.
 // The tenant must be active (RN-16) and the group is checked as one (RN-08). Still out: the transaction and the outbox (T-08).
 public class CreateReservationUseCase implements CreateReservation {
 
-    private final TenantDirectory tenants;
+    private final ActiveTenant activeTenant;
     private final CustomerRepository customers;
     private final CustomerByAccount accounts;
     private final CatalogServiceRepository catalog;
@@ -66,7 +67,7 @@ public class CreateReservationUseCase implements CreateReservation {
             ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
             Clock clock, CustomerRegisteredOutbox customerEvents, CustomerByEmail emails) {
         this.holders = customerEvents == null ? null : new ReservationHolder(customers, customerEvents, emails, clock);
-        this.tenants = tenants;
+        this.activeTenant = new ActiveTenant(tenants);
         this.customers = customers;
         this.accounts = accounts;
         this.catalog = catalog;
@@ -81,7 +82,7 @@ public class CreateReservationUseCase implements CreateReservation {
     @Override
     public Reservation create(CreateReservationCommand command) {
         requireMandatoryData(command);
-        requireActiveTenant(command.tenantId());
+        activeTenant.require(command.tenantId());
         PaymentType type = PaymentType.fromCode(command.paymentType());
         PaymentMethod method = PaymentMethod.fromCode(command.paymentMethod());
         ReservationHolder.Lead registration = command.holder() == null ? null : prepareHolder(command);
@@ -152,18 +153,13 @@ public class CreateReservationUseCase implements CreateReservation {
         if (!missing.isEmpty()) throw new IncompleteLeadCustomerException(missing);
     }
 
-    // AC-07.20 (RN-16): an inactive or unknown tenant creates nothing; an unknown one is refused too, never assumed active.
-    private void requireActiveTenant(UUID tenantId) {
-        boolean active = tenantId != null && tenants.resolve(tenantId.toString())
-                .filter(found -> tenantId.equals(found.tenantId())).map(TenantRef::active).orElse(false);
-        if (!active) throw new BusinessRuleViolation("the tenant is not active");
-    }
-
     // AC-07.11 (RN-08): no document twice, the lead's included and compared normalized; the extra data of a high-risk tour.
     private static void requireValidGroup(Customer lead, CatalogService tour, List<Companion> companions) {
+        Set<String> seen = new HashSet<>();
+        seen.add(lead.documentNumber().comparable());
         for (int i = 0; i < companions.size(); i++) {
             Companion companion = companions.get(i);
-            if (companion.documentNumber().equals(lead.documentNumber())) {
+            if (!seen.add(companion.documentNumber().comparable())) {
                 throw new BusinessRuleViolation("a document is already in the group");
             }
             if (tour.terms().highRisk()) {

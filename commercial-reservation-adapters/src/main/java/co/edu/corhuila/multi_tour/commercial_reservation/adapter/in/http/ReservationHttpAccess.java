@@ -10,7 +10,8 @@ public final class ReservationHttpAccess implements HandlerInterceptor {
     @Override public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         // Permission precedes body binding, so a refused caller learns no validation details (RN-10).
         var actor = CustomerHttpAccess.actor((AuthenticatedPrincipal) request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE));
-        if ("POST".equals(request.getMethod())) ReservationAuthorization.requireWrite(actor);
+        if ("POST".equals(request.getMethod()) && request.getRequestURI().endsWith("/reservation-quotes")) ReservationAuthorization.requireQuote(actor);
+        else if ("POST".equals(request.getMethod())) ReservationAuthorization.requireWrite(actor);
         else if (request.getRequestURI().endsWith("/departures")) ReservationAuthorization.requireDepartures(actor);
         else ReservationAuthorization.requireRead(actor);
         return true;
