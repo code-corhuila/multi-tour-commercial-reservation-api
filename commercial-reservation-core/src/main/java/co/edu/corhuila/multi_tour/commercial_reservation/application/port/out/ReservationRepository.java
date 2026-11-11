@@ -22,4 +22,11 @@ public interface ReservationRepository {
     default java.util.Optional<Reservation> lockByTenantAndId(java.util.UUID tenantId, java.util.UUID reservationId) {
         return findByTenantAndId(tenantId, reservationId);
     }
+
+    // The reservation that holds a payment attempt, under the same row lock, for the decision of a proof (HU-COM-010 RNF-06): two decisions
+    // on one proof, or on two proofs of one reservation, queue on the row and the second reads what the first committed. Run it inside the
+    // transaction of the use case; the attempt state to decide on is the one of the returned reservation, never one read before the lock.
+    default java.util.Optional<Reservation> lockByTenantAndAttempt(java.util.UUID tenantId, java.util.UUID attemptId) {
+        return findByTenantAndAttempt(tenantId, attemptId).flatMap(found -> lockByTenantAndId(tenantId, found.reservationId()));
+    }
 }

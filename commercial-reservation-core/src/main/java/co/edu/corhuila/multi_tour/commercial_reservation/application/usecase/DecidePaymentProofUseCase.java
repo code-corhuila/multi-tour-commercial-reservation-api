@@ -77,12 +77,12 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
     DecidedProof recordApproval(UUID tenantId, UUID reviewer, UUID attemptId, Long verifiedAmountCents, String reason) {
         if (verifiedAmountCents == null) throw new MissingPaymentDataException(List.of("verifiedAmountCents"));
         Cents verified = Cents.of("verifiedAmountCents", verifiedAmountCents);
-        Reservation reservation = load(tenantId, attemptId);
-        Instant now = Instant.now(clock);
-        Optional<PaymentDeadline> deadline = deadlines.openDeadline(tenantId, reservation.reservationId());
-        boolean expired = expired(deadline, reservation, now);
-        Cents minimum = minimumFor(reservation);
         return transaction.inTransaction(() -> {
+            Reservation reservation = lock(tenantId, attemptId);
+            Instant now = Instant.now(clock);
+            Optional<PaymentDeadline> deadline = deadlines.openDeadline(tenantId, reservation.reservationId());
+            boolean expired = expired(deadline, reservation, now);
+            Cents minimum = minimumFor(reservation);
             ProofDecision decision = reservation.approve(attemptId, verified, reason, minimum, reviewer, now);
             if (decision.treatment().amount() > 0) {
                 cancelledValues.record(tenantId, reservation.reservationId(), decision.treatment(), Origin.APPROVED_AFTER_CANCELLATION);
@@ -105,10 +105,10 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
     public DecidedProof reject(RejectProofCommand command) {
         PaymentProofAuthorization.requireDecide(command.actor());
         PaymentActor actor = command.actor();
-        Reservation reservation = load(actor, command.attemptId());
-        Instant now = Instant.now(clock);
-        boolean expired = expired(deadlines.openDeadline(actor.tenantId(), reservation.reservationId()), reservation, now);
         return transaction.inTransaction(() -> {
+            Reservation reservation = lock(actor.tenantId(), command.attemptId());
+            Instant now = Instant.now(clock);
+            boolean expired = expired(deadlines.openDeadline(actor.tenantId(), reservation.reservationId()), reservation, now);
             var rejected = reservation.reject(command.attemptId(), command.reason(), actor.actorId(), now);
             if (expired) releaseSeat(reservation, CapacityReleased.CANCELLED_FOR_NON_PAYMENT, now);
             else if (reservation.shouldReleaseSeatAfterRejection()) releaseSeat(reservation, CapacityReleased.FIRST_PAYMENT_REJECTED, now);
@@ -127,13 +127,10 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
         }).orElse(false);
     }
 
-    // Another tenant's proof looks missing (AC-10.17).
-    private Reservation load(PaymentActor actor, UUID attemptId) {
-        return load(actor.tenantId(), attemptId);
-    }
-
-    private Reservation load(UUID tenantId, UUID attemptId) {
-        return reservations.findByTenantAndAttempt(tenantId, attemptId)
+    // Another tenant's proof looks missing (AC-10.17). The row lock of the reservation is taken before the state of the proof is read for the
+    // decision (RNF-06): a second decision waits here and then finds the proof already decided, which the aggregate refuses.
+    private Reservation lock(UUID tenantId, UUID attemptId) {
+        return reservations.lockByTenantAndAttempt(tenantId, attemptId)
                 .filter(found -> found.tenantId().equals(tenantId))
                 .orElseThrow(() -> new PaymentProofNotFoundException(attemptId));
     }
