@@ -95,6 +95,10 @@ public final class JdbcReservationReader implements ReservationReader, CreatedRe
                             row.getObject("created_at", OffsetDateTime.class).toInstant(), companionsOf.getOrDefault(reservationId, List.of())));
                     return reservationId;
                 }, tenantId, ids);
+        // The additional discount, at most one per reservation, lowers the final value the aggregate carries (the fixed lines do not hold it).
+        jdbc.query("SELECT reservation_id, amount_cents FROM commercial_reservation.reservation_additional_discount "
+                + "WHERE tenant_id = ? AND reservation_id = ANY (?::uuid[])", (row, index) -> found.get(row.getObject("reservation_id", UUID.class))
+                        .withAdditionalDiscount(new Cents(row.getLong("amount_cents"))), tenantId, ids);
         return found;
     }
 
