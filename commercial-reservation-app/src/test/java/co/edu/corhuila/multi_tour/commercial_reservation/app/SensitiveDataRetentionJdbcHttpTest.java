@@ -197,6 +197,28 @@ class SensitiveDataRetentionJdbcHttpTest {
         // Whether the second deletion must emit its own event is not decided (open question to the Project Lead), so the number of events is not asserted.
     }
 
+    // AC-19.14 (T-04): after the deletion, reading the sensitive data of the customer gives the ordinary answer of a customer with no risk data on file (HU-COM-005), the same
+    // one a customer that never had any gets, and the read is still audited.
+    @Test void readingAfterTheDeletionAnswersNoneOnFile() throws Exception {
+        UUID ordinary = UUID.randomUUID();
+        customers.save(Customer.registerLead(ordinary, tenant, "CC67890", "Persona Ficticia Dos", BirthDateOrAge.ofAge(31), new ContactInfo("dos@example.invalid", "3000000001"),
+                true, TestJwtKeys.NOW));
+        String reader = CustomerHttpTest.token(tenant.toString(), ADMIN, List.of(co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerAuthorization.SENSITIVE_DATA_PERMISSION));
+        var expected = mvc.perform(get(BASE + "/customers/" + ordinary + "/sensitive-data").param("reason", "motivo ficticio").header("Authorization", "Bearer " + reader)
+                .header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn().getResponse();
+
+        exchange(delete(tenant, first, "delete-key-0014"), service(), 200);
+        assertThat(sensitiveRows()).isZero();
+        long audited = jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event WHERE customer_id = ? AND event_type = 'SensitiveDataAccessed'", Long.class, customer);
+        var after = mvc.perform(get(BASE + "/customers/" + customer + "/sensitive-data").param("reason", "motivo ficticio").header("Authorization", "Bearer " + reader)
+                .header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn().getResponse();
+
+        assertThat(after.getStatus()).isEqualTo(expected.getStatus());
+        assertThat(after.getContentAsString()).doesNotContain("emergencyInfo", "highRiskData", "bloodType");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.outbox_event WHERE customer_id = ? AND event_type = 'SensitiveDataAccessed'", Long.class, customer))
+                .isEqualTo(audited + 1);
+    }
+
     int sensitiveRows() {
         return jdbc.queryForObject("SELECT (SELECT count(*) FROM commercial_reservation.reservation_companion_sensitive_data WHERE tenant_id = ?) + "
                 + "(SELECT count(*) FROM commercial_reservation.customer_sensitive_data WHERE tenant_id = ?)", Integer.class, tenant, tenant);
