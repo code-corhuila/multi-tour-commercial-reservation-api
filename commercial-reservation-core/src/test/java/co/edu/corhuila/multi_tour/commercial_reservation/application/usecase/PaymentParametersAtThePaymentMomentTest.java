@@ -51,7 +51,7 @@ class PaymentParametersAtThePaymentMomentTest {
         }
     };
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-    private final ManagePaymentParametersUseCase manage = new ManagePaymentParametersUseCase(repository, fakes, clock);
+    private final ManagePaymentParametersUseCase manage = new ManagePaymentParametersUseCase(repository, fakes, change -> { }, clock);
     // The two readers of the registration, answering from the rows as they are when the payment is registered.
     private final PaymentConditionReader conditions = (tenant, reservation) -> rows.stream()
             .filter(row -> row.values().paymentType() == PaymentType.DEPOSIT)
