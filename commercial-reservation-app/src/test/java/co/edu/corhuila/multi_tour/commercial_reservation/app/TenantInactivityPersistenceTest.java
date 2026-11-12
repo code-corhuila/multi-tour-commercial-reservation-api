@@ -7,6 +7,11 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantDeadlines;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantDecisions;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantEpisodes;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReschedulingQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReschedulingRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProposalAnswer;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReschedulingEpisode;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcFinancialDecisionRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKind;
@@ -53,7 +58,7 @@ class TenantInactivityPersistenceTest {
         b = new ReservationPersistenceFixture();
         var jdbc = a.jdbc;
         suspensions = new JdbcTenantSuspensions(jdbc);
-        var effects = new TenantInactivityUseCase(suspensions, new JdbcTenantDeadlines(jdbc), new JdbcTenantDecisions(jdbc), new UuidGenerator());
+        var effects = new TenantInactivityUseCase(suspensions, new JdbcTenantDeadlines(jdbc), new JdbcTenantDecisions(jdbc), new JdbcTenantEpisodes(jdbc), new UuidGenerator());
         apply = new ApplyTenantEventUseCase(new JdbcTenantStatusStore(jdbc), new JdbcProcessedEvents(jdbc), new JdbcTenantEventTransaction(a.transactions), effects);
         reservationA = reservation(a);
         reservationB = reservation(b);
@@ -155,5 +160,67 @@ class TenantInactivityPersistenceTest {
         var queries = new JdbcRefundQueries(a.jdbc);
         assertThat(queries.dueDecisions(a.tenant, back.plus(Duration.ofHours(19)), 1, 50).items()).as("not due before the shifted instant").isEmpty();
         assertThat(queries.dueDecisions(a.tenant, back.plus(Duration.ofHours(20)), 1, 50).items()).extracting(FinancialDecision::id).containsExactly(mine.id());
+    }
+
+    private ReschedulingEpisode proposed(ReservationPersistenceFixture fixture, UUID reservation, Instant cancelledAt, Instant notifiedAt) {
+        return ReschedulingEpisode.open(UUID.randomUUID(), fixture.tenant, reservation, UUID.randomUUID(), cancelledAt, cancelledAt)
+                .propose(UUID.randomUUID(), UUID.randomUUID(), 2, UUID.randomUUID(), notifiedAt, T0.plus(Duration.ofDays(40)));
+    }
+
+    // AC-18.13, AC-20.2, AC-20.3, AC-20.6, AC-20.15: the clocks of an episode with a proposal pending freeze together with the tenant and resume with what remained; the minutes it was frozen
+    // move its 96-hour limit (the due list of job 5 reads them), an outside answer closes it while frozen, and the episode of another tenant is never touched.
+    @Test
+    void theInactivationFreezesTheClocksOfAnEpisodeWithAProposalPendingAndTheReactivationResumesThemWithWhatRemained() {
+        var episodesA = new JdbcReschedulingRepository(a.jdbc);
+        Instant cancelled = T0.minus(Duration.ofHours(12)), notified = T0.minus(Duration.ofHours(10));
+        ReschedulingEpisode mine = proposed(a, reservationA, cancelled, notified);
+        ReschedulingEpisode other = proposed(b, reservationB, cancelled, notified);
+        episodesA.save(mine);
+        new JdbcReschedulingRepository(b.jdbc).save(other);
+
+        apply.apply(event(TenantEventType.TENANT_INACTIVATED, a.tenant, T0, null));
+
+        ReschedulingEpisode frozen = episodesA.find(a.tenant, mine.id()).orElseThrow();
+        assertThat(frozen.frozenAt()).isEqualTo(T0);
+        assertThat(frozen.remainingEpisodeMinutes()).isEqualTo(Duration.between(T0, mine.episodeLimit()).toMinutes());
+        assertThat(frozen.pendingProposal().orElseThrow().remainingResponseMinutes()).isEqualTo(Duration.between(T0, mine.pendingProposal().orElseThrow().responseDeadlineAt()).toMinutes());
+        assertThat(new JdbcReschedulingRepository(b.jdbc).find(b.tenant, other.id()).orElseThrow().isFrozen()).as("the other tenant is never touched").isFalse();
+        var queries = new JdbcReschedulingQueries(a.jdbc);
+        assertThat(dueOf(queries, T0.plus(Duration.ofDays(30)))).as("a frozen episode is never due").isEmpty();
+        Instant back = T0.plus(Duration.ofHours(30));
+
+        apply.apply(event(TenantEventType.TENANT_REACTIVATED, a.tenant, back, null));
+
+        ReschedulingEpisode resumed = episodesA.find(a.tenant, mine.id()).orElseThrow();
+        assertThat(resumed.isFrozen()).isFalse();
+        assertThat(resumed.frozen()).isEqualTo(Duration.ofHours(30));
+        assertThat(resumed.episodeLimit()).isEqualTo(mine.episodeLimit().plus(Duration.ofHours(30)));
+        assertThat(resumed.pendingProposal().orElseThrow().responseDeadlineAt()).isEqualTo(mine.pendingProposal().orElseThrow().responseDeadlineAt().plus(Duration.ofHours(30)));
+        assertThat(dueOf(queries, mine.pendingProposal().orElseThrow().responseDeadlineAt().plus(Duration.ofHours(29)))).isEmpty();
+        assertThat(dueOf(queries, mine.pendingProposal().orElseThrow().responseDeadlineAt().plus(Duration.ofHours(30)))).singleElement()
+                .satisfies(due -> assertThat(due.episodeId()).isEqualTo(mine.id()));
+    }
+
+    @Test
+    void anOutsideAnswerClosesAnEpisodeFrozenByTheInactivationAndLeavesNoFreezeBehind() {
+        var episodesA = new JdbcReschedulingRepository(a.jdbc);
+        Instant cancelled = T0.minus(Duration.ofHours(12)), notified = T0.minus(Duration.ofHours(10));
+        ReschedulingEpisode mine = proposed(a, reservationA, cancelled, notified);
+        episodesA.save(mine);
+        apply.apply(event(TenantEventType.TENANT_INACTIVATED, a.tenant, T0, null));
+        Instant now = T0.plus(Duration.ofDays(5));
+
+        ReschedulingEpisode frozen = episodesA.find(a.tenant, mine.id()).orElseThrow();
+        episodesA.save(frozen.answer(ProposalAnswer.outside(true, UUID.randomUUID(), "PHONE", "Agreed by phone", T0.minus(Duration.ofHours(1))), now));
+
+        ReschedulingEpisode closed = episodesA.find(a.tenant, mine.id()).orElseThrow();
+        assertThat(closed.state().name()).isEqualTo("RESCHEDULED");
+        assertThat(closed.isFrozen()).isFalse();
+        assertThat(closed.proposals().get(0).remainingResponseMinutes()).isNull();
+    }
+
+    // The due list of job 5 is across tenants: only the episodes of tenant A are judged here.
+    private java.util.List<co.edu.corhuila.multi_tour.commercial_reservation.application.model.DueRescheduling> dueOf(JdbcReschedulingQueries queries, Instant at) {
+        return queries.due(at, 50).stream().filter(d -> d.tenantId().equals(a.tenant)).toList();
     }
 }
