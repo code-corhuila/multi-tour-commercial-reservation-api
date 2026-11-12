@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentDeadlineWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentDeadlineWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentDeadlineController;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExtendPaymentDeadlineUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetPaymentDeadlineUseCase;
@@ -16,15 +17,15 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentExtensionPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentFollowupRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PendingPaymentQueries;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentExpiry;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentExpiry;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentExpiryController;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExpireReservationUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListDuePaymentDeadlinesUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExpireReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDuePaymentDeadlines;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentParameterChange;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentRegistration;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentPaymentParameterChange;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentPaymentRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentProofDecisionController;
@@ -114,8 +115,8 @@ class PaymentConfiguration {
 
     @Bean
     IdempotentPaymentRegistration idempotentPaymentRegistration(RegisterTransfer transfers, RegisterCashPayment cash,
-            @Lazy ReservationRepository reservations, IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentPaymentRegistration(transfers, cash, reservations, keys, new TransactionTemplate(manager));
+            @Lazy ReservationRepository reservations, IdempotentWrites writes) {
+        return new IdempotentPaymentRegistration(transfers, cash, reservations, writes);
     }
 
     @Bean
@@ -147,9 +148,8 @@ class PaymentConfiguration {
     }
 
     @Bean
-    IdempotentPaymentParameterChange idempotentPaymentParameterChange(ManagePaymentParameters parameters, IdempotencyKeys keys,
-            PlatformTransactionManager manager) {
-        return new IdempotentPaymentParameterChange(parameters, keys, new TransactionTemplate(manager));
+    IdempotentPaymentParameterChange idempotentPaymentParameterChange(ManagePaymentParameters parameters, IdempotentWrites writes) {
+        return new IdempotentPaymentParameterChange(parameters, writes);
     }
 
     @Bean
@@ -238,8 +238,8 @@ class PaymentConfiguration {
 
     @Bean
     IdempotentDeadlineWrites idempotentDeadlineWrites(RecordPaymentFollowup followups, ExtendPaymentDeadline extensions,
-            GetPaymentDeadline reads, @Lazy PaymentFollowupRepository history, IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentDeadlineWrites(followups, extensions, reads, history, keys, new TransactionTemplate(manager));
+            GetPaymentDeadline reads, @Lazy PaymentFollowupRepository history, IdempotentWrites writes) {
+        return new IdempotentDeadlineWrites(followups, extensions, reads, history, writes);
     }
 
     @Bean
@@ -264,8 +264,8 @@ class PaymentConfiguration {
     }
 
     @Bean
-    IdempotentExpiry idempotentExpiry(ExpireReservation expiry, IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentExpiry(expiry, keys, new TransactionTemplate(manager));
+    IdempotentExpiry idempotentExpiry(ExpireReservation expiry, IdempotentWrites writes) {
+        return new IdempotentExpiry(expiry, writes);
     }
 
     @Bean

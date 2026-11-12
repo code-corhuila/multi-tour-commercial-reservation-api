@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CancelReservationCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCancellationRecord;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.QuoteCancellation;
