@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.port.in;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ChangePaymentParametersCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentParameterOption;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParameter;
 import java.util.List;
 
@@ -9,6 +10,9 @@ import java.util.List;
 public interface ManagePaymentParameters {
 
     List<PaymentParameter> read(PaymentActor actor);
+
+    // The reduced projection that the Final Customer may read before the reservation exists (PDR 1.9, AC-RS.4); every role reads it.
+    List<PaymentParameterOption> readOptions(PaymentActor actor);
 
     List<PaymentParameter> change(ChangePaymentParametersCommand command);
 }

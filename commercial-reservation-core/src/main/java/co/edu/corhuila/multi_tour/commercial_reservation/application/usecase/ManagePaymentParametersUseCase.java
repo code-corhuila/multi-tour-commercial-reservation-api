@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ChangePaymentParametersCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentParameterOption;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManagePaymentParameters;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
@@ -14,7 +15,7 @@ import java.util.List;
 import java.util.Set;
 
 // D-10: the values are bounded and a change carries a reason and its author. The read roles derive from Consult reservations
-// (PROPOSED, the matrix has no payment-read row); the Final Customer never reads them. Nothing here touches a reservation.
+// (PROPOSED, the matrix has no payment-read row); the Final Customer reads only the reduced options. Nothing here touches a reservation.
 public class ManagePaymentParametersUseCase implements ManagePaymentParameters {
 
     private static final Set<Role> READERS = Set.of(Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER,
@@ -34,6 +35,14 @@ public class ManagePaymentParametersUseCase implements ManagePaymentParameters {
     public List<PaymentParameter> read(PaymentActor actor) {
         if (!READERS.contains(actor.role())) throw new PaymentAccessDeniedException();
         return parameters.findByTenant(actor.tenantId());
+    }
+
+    @Override
+    public List<PaymentParameterOption> readOptions(PaymentActor actor) {
+        PaymentAuthorization.requireReadParameters(actor);
+        return parameters.findByTenant(actor.tenantId()).stream().map(PaymentParameter::values)
+                .map(values -> new PaymentParameterOption(values.paymentType(), values.serviceId(), values.transferEnabled(), values.cashEnabled()))
+                .toList();
     }
 
     @Override
