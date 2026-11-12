@@ -3,8 +3,9 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RetentionInternalController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRetentionDeletions;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRetentionEventOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationClosingReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRetentionFactsReader;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.retention.DeferredReservationClosing;
+
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationClosingReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RetentionDeletions;
@@ -20,8 +21,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-// HU-COM-019: the readers that decide the retention anchor. The facts are real (the local mirror, the reservation and its decisions); the closing of a cancelled
-// reservation is a documented stand-in (declared debt DD-2) until HU-COM-016 and HU-COM-017 record it.
+// HU-COM-019: the readers that decide the retention anchor. The facts and the closing of a cancelled reservation are real (the local mirror, the reservation, its
+// decisions, refunds and credit balances).
 @Configuration
 class RetentionConfiguration {
 
@@ -31,8 +32,8 @@ class RetentionConfiguration {
     }
 
     @Bean
-    ReservationClosingReader reservationClosingReader() {
-        return new DeferredReservationClosing();
+    ReservationClosingReader reservationClosingReader(JdbcTemplate jdbc) {
+        return new JdbcReservationClosingReader(jdbc);
     }
 
     @Bean

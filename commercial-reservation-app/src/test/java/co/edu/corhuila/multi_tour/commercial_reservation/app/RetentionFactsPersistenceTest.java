@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRetentionFactsReader;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.retention.DeferredReservationClosing;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RetentionFacts;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationStatus;
@@ -19,8 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 // T-02 of HU-COM-019 (-api): AC-19.2; plan D-03. The facts that decide the anchor are read from the departure mirror, the reservation and its decisions, scoped to the
-// tenant; a reservation whose departure has no end on the mirror reads as unknown facts, never as an error; the closing of HU-COM-016 and HU-COM-017 answers empty
-// until those stories give it (declared debt DD-2). Every value is invented.
+// tenant; a reservation whose departure has no end on the mirror reads as unknown facts, never as an error; the closing is read in
+// ReservationClosingPersistenceTest. Every value is invented.
 @EnabledIfEnvironmentVariable(named = "TEST_DATABASE_URL", matches = ".+")
 class RetentionFactsPersistenceTest {
     private static final Instant ESTIMATED_END = Instant.parse("2026-03-10T15:00:00Z");
@@ -92,10 +91,5 @@ class RetentionFactsPersistenceTest {
         assertThat(facts.factsOf(fixture.tenant, reservation).orElseThrow().zone()).isEqualTo(ZoneId.of("America/Lima"));
         assertThat(facts.factsOf(UUID.randomUUID(), reservation)).isEmpty();
         assertThat(facts.factsOf(fixture.tenant, UUID.randomUUID())).isEmpty();
-    }
-
-    @Test
-    void theClosingAnswersEmptyUntilTheCreditAndRefundStoriesGiveIt() {
-        assertThat(new DeferredReservationClosing().closingOf(fixture.tenant, reservation)).isEmpty();
     }
 }
