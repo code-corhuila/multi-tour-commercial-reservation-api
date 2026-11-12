@@ -10,10 +10,12 @@ public final class EconomicCancellationPolicy {
     }
 
     public static boolean allows(DepartureState departure, boolean tenantSuspended, Instant now) {
-        return true;
+        if (!tenantSuspended) return true;
+        boolean reached = departure.startsAt() != null && !now.isBefore(departure.startsAt());
+        return departure.status() != DepartureStatus.CANCELLED && !reached;
     }
 
     public static CancellationCause causeFor(DepartureState departure, boolean tenantSuspended, Instant now) {
-        return CancellationCause.PAYMENT_EXPIRY;
+        return allows(departure, tenantSuspended, now) ? CancellationCause.PAYMENT_EXPIRY : CancellationCause.NOT_ATTRIBUTABLE_TO_CUSTOMER;
     }
 }
