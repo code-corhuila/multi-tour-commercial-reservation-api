@@ -6,7 +6,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CreditW
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCreditWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceQueries;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditApplicationReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceApplications;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCreditBalances;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadCreditBalances;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceQueries;
