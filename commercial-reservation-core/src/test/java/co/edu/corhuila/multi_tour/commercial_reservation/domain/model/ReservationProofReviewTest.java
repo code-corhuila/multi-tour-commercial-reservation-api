@@ -261,4 +261,25 @@ class ReservationProofReviewTest {
         assertThat(attempt(reservation, FIRST).reviewOverdue(farLater)).isFalse();
         assertThat(attempt(reservation, CASH).reviewOverdue(farLater)).isFalse();
     }
+
+    // DP-08, AC-10.6, AC-20.5: 10 hours before an inactivation of 30 hours, the proof is due 14 hours after the reactivation.
+    @Test
+    void theReviewMarkLeavesOutTheTimeTheTenantWasSuspended() {
+        PaymentAttempt attempt = withTransfer(PaymentType.DEPOSIT, 100_000).attempts().get(0);
+        SuspensionIntervals suspended = new SuspensionIntervals(List.of(new SuspensionIntervals.Interval(NOW.plus(Duration.ofHours(10)), NOW.plus(Duration.ofHours(40)))));
+
+        assertThat(attempt.reviewDueAt(suspended)).contains(NOW.plus(Duration.ofHours(54)));
+        assertThat(attempt.reviewOverdue(NOW.plus(Duration.ofHours(53)), suspended)).isFalse();
+        assertThat(attempt.reviewOverdue(NOW.plus(Duration.ofHours(54)), suspended)).isTrue();
+    }
+
+    @Test
+    void aTenantNeverInactiveKeepsTheTwentyFourHoursAndAStillOpenSuspensionHasNoDueInstant() {
+        PaymentAttempt attempt = withTransfer(PaymentType.DEPOSIT, 100_000).attempts().get(0);
+        SuspensionIntervals open = new SuspensionIntervals(List.of(new SuspensionIntervals.Interval(NOW.plus(Duration.ofHours(10)), null)));
+
+        assertThat(attempt.reviewDueAt(new SuspensionIntervals(List.of()))).contains(NOW.plus(Duration.ofHours(24)));
+        assertThat(attempt.reviewDueAt(open)).isEmpty();
+        assertThat(attempt.reviewOverdue(NOW.plus(Duration.ofDays(9)), open)).isFalse();
+    }
 }

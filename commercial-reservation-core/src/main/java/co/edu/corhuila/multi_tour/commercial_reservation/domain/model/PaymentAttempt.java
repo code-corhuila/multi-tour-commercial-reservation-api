@@ -54,6 +54,11 @@ public final class PaymentAttempt {
     // AC-10.6: the mark is derived from the presentation time and the clock; it is not a state and nothing stores it.
     public Instant reviewDueAt() { return registeredAt.plus(REVIEW_WINDOW); }
 
+    // DP-08, AC-20.5: the suspended time of the tenant is not counted; empty while a suspension that cannot end the period is still open. Stub.
+    public java.util.Optional<Instant> reviewDueAt(SuspensionIntervals suspensions) { return java.util.Optional.of(reviewDueAt()); }
+
+    public boolean reviewOverdue(Instant now, SuspensionIntervals suspensions) { return reviewOverdue(now); }
+
     public boolean reviewOverdue(Instant now) {
         return validationStatus == ValidationStatus.IN_VALIDATION && !now.isBefore(reviewDueAt());
     }

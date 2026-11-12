@@ -49,6 +49,11 @@ public record SuspensionIntervals(List<Interval> intervals) {
         return Optional.of(cursor.plus(left));
     }
 
+    // The latest start whose period of active time (not suspended) has elapsed at the end: a proof presented at or before it is past its review period at that end. Stub.
+    public Instant latestStartWithActive(Instant end, Duration period) {
+        return end.minus(period);
+    }
+
     // RN-05: the 24 hours to propose a rescheduling and the 5 business days to execute a refund keep running during the inactivation.
     public Instant contingencyEnd(Instant start, Duration period) {
         return start.plus(period);
