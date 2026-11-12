@@ -60,7 +60,10 @@ public class ManagePaymentParametersUseCase implements ManagePaymentParameters {
         List<PaymentParameter> changes = command.parameters().stream()
                 .map(values -> new PaymentParameter(values, actor.actorId(), command.reason(), now)).toList();
         return transaction.inTransaction(() -> {
-            changes.forEach(change -> parameters.save(actor.tenantId(), change));
+            for (PaymentParameter change : changes) {
+                parameters.save(actor.tenantId(), change);
+                outbox.append(new PaymentParametersChange(actor.tenantId(), actor.actorId(), change.values().paymentType(), change.values().serviceId(), now));
+            }
             return changes;
         });
     }
