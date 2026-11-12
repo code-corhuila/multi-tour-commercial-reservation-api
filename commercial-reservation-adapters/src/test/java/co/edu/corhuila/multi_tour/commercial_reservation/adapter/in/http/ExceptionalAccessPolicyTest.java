@@ -29,7 +29,11 @@ class ExceptionalAccessPolicyTest {
         assertThat(area("GET", "/associated-establishments")).contains("CATALOG");
         assertThat(area("GET", "/customers/" + ID)).contains("CUSTOMERS");
         assertThat(area("GET", "/customers/" + ID + "/sensitive-data")).contains("SENSITIVE");
-        assertThat(area("GET", "/sensitive-data-retention/due")).contains("SENSITIVE");
+        assertThat(area("GET", "/payment-proofs/" + ID + "/file")).contains("RESERVATIONS");
+        // Not routes of this service at the root: the retention and the client notices live under /internal, the deadlines under /reservations/{id}.
+        assertThat(area("GET", "/sensitive-data-retention/due")).isEmpty();
+        assertThat(area("GET", "/client-notices/" + ID)).isEmpty();
+        assertThat(area("GET", "/payment-deadlines")).isEmpty();
     }
 
     @Test

@@ -18,6 +18,8 @@ public final class CatalogAuthorization implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         var principal = (AuthenticatedPrincipal) request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE);
         if (principal.tenantId() == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        // HU-SEC-007: the mark of an exceptional or emergency access reads the catalog; the gate of the filter already refused any write and any area outside its scope.
+        if (principal.exceptional() != null && "GET".equals(request.getMethod())) return true;
         if (principal.roles().contains("TENANT_ADMINISTRATOR")) return true;
         // The settings of the catalog, with the collaborator-editing flag, are read and set by the Administrator only (RF-004).
         if (request.getRequestURI().endsWith("/catalog/settings")) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
