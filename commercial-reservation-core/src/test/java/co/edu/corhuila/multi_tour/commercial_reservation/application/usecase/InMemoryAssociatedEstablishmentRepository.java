@@ -39,6 +39,6 @@ class InMemoryAssociatedEstablishmentRepository implements AssociatedEstablishme
     static AssociatedEstablishment copy(AssociatedEstablishment item) {
         return AssociatedEstablishment.restore(item.associationId(), item.tenantId(), item.establishmentType(),
                 item.commercialName(), item.commercialInformation(), item.imageReference(), item.associationStatus(),
-                item.createdAt(), item.updatedAt());
+                item.createdAt(), item.updatedAt(), item.contact());
     }
 }
