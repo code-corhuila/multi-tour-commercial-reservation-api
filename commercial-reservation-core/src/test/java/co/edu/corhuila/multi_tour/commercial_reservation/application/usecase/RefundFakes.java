@@ -68,6 +68,13 @@ final class RefundFakes {
         return new PaymentActor(TENANT, UUID.randomUUID(), role);
     }
 
+    FinancialDecision openAt(DecisionKind kind, long base, Instant recognizedAt) {
+        FinancialDecision decision = FinancialDecision.open(ids.newId(), TENANT, UUID.randomUUID(), kind, new co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents(base),
+                null, null, recognizedAt);
+        decisions.put(decision.id(), decision);
+        return decision;
+    }
+
     FinancialDecision open(DecisionKind kind, long base) {
         FinancialDecision decision = FinancialDecision.open(ids.newId(), TENANT, UUID.randomUUID(), kind, new co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents(base),
                 null, kind == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST ? UUID.randomUUID() : null, NOW);
