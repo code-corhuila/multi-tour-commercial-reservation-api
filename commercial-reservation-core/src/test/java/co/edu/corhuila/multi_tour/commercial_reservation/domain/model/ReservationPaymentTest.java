@@ -75,25 +75,44 @@ class ReservationPaymentTest {
     }
 
     @Test
-    void anAmountThatIsNotPositiveOrAboveTheBalanceIsRefusedNamingTheField() {
+    void anAmountThatIsNotPositiveIsRefusedNamingTheField() {
         Reservation reservation = born(PaymentType.FULL_PAYMENT);
 
         assertThatThrownBy(() -> transfer(reservation, 0)).isInstanceOfSatisfying(DomainException.class,
-                e -> assertThat(e.field()).isEqualTo("amountCents"));
-        assertThatThrownBy(() -> transfer(reservation, 300_001)).isInstanceOfSatisfying(DomainException.class,
                 e -> assertThat(e.field()).isEqualTo("amountCents"));
         assertThatThrownBy(() -> reservation.registerTransfer(ATTEMPT, null, null, OPERATOR, NOW)).isInstanceOfSatisfying(
                 DomainException.class, e -> assertThat(e.field()).isEqualTo("amountCents"));
         assertThat(reservation.attempts()).isEmpty();
     }
 
+    // DP-05, decided 2026-11-11 (PDR v1.9, RN-RES-006A, RN-RES-004, GAP-03): the minimum conditions the confirmation, not the registration.
     @Test
-    void aDepositBelowTheMinimumIsRefusedOnTheFirstPaymentButAPartialFullPaymentIsAccepted() {
-        assertThatThrownBy(() -> transfer(born(PaymentType.DEPOSIT), 99_999)).isInstanceOfSatisfying(DomainException.class,
-                e -> assertThat(e.field()).isEqualTo("amountCents"));
+    void aDepositBelowTheMinimumIsRegisteredAndTheReservationStaysPartial() {
+        Reservation reservation = born(PaymentType.DEPOSIT);
 
-        Reservation full = born(PaymentType.FULL_PAYMENT);
-        assertThat(transfer(full, 99_999).validationStatus()).isEqualTo(ValidationStatus.IN_VALIDATION);
+        PaymentAttempt attempt = transfer(reservation, 99_999);
+
+        assertThat(attempt.validationStatus()).isEqualTo(ValidationStatus.IN_VALIDATION);
+        assertThat(attempt.amount()).isEqualTo(new Cents(99_999));
+        assertThat(reservation.attempts()).containsExactly(attempt);
+
+        reservation.approve(ATTEMPT, new Cents(99_999), null, MIN, OPERATOR, NOW);
+
+        assertThat(reservation.reservationStatus()).isEqualTo(ReservationStatus.PENDING_PAYMENT);
+        assertThat(reservation.paymentStatus()).isEqualTo(PaymentStatus.PARTIAL);
+        assertThat(reservation.pendingBalance()).isEqualTo(new Cents(200_001));
+    }
+
+    @Test
+    void aTransferAboveTheBalanceIsRegisteredAsDeclared() {
+        Reservation reservation = born(PaymentType.FULL_PAYMENT);
+
+        PaymentAttempt attempt = transfer(reservation, 300_001);
+
+        assertThat(attempt.validationStatus()).isEqualTo(ValidationStatus.IN_VALIDATION);
+        assertThat(attempt.amount()).isEqualTo(new Cents(300_001));
+        assertThat(reservation.pendingBalance()).isEqualTo(new Cents(300_000));
+        assertThat(reservation.reservationStatus()).isEqualTo(ReservationStatus.PENDING_PAYMENT);
     }
 
     @Test
@@ -140,9 +159,16 @@ class ReservationPaymentTest {
     }
 
     @Test
-    void cashBelowTheMinimumOfTheFirstDepositIsRefused() {
-        assertThatThrownBy(() -> born(PaymentType.DEPOSIT).registerCash(ATTEMPT, new Cents(50_000), MIN, OPERATOR, NOW))
-                .isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.field()).isEqualTo("amountCents"));
+    void cashBelowTheMinimumOfTheFirstDepositIsRegisteredAndTheReservationStaysPartial() {
+        Reservation reservation = born(PaymentType.DEPOSIT);
+
+        CashReceipt receipt = reservation.registerCash(ATTEMPT, new Cents(50_000), MIN, OPERATOR, NOW);
+
+        assertThat(receipt.applied()).isEqualTo(new Cents(50_000));
+        assertThat(receipt.excess()).isEqualTo(new Cents(0));
+        assertThat(reservation.reservationStatus()).isEqualTo(ReservationStatus.PENDING_PAYMENT);
+        assertThat(reservation.paymentStatus()).isEqualTo(PaymentStatus.PARTIAL);
+        assertThat(reservation.pendingBalance()).isEqualTo(new Cents(250_000));
     }
 
     @Test
