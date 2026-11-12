@@ -36,8 +36,8 @@ class PaymentProofReadHttpTest extends ReservationHttpBase {
         payments.proofs.put(attemptId, co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProofFile.of(PNG));
     }
 
-    @Test void theListCarriesTheMarkAndTheCustomerNameAndTheOverdueCountForEveryReadingRole() throws Exception {
-        for (String role : List.of(ADMIN, COLLABORATOR, MANAGER, ACCOUNTANT, ANALYST)) {
+    @Test void theListCarriesTheMarkAndTheCustomerNameAndTheOverdueCountForTheAdministratorAndTheCollaborator() throws Exception {
+        for (String role : List.of(ADMIN, COLLABORATOR)) {
             var page = CatalogHttpTest.json(exchange(withToken(get(BASE + "/payment-proofs"), role), 200));
             assertThat(page.at("/meta/total").asInt()).isEqualTo(2);
             assertThat(page.get("overdueCount").asInt()).isEqualTo(1);
@@ -57,6 +57,10 @@ class PaymentProofReadHttpTest extends ReservationHttpBase {
 
     @Test void theListRefusesTheFinalCustomerAndWhatItDoesNotKnow() throws Exception {
         exchange(withToken(get(BASE + "/payment-proofs"), FINAL_CUSTOMER), 403);
+        for (String refused : List.of(MANAGER, ACCOUNTANT, ANALYST)) {
+            exchange(withToken(get(BASE + "/payment-proofs"), refused), 403);
+            exchange(withToken(get(BASE + "/payment-proofs/" + recent), refused), 403);
+        }
         CatalogHttpTest.assertField(exchange(withToken(get(BASE + "/payment-proofs").param("status", "LOST"), ADMIN), 400), "status");
         CatalogHttpTest.assertField(exchange(withToken(get(BASE + "/payment-proofs").param("overdue", "maybe"), ADMIN), 400), "overdue");
         CatalogHttpTest.assertField(exchange(withToken(get(BASE + "/payment-proofs").param("page", "0"), ADMIN), 400), "page");
@@ -64,7 +68,7 @@ class PaymentProofReadHttpTest extends ReservationHttpBase {
     }
 
     @Test void oneProofIsReadWithoutTheFileAndAnotherTenantsLooksMissing() throws Exception {
-        var proof = CatalogHttpTest.json(exchange(withToken(get(BASE + "/payment-proofs/" + recent), ANALYST), 200));
+        var proof = CatalogHttpTest.json(exchange(withToken(get(BASE + "/payment-proofs/" + recent), ADMIN), 200));
 
         assertThat(proof.get("paymentId").asText()).isEqualTo(recent.toString());
         assertThat(proof.get("reservationStatus").asText()).isEqualTo("PENDING_PAYMENT");

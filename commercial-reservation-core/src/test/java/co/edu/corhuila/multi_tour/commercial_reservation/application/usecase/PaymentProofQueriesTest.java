@@ -125,27 +125,27 @@ class PaymentProofQueriesTest {
 
     @Test
     void theOverdueFilterKeepsOnlyTheMarkedOnesAndTheStatusFilterShowsTheRejected() {
-        assertThat(list.list(new ListProofsQuery(actor(Role.MANAGER), null, true, 1, 20)).items())
+        assertThat(list.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), null, true, 1, 20)).items())
                 .extracting(ProofView::attemptId).containsExactly(OLD);
-        assertThat(list.list(new ListProofsQuery(actor(Role.MANAGER), ValidationStatus.REJECTED, false, 1, 20)).items())
+        assertThat(list.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), ValidationStatus.REJECTED, false, 1, 20)).items())
                 .extracting(ProofView::attemptId).containsExactly(REJECTED);
     }
 
     @Test
     void theListIsPaginatedWithinOneAndAHundred() {
-        ProofPage second = list.list(new ListProofsQuery(actor(Role.ANALYST), null, false, 2, 1));
+        ProofPage second = list.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), null, false, 2, 1));
 
         assertThat(second.items()).extracting(ProofView::attemptId).containsExactly(FRESH);
         assertThat(second.total()).isEqualTo(2);
-        assertThatThrownBy(() -> list.list(new ListProofsQuery(actor(Role.ANALYST), null, false, 1, 101))).isInstanceOfSatisfying(
+        assertThatThrownBy(() -> list.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), null, false, 1, 101))).isInstanceOfSatisfying(
                 DomainException.class, e -> assertThat(e.field()).isEqualTo("limit"));
-        assertThatThrownBy(() -> list.list(new ListProofsQuery(actor(Role.ANALYST), null, false, 0, 10))).isInstanceOfSatisfying(
+        assertThatThrownBy(() -> list.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), null, false, 0, 10))).isInstanceOfSatisfying(
                 DomainException.class, e -> assertThat(e.field()).isEqualTo("page"));
     }
 
     @Test
     void theRolesOfTheMatrixAreTheOnlyOnesAllowedToReadAndAnotherTenantSeesNothing() {
-        for (Role reader : List.of(Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST)) {
+        for (Role reader : List.of(Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR)) {
             assertThat(list.list(new ListProofsQuery(actor(reader), null, false, 1, 20)).items()).hasSize(2);
         }
         assertThatThrownBy(() -> list.list(new ListProofsQuery(actor(Role.FINAL_CUSTOMER), null, false, 1, 20)))
@@ -199,7 +199,7 @@ class PaymentProofQueriesTest {
 
     @Test
     void theReservationHistoryListsEveryAttemptIncludingTheRejectedOnes() {
-        List<ProofView> history = queries.history(actor(Role.ACCOUNTANT), RESERVATION);
+        List<ProofView> history = queries.history(actor(Role.OPERATIONAL_COLLABORATOR), RESERVATION);
 
         assertThat(history).extracting(ProofView::attemptId).containsExactly(OLD, FRESH, REJECTED);
         ProofView rejected = history.get(2);
@@ -221,8 +221,8 @@ class PaymentProofQueriesTest {
 
     @Test
     void oneProofIsReadWithItsAmountsAndAnotherTenantsAnswersNotFound() {
-        assertThat(queries.get(actor(Role.MANAGER), OLD).declaredAmount()).isEqualTo(new Cents(50_000));
-        assertThat(queries.get(actor(Role.MANAGER), OLD).reviewOverdue()).isTrue();
+        assertThat(queries.get(actor(Role.TENANT_ADMINISTRATOR), OLD).declaredAmount()).isEqualTo(new Cents(50_000));
+        assertThat(queries.get(actor(Role.TENANT_ADMINISTRATOR), OLD).reviewOverdue()).isTrue();
 
         assertThatThrownBy(() -> queries.get(new PaymentActor(OTHER_TENANT, ADMIN, Role.TENANT_ADMINISTRATOR), OLD))
                 .isInstanceOf(PaymentProofNotFoundException.class);
@@ -262,9 +262,9 @@ class PaymentProofQueriesTest {
         assertThat(page.overdueCount()).isZero();
         assertThat(paused.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), null, true, 1, 20)).items()).isEmpty();
         assertThat(paused.overdueOf(TENANT, 1, 20).items()).isEmpty();
-        assertThat(pausedQueries.get(actor(Role.MANAGER), OLD).reviewOverdue()).isFalse();
-        assertThat(pausedQueries.get(actor(Role.MANAGER), OLD).reviewDueAt()).isEqualTo(NOW.plus(Duration.ofHours(1)));
-        assertThat(pausedQueries.history(actor(Role.MANAGER), RESERVATION)).filteredOn(view -> view.attemptId().equals(OLD))
+        assertThat(pausedQueries.get(actor(Role.TENANT_ADMINISTRATOR), OLD).reviewOverdue()).isFalse();
+        assertThat(pausedQueries.get(actor(Role.TENANT_ADMINISTRATOR), OLD).reviewDueAt()).isEqualTo(NOW.plus(Duration.ofHours(1)));
+        assertThat(pausedQueries.history(actor(Role.TENANT_ADMINISTRATOR), RESERVATION)).filteredOn(view -> view.attemptId().equals(OLD))
                 .extracting(ProofView::reviewOverdue).containsExactly(false);
     }
 
@@ -278,5 +278,17 @@ class PaymentProofQueriesTest {
         assertThat(overdue.items()).extracting(ProofView::attemptId).containsExactly(OLD);
         assertThat(overdue.items().get(0).reviewDueAt()).isEqualTo(NOW);
         assertThat(overdue.overdueCount()).isEqualTo(1);
+    }
+
+    // HU-COM-010 DP-02 (Project Lead, 2026-11-12): Manager, Accountant and Analyst do not read the proofs, in the list, the detail or the history.
+    @Test
+    void theManagerTheAccountantAndTheAnalystReadNoProofInTheListTheDetailOrTheHistory() {
+        for (Role refused : List.of(Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST)) {
+            assertThatThrownBy(() -> list.list(new ListProofsQuery(actor(refused), null, false, 1, 20))).as("list " + refused)
+                    .isInstanceOf(PaymentAccessDeniedException.class);
+            assertThatThrownBy(() -> queries.get(actor(refused), OLD)).as("detail " + refused).isInstanceOf(PaymentAccessDeniedException.class);
+            assertThatThrownBy(() -> queries.history(actor(refused), RESERVATION)).as("history " + refused)
+                    .isInstanceOf(PaymentAccessDeniedException.class);
+        }
     }
 }
