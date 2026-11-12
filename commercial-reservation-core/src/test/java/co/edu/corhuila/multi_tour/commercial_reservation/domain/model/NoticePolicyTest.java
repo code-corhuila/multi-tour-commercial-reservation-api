@@ -33,6 +33,14 @@ class NoticePolicyTest {
     }
 
     @Test
+    void aRecordedCreditBalanceNotifiesAsCreditBalanceRecorded() {
+        assertThat(NoticePolicy.of(new CreditBalanceRecorded(TENANT, RESERVATION, NOW, UUID.randomUUID(), new Cents(50_000), CreditOrigin.PAYMENT_EXCESS, null), false))
+                .contains(NoticeType.CREDIT_BALANCE_RECORDED);
+        assertThat(NoticePolicy.of(new CreditBalanceRecorded(TENANT, RESERVATION, NOW, UUID.randomUUID(), new Cents(50_000), CreditOrigin.PAYMENT_EXCESS, UUID.randomUUID()), true))
+                .contains(NoticeType.CREDIT_BALANCE_RECORDED);
+    }
+
+    @Test
     void aCashPaymentRecordedByStaffDoesNotNotify() {
         assertThat(NoticePolicy.of(validated(), false)).isEmpty();
     }
