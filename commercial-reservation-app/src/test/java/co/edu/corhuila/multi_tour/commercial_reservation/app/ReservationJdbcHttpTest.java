@@ -56,7 +56,8 @@ class ReservationJdbcHttpTest {
             new TestJwtKeys().initialize(context);
             TestPropertySourceUtils.addInlinedPropertiesToEnvironment(context,
                     "DB_URL=" + System.getenv("TEST_DATABASE_URL"), "DB_USER=" + System.getenv("TEST_DATABASE_USER"),
-                    "DB_PASSWORD=" + System.getenv("TEST_DATABASE_PASSWORD"));
+                    "DB_PASSWORD=" + System.getenv("TEST_DATABASE_PASSWORD"),
+                    "spring.datasource.hikari.minimum-idle=1"); // each cached test context keeps one idle connection, not ten
         }
     }
 
