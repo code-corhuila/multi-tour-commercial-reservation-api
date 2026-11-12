@@ -28,7 +28,7 @@ class PlatformSupportPaymentsReadTest {
             @Override public java.util.List<co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParameter> findByTenant(UUID tenantId) { return java.util.List.of(); }
             @Override public void save(UUID tenantId, co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParameter parameter) { }
         };
-        var parameters = new ManagePaymentParametersUseCase(repository, null, java.time.Clock.systemUTC());
+        var parameters = new ManagePaymentParametersUseCase(repository, null, null, java.time.Clock.systemUTC());
 
         assertThat(parameters.read(SUPPORT)).isEmpty();
     }

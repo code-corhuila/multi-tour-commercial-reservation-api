@@ -8,8 +8,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentParameterOption;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParametersChangeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParameter;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParametersChange;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParameterValues;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
 import java.time.Clock;
@@ -17,11 +19,12 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Arrays;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-// T-08 of HU-COM-009, the core part: RN-14, RN-13; AC-09.17. Only the last change of each row is kept (DP-04, DD-5); the audit
-// event and the list of earlier changes wait for DP-04. A change reaches new reservations only because each reservation
+// T-08 of HU-COM-009, the core part: RN-14, RN-13; AC-09.17. Only the last change of each row is kept (DP-04, DD-5); the audit trace is the event PaymentParametersChanged (DP-04, 2026-11-12); the list of earlier
+// changes is served by the audit domain. A change reaches new reservations only because each reservation
 // stores its own deadline: nothing here touches a reservation.
 class ManagePaymentParametersTest {
 
@@ -41,7 +44,14 @@ class ManagePaymentParametersTest {
             rows.add(parameter);
         }
     };
-    private final ManagePaymentParametersUseCase manage = new ManagePaymentParametersUseCase(repository, new ImmediateTransaction(journal),
+    private final List<PaymentParametersChange> events = new ArrayList<>();
+    private boolean outboxFails;
+    private final PaymentParametersChangeOutbox outbox = change -> {
+        if (outboxFails) throw new IllegalStateException("the outbox is down");
+        journal.add("event " + change.paymentType());
+        events.add(change);
+    };
+    private final ManagePaymentParametersUseCase manage = new ManagePaymentParametersUseCase(repository, new ImmediateTransaction(journal), outbox,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     private static PaymentActor actor(Role role) {
@@ -64,6 +74,7 @@ class ManagePaymentParametersTest {
                 .isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.field()).isEqualTo("parameters"));
 
         assertThat(rows).isEmpty();
+        assertThat(events).isEmpty();
         assertThat(journal).isEmpty();
     }
 
@@ -79,7 +90,7 @@ class ManagePaymentParametersTest {
             assertThat(row.changedAt()).isEqualTo(NOW);
             assertThat(row.values().minimumDepositBp()).isEqualTo(3_000);
         });
-        assertThat(journal).containsExactly("begin", "save " + TENANT, "commit");
+        assertThat(journal).containsExactly("begin", "save " + TENANT, "event DEPOSIT", "commit");
     }
 
     @Test
@@ -118,6 +129,34 @@ class ManagePaymentParametersTest {
             assertThat(manage.readOptions(actor(reader))).hasSize(2);
         }
         assertThatThrownBy(() -> manage.readOptions(new PaymentActor(null, ADMIN, Role.FINAL_CUSTOMER))).isInstanceOf(PaymentAccessDeniedException.class);
+    }
+
+    @Test
+    void eachChangedRowWritesOnePaymentParametersChangedEventInTheSameTransactionAsTheChange() {
+        UUID service = new UUID(9, 0xf4);
+        manage.change(new ChangePaymentParametersCommand(actor(Role.TENANT_ADMINISTRATOR), "new season",
+                List.of(deposit(3_000), new PaymentParameterValues(PaymentType.FULL_PAYMENT, service, 12, 36, null, null, true, false))));
+
+        assertThat(events).containsExactly(
+                new PaymentParametersChange(TENANT, ADMIN, PaymentType.DEPOSIT, null, NOW),
+                new PaymentParametersChange(TENANT, ADMIN, PaymentType.FULL_PAYMENT, service, NOW));
+        assertThat(journal).containsExactly("begin", "save " + TENANT, "event DEPOSIT", "save " + TENANT, "event FULL_PAYMENT", "commit");
+    }
+
+    @Test
+    void theEventNamesTheTenantTheAuthorTheParameterAndTheInstantAndCarriesNoValueAndNoReason() {
+        assertThat(Arrays.stream(PaymentParametersChange.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName).toList())
+                .containsExactly("tenantId", "actorId", "paymentType", "serviceId", "changedAt");
+    }
+
+    @Test
+    void aChangeWhoseEventCannotBeWrittenDoesNotCommit() {
+        outboxFails = true;
+
+        assertThatThrownBy(() -> manage.change(new ChangePaymentParametersCommand(actor(Role.TENANT_ADMINISTRATOR), "new season", List.of(deposit(3_000)))))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(journal).containsExactly("begin", "save " + TENANT);
     }
 
     private record ImmediateTransaction(List<String> journal) implements co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction {
