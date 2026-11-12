@@ -28,9 +28,6 @@ class RestrictedAccessPolicyTest {
         assertThat(allows("POST", "/reservations/" + ID + "/cancellation", ADMIN)).isTrue();
         assertThat(allows("POST", "/payment-proofs/" + ID + "/approve", ADMIN)).isTrue();
         assertThat(allows("POST", "/payment-proofs/" + ID + "/reject", ADMIN)).isTrue();
-        assertThat(allows("POST", "/financial-decisions/" + ID + "/refund-decision", ADMIN)).isTrue();
-        assertThat(allows("POST", "/financial-decisions/" + ID + "/refund-authorization", ADMIN)).isTrue();
-        assertThat(allows("POST", "/financial-decisions/" + ID + "/rejection", ADMIN)).isTrue();
         assertThat(allows("POST", "/reschedulings/" + ID + "/proposals", ADMIN)).isTrue();
         assertThat(allows("POST", "/reschedulings/" + ID + "/proposals/" + ID + "/external-answer", ADMIN)).isTrue();
         assertThat(allows("POST", "/reschedulings/" + ID + "/no-alternative", ADMIN)).isTrue();
@@ -69,6 +66,15 @@ class RestrictedAccessPolicyTest {
         assertThat(allows("DELETE", "/reservations/" + ID, ADMIN)).isFalse();
         assertThat(allows("POST", "/a-route-that-does-not-exist", ADMIN)).isFalse();
         assertThat(RestrictedAccessPolicy.allows("GET", "/other-service/reservations", ADMIN)).isFalse();
+    }
+
+    // HU-COM-016 DP-16 (Project Lead, 2026-11-12): the decisions of 24 hours are closed to an inactive tenant; the reads stay open.
+    @Test
+    void theRefundDecisionRoutesAreClosedToTheRestrictedAdministratorAndTheReadsStayOpen() {
+        for (String route : new String[] {"refund-decision", "refund-authorization", "rejection"})
+            assertThat(allows("POST", "/financial-decisions/" + ID + "/" + route, ADMIN)).as(route).isFalse();
+        assertThat(allows("GET", "/financial-decisions", ADMIN)).isTrue();
+        assertThat(allows("GET", "/refund-authorizations", ADMIN)).isTrue();
     }
 
     @Test

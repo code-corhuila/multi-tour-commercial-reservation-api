@@ -8,12 +8,15 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundOrigin;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 // HU-COM-016 plan D-06, DP-08, DP-15: the steps that the service token asks. The workflow and the job verified the caller; the service decides whether
@@ -27,9 +30,17 @@ public class RefundAutomationUseCase implements RefundAutomation {
     private final IdGenerator ids;
     private final PaymentTransaction transaction;
     private final Clock clock;
+    private final SuspensionReader suspensions;
 
     public RefundAutomationUseCase(FinancialDecisionRepository decisions, RefundAuthorizationRepository refunds, BusinessCalendar calendar,
             RefundAuthorizedOutbox outbox, IdGenerator ids, PaymentTransaction transaction, Clock clock) {
+        this(decisions, refunds, calendar, outbox, ids, transaction, clock, tenantId -> Optional.empty());
+    }
+
+    // HU-COM-016 DP-16: the suspension reader tells whether the tenant is inactive (HU-COM-020).
+    public RefundAutomationUseCase(FinancialDecisionRepository decisions, RefundAuthorizationRepository refunds, BusinessCalendar calendar,
+            RefundAuthorizedOutbox outbox, IdGenerator ids, PaymentTransaction transaction, Clock clock, SuspensionReader suspensions) {
+        this.suspensions = suspensions;
         this.decisions = decisions;
         this.refunds = refunds;
         this.calendar = calendar;
@@ -41,6 +52,9 @@ public class RefundAutomationUseCase implements RefundAutomation {
 
     @Override
     public RefundAuthorization applyDefault(UUID tenantId, UUID financialDecisionId) {
+        // HU-COM-016 DP-16 (Project Lead, 2026-11-12): the default of 24 hours does not run while the tenant is inactive.
+        if (suspensions.openSince(tenantId).isPresent())
+            throw new BusinessRuleViolation("the tenant is inactive: refund decisions are closed until it is active again");
         FinancialDecision decision = decisions.find(tenantId, financialDecisionId)
                 .orElseThrow(() -> new RefundNotFoundException("financial decision", financialDecisionId));
         Instant now = Instant.now(clock);
