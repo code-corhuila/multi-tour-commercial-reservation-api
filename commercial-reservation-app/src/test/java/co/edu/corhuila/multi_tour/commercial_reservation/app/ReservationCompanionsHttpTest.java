@@ -53,12 +53,12 @@ class ReservationCompanionsHttpTest extends ReservationHttpBase {
 
     @Test @SuppressWarnings("unchecked")
     void aCompanionWithTheMinimumDataIsStoredWithTheReservationAndTheAnswerCarriesNone() throws Exception {
-        var answer = CatalogHttpTest.json(exchange(create(bodyWith(companion("Acompanante Uno", "cc 777", 25)), "companion-key-1", ADMIN), 201));
+        var answer = CatalogHttpTest.json(exchange(create(bodyWith(companion("Acompanante Uno", "cc 7q7q7", 25)), "companion-key-1", ADMIN), 201));
         var stored = store.reservations.values().iterator().next();
         assertThat(stored.companions()).hasSize(1);
-        assertThat(stored.companions().get(0).documentNumber().value()).isEqualTo("CC 777");
+        assertThat(stored.companions().get(0).documentNumber().value()).isEqualTo("CC 7Q7Q7");
         assertThat(answer.has("companions")).isFalse();
-        assertThat(answer.toString()).doesNotContain("Acompanante Uno").doesNotContain("777");
+        assertThat(answer.toString()).doesNotContain("Acompanante Uno").doesNotContain("7Q7Q7");
     }
 
     @Test @SuppressWarnings("unchecked")
