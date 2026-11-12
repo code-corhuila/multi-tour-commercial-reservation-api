@@ -101,7 +101,8 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
             Cents minimum = minimumFor(reservation);
             ProofDecision decision = reservation.approve(attemptId, verified, reason, minimum, reviewer, now);
             if (decision.treatment().amount() > 0) {
-                cancelledValues.record(tenantId, reservation.reservationId(), decision.treatment(), Origin.APPROVED_AFTER_CANCELLATION);
+                cancelledValues.record(tenantId, reservation.reservationId(), decision.treatment(), Origin.APPROVED_AFTER_CANCELLATION,
+                        reservation.cancellationCause());
             } else if (decision.excess().amount() > 0) {
                 credit.recordExcess(tenantId, reservation.reservationId(), attemptId, decision.excess());
             }

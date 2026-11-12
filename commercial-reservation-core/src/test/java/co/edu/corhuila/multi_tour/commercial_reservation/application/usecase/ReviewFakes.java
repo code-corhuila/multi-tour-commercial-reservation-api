@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancelledValueRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationStatus;
@@ -17,6 +18,7 @@ final class ReviewFakes implements ReservationCancellation, CancelledValueRecord
     private final PaymentFakes store;
     final List<UUID> cancelled = new ArrayList<>();
     final List<String> values = new ArrayList<>();
+    final List<CancellationCause> causes = new ArrayList<>();
 
     ReviewFakes(PaymentFakes store) {
         this.store = store;
@@ -33,5 +35,11 @@ final class ReviewFakes implements ReservationCancellation, CancelledValueRecord
     @Override
     public void record(UUID tenantId, UUID reservationId, Cents value, Origin origin) {
         values.add(origin + ":" + value.amount());
+    }
+
+    @Override
+    public void record(UUID tenantId, UUID reservationId, Cents value, Origin origin, CancellationCause cause) {
+        causes.add(cause);
+        record(tenantId, reservationId, value, origin);
     }
 }
