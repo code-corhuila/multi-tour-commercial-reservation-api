@@ -248,12 +248,13 @@ class RegisterTransferTest {
     }
 
     @Test
-    void aDepositBelowTheMinimumIsRefusedBeforeAnySeatIsHeld() {
-        assertThatThrownBy(() -> register.register(command(RESERVATION, 99_999L, PNG))).isInstanceOfSatisfying(DomainException.class,
-                e -> assertThat(e.field()).isEqualTo("amountCents"));
+    void aDepositBelowTheMinimumIsRegisteredAndHoldsTheFirstSeat() {
+        RegisteredPayment result = register.register(command(RESERVATION, 99_999L, PNG));
 
-        assertThat(fakes.holdCalls).isZero();
-        assertThat(fakes.heldSeats(DEPARTURE)).isZero();
+        assertThat(result.attempt().amount()).isEqualTo(new Cents(99_999));
+        assertThat(result.attempt().validationStatus()).isEqualTo(ValidationStatus.IN_VALIDATION);
+        assertThat(fakes.holdCalls).isEqualTo(1);
+        assertThat(fakes.reservations.get(RESERVATION).reservationStatus()).isEqualTo(ReservationStatus.PENDING_PAYMENT);
     }
 
     @Test
