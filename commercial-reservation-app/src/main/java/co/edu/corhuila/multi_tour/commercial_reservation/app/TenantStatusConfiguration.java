@@ -28,6 +28,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Te
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantEventTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantInactivityEffects;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ApplyTenantEventUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.LinkAccountOnEmailVerifiedUseCase;
@@ -88,6 +89,12 @@ class TenantStatusConfiguration {
     @Bean
     TenantDirectory tenantDirectory(JdbcTemplate jdbc) {
         return new JdbcTenantStatusDirectory(jdbc);
+    }
+
+    // HU-COM-010 DP-08: the history of suspensions, read by the review mark of the proofs (HU-COM-020 RN-04).
+    @Bean
+    SuspensionStore suspensionStore(JdbcTemplate jdbc) {
+        return new JdbcTenantSuspensions(jdbc);
     }
 
     // Kept 5 seconds (DP-TSC-09): the 15-minute token bounds how late an inactivation can be seen (ADR-004 D5).
