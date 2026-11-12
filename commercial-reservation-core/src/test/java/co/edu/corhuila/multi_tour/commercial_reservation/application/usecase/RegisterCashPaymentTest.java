@@ -81,7 +81,10 @@ class RegisterCashPaymentTest {
             assertThat(e.pendingBalance()).isEqualTo(new Cents(200_000));
         });
         assertThat(fakes.events.get(2)).isInstanceOfSatisfying(ReservationConfirmed.class,
-                e -> assertThat(e.allocatedCapacity()).isEqualTo(2));
+                e -> {
+                    assertThat(e.allocatedCapacity()).isEqualTo(2);
+                    assertThat(e.commercialValue()).isEqualTo(stored.finalValue());
+                });
     }
 
     @Test

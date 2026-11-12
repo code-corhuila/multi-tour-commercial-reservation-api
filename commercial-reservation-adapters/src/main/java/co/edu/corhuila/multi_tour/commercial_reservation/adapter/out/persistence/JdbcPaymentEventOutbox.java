@@ -87,6 +87,8 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
             case ReservationConfirmed e -> {
                 payload.put("paymentStatus", e.paymentStatus().name());
                 payload.put("allocatedCapacity", e.allocatedCapacity());
+                // HU-CSH-003 DP-RM-B3: the final value of the reservation at the confirmation, in cents (key admitted by -db 043).
+                payload.put("commercialValueCents", e.commercialValue().amount());
             }
             case CapacityReleased e -> {
                 payload.put("serviceId", e.serviceId().toString());
