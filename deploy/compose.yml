@@ -19,6 +19,9 @@ services:
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY is required, set it in the infrastructure environment file}
       FIELD_ENCRYPTION_CURRENT_KEY_ID: ${FIELD_ENCRYPTION_CURRENT_KEY_ID:?FIELD_ENCRYPTION_CURRENT_KEY_ID is required, set it in the infrastructure environment file}
       FIELD_ENCRYPTION_KEYS: ${FIELD_ENCRYPTION_KEYS:?FIELD_ENCRYPTION_KEYS is required, set it in the infrastructure environment file}
+      # where "is the cash open?" is read before a cash payment (AC-09.5): the service name of the cash api on the platform
+      # network. Empty would make the api refuse every cash payment (fail closed). No secret here, the token is the person's.
+      CASH_REPORTING_BASE_URL: ${CASH_REPORTING_BASE_URL:-http://multi-tour-cash-reporting-api:8085}
     expose: ["8083"]
     restart: unless-stopped
     networks: [platform]
