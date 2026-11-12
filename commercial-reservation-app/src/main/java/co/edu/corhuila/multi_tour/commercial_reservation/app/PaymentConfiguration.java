@@ -60,6 +60,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParametersChangeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofStore;
@@ -145,8 +146,8 @@ class PaymentConfiguration {
 
     @Bean
     ManagePaymentParameters managePaymentParameters(@Lazy PaymentParameterRepository parameters, @Lazy PaymentTransaction transaction,
-            Clock clock) {
-        return new ManagePaymentParametersUseCase(parameters, transaction, clock);
+            @Lazy PaymentParametersChangeOutbox outbox, Clock clock) {
+        return new ManagePaymentParametersUseCase(parameters, transaction, outbox, clock);
     }
 
     @Bean
