@@ -1,0 +1,28 @@
+# This service only. multi-tour-infra-postgres includes this file to compose the platform (Annex J, J.7).
+# It defines no database and no volume: the instance and the migration runner (multi-tour-commercial-reservation-db) belong to the
+# platform. `expose`, not `ports`: only the gateway is reachable from the host (norm 5.6.1). To run the api alone with its own
+# database use deploy/compose.standalone.yml. Credentials come from the environment file of the platform, never from this file.
+services:
+  commercial-reservation-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: multi-tour-commercial-reservation-api:dev
+    environment:
+      # the port the gateway and the other services use (their COMMERCIAL_RESERVATION_BASE_URL)
+      SERVER_PORT: "8083"
+      # the user commercial_reservation_app (never the administrator) of the instance that multi-tour-infra-postgres defines
+      DB_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:?PG_DATABASE is required, set it in the infrastructure environment file}
+      DB_USER: commercial_reservation_app
+      DB_PASSWORD: ${COMMERCIAL_RESERVATION_APP_PASSWORD:?COMMERCIAL_RESERVATION_APP_PASSWORD is required, set it in the infrastructure environment file}
+      # the public key of the security microservice, one line with \n escapes; the service stops at start without it
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY is required, set it in the infrastructure environment file}
+      FIELD_ENCRYPTION_CURRENT_KEY_ID: ${FIELD_ENCRYPTION_CURRENT_KEY_ID:?FIELD_ENCRYPTION_CURRENT_KEY_ID is required, set it in the infrastructure environment file}
+      FIELD_ENCRYPTION_KEYS: ${FIELD_ENCRYPTION_KEYS:?FIELD_ENCRYPTION_KEYS is required, set it in the infrastructure environment file}
+    expose: ["8083"]
+    restart: unless-stopped
+    networks: [platform]
+
+networks:
+  platform:
+    external: true
