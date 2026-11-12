@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.TransactionalAuthorizableReasons;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import java.net.URI;
 import java.util.Map;

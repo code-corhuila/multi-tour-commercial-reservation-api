@@ -1,4 +1,4 @@
-package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence;
+package co.edu.corhuila.multi_tour.commercial_reservation.application.port.out;
 
 import java.time.Instant;
 import java.util.Map;

@@ -1,6 +1,8 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonTimes;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonTimes.Times;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AuthorizableReason;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReasonRuleViolation;
 import java.sql.ResultSet;
