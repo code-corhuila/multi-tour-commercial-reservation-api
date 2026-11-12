@@ -33,6 +33,7 @@ class ArchitectureRulesTest {
             Map.entry("IdempotentExpiry", Set.of(KEYS)),
             Map.entry("IdempotentModification", Set.of(KEYS)),
             Map.entry("IdempotentPaymentParameterChange", Set.of(KEYS)),
+            Map.entry("IdempotentPaymentRegistration", Set.of(KEYS, RESERVATIONS)),
             Map.entry("IdempotentRefundDetermination", Set.of(KEYS)),
             Map.entry("IdempotentRefundWrites", Set.of(KEYS)),
             Map.entry("IdempotentReservationCreation", Set.of(KEYS, CUSTOMERS)));
