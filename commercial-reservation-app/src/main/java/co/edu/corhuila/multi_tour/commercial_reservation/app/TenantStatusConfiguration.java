@@ -25,11 +25,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ProcessedEvents;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantDirectory;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantEventTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantInactivityEffects;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ApplyTenantEventUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.LinkAccountOnEmailVerifiedUseCase;
@@ -56,11 +54,6 @@ class TenantStatusConfiguration {
     @Bean
     TenantEventTransaction tenantEventTransaction(PlatformTransactionManager manager) {
         return new JdbcTenantEventTransaction(new TransactionTemplate(manager));
-    }
-
-    @Bean
-    SuspensionReader suspensionReader(JdbcTemplate jdbc) {
-        return new JdbcTenantSuspensions(jdbc);
     }
 
     @Bean
@@ -97,9 +90,9 @@ class TenantStatusConfiguration {
         return new JdbcTenantStatusDirectory(jdbc);
     }
 
-    // HU-COM-010 DP-08: the history of suspensions, read by the review mark of the proofs (HU-COM-020 RN-04).
+    // HU-COM-010 DP-08: the history of suspensions, read by the review mark of the proofs (HU-COM-020 RN-04). One bean answers both ports (SuspensionStore and SuspensionReader): the declared type is the adapter so a by-type lookup finds one.
     @Bean
-    SuspensionStore suspensionStore(JdbcTemplate jdbc) {
+    JdbcTenantSuspensions suspensionStore(JdbcTemplate jdbc) {
         return new JdbcTenantSuspensions(jdbc);
     }
 
