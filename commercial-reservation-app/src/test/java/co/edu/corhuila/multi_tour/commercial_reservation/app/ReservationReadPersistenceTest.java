@@ -112,12 +112,13 @@ class ReservationReadPersistenceTest {
         setStatus(id, "CONFIRMED");
         assertThat(reader.findByTenantAndId(fixture.tenant, id).orElseThrow().state())
                 .isEqualTo(ReservationSnapshot.State.CONFIRMED);
-        setStatus(id, "CANCELLED");
-        assertThat(reader.findByTenantAndId(fixture.tenant, id).orElseThrow().state())
-                .isEqualTo(ReservationSnapshot.State.CANCELLED);
         setStatus(id, "COMPLETED");
         assertThat(reader.findByTenantAndId(fixture.tenant, id).orElseThrow().state())
                 .isEqualTo(ReservationSnapshot.State.OTHER);
+        // A cancelled reservation is terminal (trg_reservation_cancelled_guard), so this state is the last one set.
+        setStatus(id, "CANCELLED");
+        assertThat(reader.findByTenantAndId(fixture.tenant, id).orElseThrow().state())
+                .isEqualTo(ReservationSnapshot.State.CANCELLED);
     }
 
     @Test
@@ -169,8 +170,10 @@ class ReservationReadPersistenceTest {
     }
 
     private void setStatus(UUID id, String status) {
-        fixture.jdbc.update("UPDATE commercial_reservation.reservation SET reservation_status = ? WHERE reservation_id = ?",
-                status, id);
+        fixture.jdbc.update("UPDATE commercial_reservation.reservation SET reservation_status = ?, "
+                + "cancellation_cause = CASE WHEN ?::text = 'CANCELLED' THEN 'CUSTOMER_REQUEST' END, "
+                + "cancelled_at = CASE WHEN ?::text = 'CANCELLED' THEN now() END WHERE reservation_id = ?",
+                status, status, status, id);
     }
 
     private void assertNothingStored(UUID id) {

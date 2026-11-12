@@ -82,7 +82,8 @@ class OwnReservationQueriesPersistenceTest {
     void theArchivedStatesAreLeftOutOfTheOwnListUnlessAskedFor() {
         UUID open = savedFor(fixture.customer);
         UUID cancelled = savedFor(fixture.customer);
-        fixture.jdbc.update("UPDATE commercial_reservation.reservation SET reservation_status = 'CANCELLED' WHERE reservation_id = ?",
+        fixture.jdbc.update("UPDATE commercial_reservation.reservation SET reservation_status = 'CANCELLED', "
+                + "cancellation_cause = 'CUSTOMER_REQUEST', cancelled_at = now() WHERE reservation_id = ?",
                 cancelled);
 
         assertThat(queries.page(fixture.tenant, fixture.customer, false, 1, 20).items())
