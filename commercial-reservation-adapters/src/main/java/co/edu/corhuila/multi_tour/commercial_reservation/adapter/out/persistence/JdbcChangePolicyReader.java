@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-// HU-COM-012 plan D-04: the terms of a tour per change type from service_change_policy; no row means no policy and the change is refused
+// HU-COM-012 plan D-04: the terms of a tour per change type from service_change_policy; no row means empty here; DefaultingChangePolicyReader applies the PDR default for MODIFICATION
 // (DP-01). Nothing in this service writes the table yet (declared debt DD-2).
 public final class JdbcChangePolicyReader implements ChangePolicyReader {
     private final JdbcTemplate jdbc;
