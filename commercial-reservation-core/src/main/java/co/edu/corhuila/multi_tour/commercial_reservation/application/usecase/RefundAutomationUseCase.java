@@ -9,6 +9,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
@@ -51,6 +52,9 @@ public class RefundAutomationUseCase implements RefundAutomation {
 
     @Override
     public RefundAuthorization applyDefault(UUID tenantId, UUID financialDecisionId) {
+        // HU-COM-016 DP-16 (Project Lead, 2026-11-12): the default of 24 hours does not run while the tenant is inactive.
+        if (suspensions.openSince(tenantId).isPresent())
+            throw new BusinessRuleViolation("the tenant is inactive: refund decisions are closed until it is active again");
         FinancialDecision decision = decisions.find(tenantId, financialDecisionId)
                 .orElseThrow(() -> new RefundNotFoundException("financial decision", financialDecisionId));
         Instant now = Instant.now(clock);
