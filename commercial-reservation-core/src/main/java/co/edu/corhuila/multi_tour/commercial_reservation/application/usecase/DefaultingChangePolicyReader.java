@@ -6,16 +6,22 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ChangeType
 import java.util.Optional;
 import java.util.UUID;
 
-// Red skeleton: passes through the delegate until the default of DP-01 is written.
+// HU-COM-012 DP-01 (PROPOSED DEFAULT, spec 012 block of 2026-11-12): a tour with no stored terms for MODIFICATION uses the only configuration
+// example the PDR v1.9 confirms (RN-RES-004: "cambio de tour hasta 6 horas antes"): allowed, 360 minutes before the departure start. DATE_CHANGE
+// has no default and stays refused (GAP-07). A stored row, allowing or forbidding, always prevails; reading never writes a row.
 public final class DefaultingChangePolicyReader implements ChangePolicyReader {
-    private final ChangePolicyReader delegate;
+    static final ChangePolicy MODIFICATION_DEFAULT = new ChangePolicy(true, 6 * 60);
 
-    public DefaultingChangePolicyReader(ChangePolicyReader delegate) {
-        this.delegate = delegate;
+    private final ChangePolicyReader stored;
+
+    public DefaultingChangePolicyReader(ChangePolicyReader stored) {
+        this.stored = stored;
     }
 
     @Override
     public Optional<ChangePolicy> policyFor(UUID tenantId, UUID serviceId, ChangeType changeType) {
-        return delegate.policyFor(tenantId, serviceId, changeType);
+        Optional<ChangePolicy> row = stored.policyFor(tenantId, serviceId, changeType);
+        if (row.isPresent() || changeType != ChangeType.MODIFICATION) return row;
+        return Optional.of(MODIFICATION_DEFAULT);
     }
 }

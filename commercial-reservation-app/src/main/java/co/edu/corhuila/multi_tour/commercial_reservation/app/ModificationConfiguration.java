@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DefaultingChangePolicyReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentModification;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ModificationController;
@@ -45,7 +46,7 @@ class ModificationConfiguration {
 
     @Bean
     ChangePolicyReader changePolicyReader(JdbcTemplate jdbc) {
-        return new JdbcChangePolicyReader(jdbc);
+        return new DefaultingChangePolicyReader(new JdbcChangePolicyReader(jdbc));
     }
 
     @Bean
