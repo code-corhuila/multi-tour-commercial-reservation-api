@@ -6,6 +6,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 // The stored history of the modifications, newest first on reading (HU-COM-012 AC-12.6).
@@ -16,6 +17,11 @@ final class ReservationModificationFakes implements ReservationModifications {
     @Override
     public void append(UUID tenantId, ReservationModificationRecord record) {
         rows.add(record);
+    }
+
+    @Override
+    public Optional<ReservationModificationRecord> find(UUID tenantId, UUID modificationId) {
+        return rows.stream().filter(row -> row.modificationId().equals(modificationId)).findFirst();
     }
 
     @Override

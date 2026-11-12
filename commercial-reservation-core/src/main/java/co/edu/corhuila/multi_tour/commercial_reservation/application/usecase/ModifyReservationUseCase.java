@@ -73,13 +73,14 @@ public class ModifyReservationUseCase implements ModifyReservation {
     }
 
     @Override
-    public ReservationModificationRecord modify(PaymentActor actor, UUID reservationId, ModificationRequest request, String reason) {
+    public ReservationModificationRecord modify(PaymentActor actor, UUID reservationId, ModificationRequest asked, String reason) {
         ModificationAuthorization.requireWrite(actor);
         String why = reason == null ? "" : reason.strip();
         if (why.isEmpty() || why.length() > MAXIMUM_REASON) throw new MissingReservationDataException(List.of("reason"));
         return transaction.inTransaction(() -> {
             Reservation reservation = reservations.lockByTenantAndId(actor.tenantId(), reservationId)
                     .orElseThrow(() -> new ReservationNotFoundException(reservationId));
+            ModificationRequest request = ResolvedChange.of(reservation, asked);
             Instant now = Instant.now(clock);
             DepartureState current = departures.find(reservation.tenantId(), reservation.departureId()).orElse(null);
             Reason refusal = ChangeTerms.refusal(
