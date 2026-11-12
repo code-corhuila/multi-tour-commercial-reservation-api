@@ -115,6 +115,7 @@ class PaymentDeadlinePersistenceTest {
 
         assertThat(found.frozen()).isTrue();
         assertThat(found.remainingAtFreezeMinutes()).isEqualTo(90);
+        assertThat(found.freezeCause()).as("AC-20.17: the read carries the cause of the freeze").isEqualTo(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FreezeCause.TENANT_INACTIVE);
     }
 
     @Test

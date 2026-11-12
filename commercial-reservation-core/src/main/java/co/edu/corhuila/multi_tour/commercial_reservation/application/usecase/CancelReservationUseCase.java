@@ -20,10 +20,14 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityRe
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingReservationDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 // RN-01 to RN-05, RN-07, RN-10; AC-13.1, AC-13.2, AC-13.4, AC-13.6, AC-13.7, AC-13.13: reuses Reservation.cancel of HU-COM-011 with the
 // cause CUSTOMER_REQUEST. The settlement, the record, the seat release, the events and the opening of the decision commit together.
@@ -42,10 +46,18 @@ public class CancelReservationUseCase implements CancelReservation {
     private final PaymentEventOutbox outbox;
     private final PaymentTransaction transaction;
     private final Clock clock;
+    private final TenantStatusReader statuses;
 
     public CancelReservationUseCase(ReservationRepository reservations, DepartureReader departures, SalidaCapacityHolder holder,
             CancellationPolicyReader policy, ReprogrammingMarkReader marks, FinancialDecisionOpener decisions, CancellationRecords records,
             PaymentEventOutbox outbox, PaymentTransaction transaction, Clock clock) {
+        this(reservations, departures, holder, policy, marks, decisions, records, outbox, transaction, clock, tenantId -> Optional.empty());
+    }
+
+    // HU-COM-020 RN-07, AC-20.7, AC-20.8: with the tenant inactive the request needs a scheduled departure whose start has not arrived, and the 24-hour decision opens frozen.
+    public CancelReservationUseCase(ReservationRepository reservations, DepartureReader departures, SalidaCapacityHolder holder,
+            CancellationPolicyReader policy, ReprogrammingMarkReader marks, FinancialDecisionOpener decisions, CancellationRecords records,
+            PaymentEventOutbox outbox, PaymentTransaction transaction, Clock clock, TenantStatusReader statuses) {
         this.reservations = reservations;
         this.departures = departures;
         this.holder = holder;
@@ -56,6 +68,7 @@ public class CancelReservationUseCase implements CancelReservation {
         this.outbox = outbox;
         this.transaction = transaction;
         this.clock = clock;
+        this.statuses = statuses;
     }
 
     @Override
@@ -71,6 +84,9 @@ public class CancelReservationUseCase implements CancelReservation {
             if (marks.isMarked(reservation.tenantId(), reservation.reservationId()))
                 throw new BusinessRuleViolation("the customer must reject the rescheduling proposal first");
             Instant now = Instant.now(clock);
+            boolean inactive = statuses.statusOf(reservation.tenantId()).filter(status -> status == TenantStatus.INACTIVE).isPresent();
+            if (inactive && departures.find(reservation.tenantId(), reservation.departureId()).filter(d -> d.status() == DepartureStatus.SCHEDULED && d.startsAt().isAfter(now)).isEmpty())
+                throw new BusinessRuleViolation("the departure is no longer scheduled: the reservation is handled as not attributable to the customer");
             CancellationSettlement settlement = QuoteCancellationUseCase.settle(policy, departures, reservation, now);
             int released = holder.release(reservation.tenantId(), reservation.reservationId());
             if (released > 0) reservation.releaseSeat(CapacityReleased.CANCELLED_AT_CUSTOMER_REQUEST, now);
@@ -81,7 +97,8 @@ public class CancelReservationUseCase implements CancelReservation {
             CancellationRecord record = new CancellationRecord(reservation.reservationId(), reason, CancellationCause.CUSTOMER_REQUEST,
                     settlement, opened, command.actor().actorId(), now);
             records.save(reservation.tenantId(), record);
-            if (opened) decisions.open(reservation.tenantId(), reservation.reservationId(), settlement.validated(), settlement.penalty(), now);
+            if (opened && inactive) decisions.openFrozen(reservation.tenantId(), reservation.reservationId(), settlement.validated(), settlement.penalty(), now);
+            else if (opened) decisions.open(reservation.tenantId(), reservation.reservationId(), settlement.validated(), settlement.penalty(), now);
             return record;
         });
     }

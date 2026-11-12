@@ -8,7 +8,7 @@ import java.util.UUID;
 // from both. The extension fields are present once the single extension was granted.
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DeadlineResponse(UUID reservationId, String kind, String dueAt, Integer extensionHours, String extensionGrantedAt,
-        UUID extensionGrantedBy, String departureStartsAt, String effectiveDeadline, boolean frozen) {
+        UUID extensionGrantedBy, String departureStartsAt, String effectiveDeadline, boolean frozen, String freezeCause, Integer remainingAtFreezeMinutes) {
 
     static DeadlineResponse of(DeadlineView view) {
         return of(view, true);
@@ -19,6 +19,7 @@ public record DeadlineResponse(UUID reservationId, String kind, String dueAt, In
         var d = view.deadline();
         return new DeadlineResponse(view.reservationId(), d.kind().name(), d.dueAt().toString(), d.extensionHours(),
                 d.extensionGrantedAt() == null ? null : d.extensionGrantedAt().toString(), showGrantor ? d.extensionGrantedBy() : null,
-                view.departureStartsAt() == null ? null : view.departureStartsAt().toString(), view.effective().toString(), d.frozen());
+                view.departureStartsAt() == null ? null : view.departureStartsAt().toString(), view.effective().toString(), d.frozen(),
+                d.freezeCause() == null ? null : d.freezeCause().name(), d.remainingAtFreezeMinutes());
     }
 }

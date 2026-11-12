@@ -22,6 +22,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Sa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CancelReservationUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCancellationRecordUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.QuoteCancellationUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -63,8 +64,8 @@ class CancellationConfiguration {
     CancelReservation cancelReservation(@Lazy ReservationRepository reservations, @Lazy DepartureReader departures,
             @Lazy SalidaCapacityHolder holder, CancellationPolicyReader policy, ReprogrammingMarkReader marks,
             FinancialDecisionOpener decisions, @Lazy CancellationRecords records, @Lazy PaymentEventOutbox outbox,
-            @Lazy PaymentTransaction transaction, Clock clock) {
-        return new CancelReservationUseCase(reservations, departures, holder, policy, marks, decisions, records, outbox, transaction, clock);
+            @Lazy PaymentTransaction transaction, Clock clock, @Lazy TenantStatusReader statuses) {
+        return new CancelReservationUseCase(reservations, departures, holder, policy, marks, decisions, records, outbox, transaction, clock, statuses);
     }
 
     @Bean

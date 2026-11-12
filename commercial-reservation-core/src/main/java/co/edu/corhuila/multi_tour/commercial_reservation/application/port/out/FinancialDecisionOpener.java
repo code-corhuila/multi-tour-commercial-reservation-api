@@ -10,4 +10,9 @@ import java.util.UUID;
 public interface FinancialDecisionOpener {
 
     void open(UUID tenantId, UUID reservationId, Cents base, Cents penalty, Instant recognizedAt);
+
+    // HU-COM-020 AC-20.7: the same decision opened frozen, with its 24 hours intact, for a request registered while the tenant is inactive.
+    default void openFrozen(UUID tenantId, UUID reservationId, Cents base, Cents penalty, Instant recognizedAt) {
+        throw new UnsupportedOperationException("the frozen opening needs the implementation override");
+    }
 }

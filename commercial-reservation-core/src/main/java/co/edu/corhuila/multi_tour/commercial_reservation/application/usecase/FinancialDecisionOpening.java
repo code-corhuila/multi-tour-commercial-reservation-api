@@ -65,10 +65,21 @@ public class FinancialDecisionOpening implements FinancialDecisionOpener, Excess
         recognize(tenantId, reservationId, DecisionKind.PENDING_TREATMENT, value, null, Instant.now(clock));
     }
 
+    // HU-COM-020 AC-20.7: the customer cancellation opened frozen at the instant of the request, with its 24 hours intact.
+    @Override
+    public void openFrozen(UUID tenantId, UUID reservationId, Cents base, Cents penalty, Instant recognizedAt) {
+        recognize(tenantId, reservationId, DecisionKind.CUSTOMER_CANCELLATION, base, penalty, recognizedAt, true);
+    }
+
     private void recognize(UUID tenantId, UUID reservationId, DecisionKind kind, Cents value, Cents penalty, Instant recognizedAt) {
+        recognize(tenantId, reservationId, kind, value, penalty, recognizedAt, false);
+    }
+
+    private void recognize(UUID tenantId, UUID reservationId, DecisionKind kind, Cents value, Cents penalty, Instant recognizedAt, boolean frozen) {
         Optional<FinancialDecision> latest = decisions.findLatest(tenantId, reservationId, kind);
         if (latest.isEmpty()) {
-            decisions.save(FinancialDecision.open(ids.newId(), tenantId, reservationId, kind, value, penalty, null, recognizedAt));
+            FinancialDecision opened = FinancialDecision.open(ids.newId(), tenantId, reservationId, kind, value, penalty, null, recognizedAt);
+            decisions.save(frozen ? opened.freeze(recognizedAt) : opened);
             return;
         }
         FinancialDecision decision = latest.get();

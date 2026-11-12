@@ -41,8 +41,8 @@ public final class JdbcRefundQueries implements RefundQueries {
 
     @Override
     public RefundPage<FinancialDecision> dueDecisions(UUID tenantId, Instant now, int page, int limit) {
-        List<Object> args = List.of(tenantId, time(now.minus(FinancialDecision.WINDOW)));
-        return page("d.recognized_at, d.financial_decision_id", DECISIONS + " AND d.outcome IS NULL AND d.frozen_at IS NULL AND d.recognized_at <= ?", args,
+        List<Object> args = List.of(tenantId, time(now));
+        return page("d.recognized_at, d.financial_decision_id", DECISIONS + " AND d.outcome IS NULL AND d.frozen_at IS NULL AND COALESCE(d.resumed_due_at, d.recognized_at + interval '24 hours') <= ?", args,
                 page, limit, "d.", JdbcFinancialDecisionRepository.COLUMNS, (row, index) -> JdbcFinancialDecisionRepository.map(row));
     }
 

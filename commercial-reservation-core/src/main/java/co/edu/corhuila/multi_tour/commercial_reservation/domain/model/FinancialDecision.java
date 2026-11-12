@@ -9,7 +9,13 @@ import java.util.UUID;
 // request can be rejected. Immutable: every change returns a new value. The 24 hours are not parametrizable (PDR section 15).
 public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID creditBalanceId, DecisionKind kind, Cents baseAmount, Cents penalty,
         Instant recognizedAt, Instant frozenAt, Long remainingAtFreezeMinutes, DecisionOutcome outcome, boolean decidedBySystem, UUID decidedBy,
-        Instant decidedAt, String rejectionJustification) {
+        Instant decidedAt, String rejectionJustification, Instant resumedDueAt) {
+
+    public FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID creditBalanceId, DecisionKind kind, Cents baseAmount, Cents penalty, Instant recognizedAt, Instant frozenAt,
+            Long remainingAtFreezeMinutes, DecisionOutcome outcome, boolean decidedBySystem, UUID decidedBy, Instant decidedAt, String rejectionJustification) {
+        this(id, tenantId, reservationId, creditBalanceId, kind, baseAmount, penalty, recognizedAt, frozenAt, remainingAtFreezeMinutes, outcome, decidedBySystem, decidedBy, decidedAt,
+                rejectionJustification, null);
+    }
 
     public static final Duration WINDOW = Duration.ofHours(24);
     public static final int MAX_JUSTIFICATION = 500;
@@ -39,7 +45,7 @@ public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID
     }
 
     public Instant dueAt() {
-        return recognizedAt.plus(WINDOW);
+        return resumedDueAt != null ? resumedDueAt : recognizedAt.plus(WINDOW);
     }
 
     // Open, not frozen, and the 24 running hours have passed.
@@ -88,7 +94,7 @@ public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID
     public FinancialDecision withLateValue(Cents increase) {
         requireOpen();
         return new FinancialDecision(id, tenantId, reservationId, creditBalanceId, kind, new Cents(baseAmount.amount() + increase.amount()), penalty,
-                recognizedAt, frozenAt, remainingAtFreezeMinutes, null, false, null, null, null);
+                recognizedAt, frozenAt, remainingAtFreezeMinutes, null, false, null, null, null, resumedDueAt);
     }
 
     // The writer of the freeze is HU-COM-020; the decision keeps the minutes it had left.
@@ -96,7 +102,15 @@ public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID
         requireOpen();
         long left = Math.max(0, Duration.between(at, dueAt()).toMinutes());
         return new FinancialDecision(id, tenantId, reservationId, creditBalanceId, kind, baseAmount, penalty, recognizedAt, at, left, null, false, null,
-                null, null);
+                null, null, resumedDueAt);
+    }
+
+    // HU-COM-020 AC-20.5, AC-20.7: a decision frozen by the inactivation resumes with the time it had left: it ends at the instant of the resume plus the remaining time (the recognition
+    // instant never changes, so the shifted due instant is kept apart). A decision that is not frozen, or is already decided, does not move.
+    public FinancialDecision resumed(Instant at) {
+        if (isDecided() || !isFrozen()) return this;
+        return new FinancialDecision(id, tenantId, reservationId, creditBalanceId, kind, baseAmount, penalty, recognizedAt, null, null, null, false, null, null, null,
+                at.plus(Duration.ofMinutes(remainingAtFreezeMinutes)));
     }
 
     private void requireOpen() {
@@ -105,6 +119,6 @@ public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID
 
     private FinancialDecision decide(DecisionOutcome result, boolean bySystem, UUID by, Instant at, String justification) {
         return new FinancialDecision(id, tenantId, reservationId, creditBalanceId, kind, baseAmount, penalty, recognizedAt, frozenAt,
-                remainingAtFreezeMinutes, result, bySystem, by, at, justification);
+                remainingAtFreezeMinutes, result, bySystem, by, at, justification, resumedDueAt);
     }
 }
