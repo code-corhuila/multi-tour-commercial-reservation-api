@@ -53,6 +53,7 @@ public final class JdbcReservationRepository implements ReservationRepository {
         transactions.executeWithoutResult(status -> {
             if (exists(reservation)) {
                 updatePayment(reservation); // a payment or a decision changed the reservation that was created before
+                syncModification(reservation);
             } else {
                 insertReservation(reservation);
                 insertReservedService(reservation);
@@ -110,6 +111,38 @@ public final class JdbcReservationRepository implements ReservationRepository {
         return jdbc.query("SELECT reservation_id FROM commercial_reservation.payment_attempt WHERE tenant_id = ? AND payment_attempt_id = ?",
                 (row, index) -> row.getObject("reservation_id", UUID.class), tenantId, attemptId).stream().findFirst()
                 .flatMap(reservationId -> findByTenantAndId(tenantId, reservationId));
+    }
+
+    // HU-COM-012: a modification changes the party, the departure, the value, the line amounts (the only columns of a line the writer may
+    // update) and the companions (replaced). Run only when the stored reservation differs, so a payment does not rewrite them.
+    private void syncModification(Reservation r) {
+        var stored = jdbc.queryForMap("SELECT party_size, salida_id, final_value_cents FROM commercial_reservation.reservation "
+                + "WHERE tenant_id = ? AND reservation_id = ?", r.tenantId(), r.reservationId());
+        java.util.Set<String> documents = new java.util.HashSet<>(jdbc.queryForList("SELECT document_number FROM commercial_reservation.reservation_companion "
+                + "WHERE tenant_id = ? AND reservation_id = ?", String.class, r.tenantId(), r.reservationId()));
+        java.util.Set<String> wanted = new java.util.HashSet<>();
+        r.companions().forEach(companion -> wanted.add(companion.documentNumber().value()));
+        boolean changed = ((Number) stored.get("party_size")).intValue() != r.people() || !r.departureId().equals(stored.get("salida_id"))
+                || ((Number) stored.get("final_value_cents")).longValue() != r.finalValue().amount();
+        boolean companionsChanged = !documents.equals(wanted);
+        if (!changed && !companionsChanged) return;
+        jdbc.update("UPDATE commercial_reservation.reservation SET party_size = ?, salida_id = ?, projected_value_cents = ?, final_value_cents = ? "
+                + "WHERE tenant_id = ? AND reservation_id = ?", r.people(), r.departureId(), r.projectedValue().amount(), r.finalValue().amount(),
+                r.tenantId(), r.reservationId());
+        jdbc.update("UPDATE commercial_reservation.reserved_service SET party_size = ? WHERE tenant_id = ? AND reservation_id = ?",
+                r.people(), r.tenantId(), r.reservationId());
+        r.fixedDiscounts().forEach(line -> jdbc.update("UPDATE commercial_reservation.reservation_fixed_discount SET base_cents = ?, amount_cents = ?, "
+                + "subtotal_cents = ? WHERE tenant_id = ? AND reservation_id = ? AND line_order = ?", line.base().amount(), line.amount().amount(),
+                line.subtotal().amount(), r.tenantId(), r.reservationId(), line.order()));
+        jdbc.update("UPDATE commercial_reservation.capacity_allocation SET party_size = ?, salida_id = ? WHERE tenant_id = ? AND reservation_id = ? "
+                + "AND released_at IS NULL", r.people(), r.departureId(), r.tenantId(), r.reservationId());
+        if (companionsChanged) {
+            jdbc.update("DELETE FROM commercial_reservation.reservation_companion_sensitive_data WHERE tenant_id = ? AND reservation_companion_id IN "
+                    + "(SELECT reservation_companion_id FROM commercial_reservation.reservation_companion WHERE tenant_id = ? AND reservation_id = ?)",
+                    r.tenantId(), r.tenantId(), r.reservationId());
+            jdbc.update("DELETE FROM commercial_reservation.reservation_companion WHERE tenant_id = ? AND reservation_id = ?", r.tenantId(), r.reservationId());
+            r.companions().forEach(companion -> insertCompanion(r, companion));
+        }
     }
 
     private boolean exists(Reservation r) {

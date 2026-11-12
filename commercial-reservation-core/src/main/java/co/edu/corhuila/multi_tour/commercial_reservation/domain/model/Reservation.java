@@ -347,6 +347,8 @@ public final class Reservation {
         if (reservationStatus == ReservationStatus.CONFIRMED) {
             paymentStatus = pendingBalance.amount() == 0 ? PaymentStatus.FULLY_PAID
                     : expectedPaymentType == PaymentType.DEPOSIT ? PaymentStatus.DEPOSIT_RECEIVED : PaymentStatus.BALANCE_PENDING;
+        } else if (validated <= 0) {
+            paymentStatus = PaymentStatus.NO_PAYMENT;
         } else {
             paymentStatus = FinancialSituation.of(finalValue, new Cents(validated), expectedPaymentType, minimumDeposit, reservationStatus);
         }
