@@ -62,17 +62,26 @@ public class RegisterCashPaymentUseCase implements RegisterCashPayment {
             if (!session.isOpen(command.tenantId())) throw new BusinessRuleViolation("there is no open cash session");
             Cents minimum = preconditions.minimumFor(reservation);
             CashReceipt receipt = reservation.registerCash(ids.newId(), amount, minimum, command.actorId(), preconditions.now());
-            UUID movement = income.record(command.tenantId(), reservation.reservationId(), amount, command.actorId());
+            // Stable per intention: a retry of the same request (same Idempotency-Key and amount) replays the movement in the cash.
+            String intent = (command.idempotencyKey() == null || command.idempotencyKey().isBlank()
+                    ? receipt.attempt().attemptId().toString() : command.idempotencyKey()) + ":" + amount.amount();
+            UUID movement = income.record(command.tenantId(), reservation.reservationId(), intent, amount, command.actorId());
             try {
                 preconditions.holdFirstSeat(reservation);
-            } catch (BusinessRuleViolation noAvailability) {
-                income.reverse(command.tenantId(), movement);
-                throw noAvailability;
-            }
-            reservations.save(reservation);
-            reservation.pullEvents().forEach(outbox::append);
-            if (receipt.excess().amount() > 0) {
-                credit.recordExcess(command.tenantId(), reservation.reservationId(), receipt.attempt().attemptId(), receipt.excess());
+                reservations.save(reservation);
+                reservation.pullEvents().forEach(outbox::append);
+                if (receipt.excess().amount() > 0) {
+                    credit.recordExcess(command.tenantId(), reservation.reservationId(), receipt.attempt().attemptId(), receipt.excess());
+                }
+            } catch (RuntimeException failure) {
+                // Never money in the cash without a reservation: the income is reversed whatever the failure was. If the reversal
+                // fails too, the original error is kept and the failure is attached (the adapter logs it for the reconciliation).
+                try {
+                    income.reverse(command.tenantId(), movement);
+                } catch (RuntimeException reversalFailure) {
+                    failure.addSuppressed(reversalFailure);
+                }
+                throw failure;
             }
             return new RegisteredPayment(reservation, receipt.attempt());
         });

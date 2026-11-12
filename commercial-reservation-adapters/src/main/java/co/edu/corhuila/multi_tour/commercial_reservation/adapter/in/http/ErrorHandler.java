@@ -13,6 +13,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Ou
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteCompanionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteLeadCustomerException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservationAccessDeniedException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CashUnavailableException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingReservationDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingHighRiskDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonNotFoundException;
@@ -67,6 +68,12 @@ public class ErrorHandler {
             headers.set(HttpHeaders.RETRY_AFTER, "5");
             LoggerFactory.getLogger(ErrorHandler.class).warn("Departure event held back until its departure exists, eventId={}, traceId={}",
                     held.eventId(), request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE));
+        } else if (ex instanceof CashUnavailableException) {
+            // HU-COM-009: the cash did not answer, so the income is unknown and nothing was stored; the same request can be repeated.
+            code = ApiError.Code.SERVICE_UNAVAILABLE;
+            message = "the cash is not available; repeat the request with the same Idempotency-Key";
+            headers.set(HttpHeaders.RETRY_AFTER, "5");
+            LoggerFactory.getLogger(ErrorHandler.class).warn("Cash unavailable for a cash payment, traceId={}", request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE));
         } else if (ex instanceof SeatsUnavailableException) {
             // AC-07.8: the departure is full or too small; the client can tell the customer (PROPOSED code of the contract).
             code = ApiError.Code.SEATS_UNAVAILABLE;

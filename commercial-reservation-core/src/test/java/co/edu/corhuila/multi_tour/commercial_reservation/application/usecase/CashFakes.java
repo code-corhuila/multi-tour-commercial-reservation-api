@@ -13,7 +13,11 @@ import java.util.UUID;
 final class CashFakes implements CashSessionStatus, CashIncomeRecorder, CreditBalanceRecorder {
 
     boolean open = true;
+    RuntimeException recordFailure;
+    RuntimeException reverseFailure;
     final List<String> income = new ArrayList<>();
+    final List<String> keys = new ArrayList<>();
+    private final java.util.Map<String, UUID> byKey = new java.util.HashMap<>();
     final List<UUID> reversed = new ArrayList<>();
     final List<Cents> excess = new ArrayList<>();
     private int sequence;
@@ -24,13 +28,21 @@ final class CashFakes implements CashSessionStatus, CashIncomeRecorder, CreditBa
     }
 
     @Override
-    public UUID record(UUID tenantId, UUID reservationId, Cents amount, UUID registeredBy) {
+    public UUID record(UUID tenantId, UUID reservationId, String intentKey, Cents amount, UUID registeredBy) {
+        if (recordFailure != null) throw recordFailure;
+        keys.add(intentKey);
+        // The cash replays the movement of a key it already has, like the real route (200 after 201).
+        UUID known = byKey.get(intentKey);
+        if (known != null) return known;
         income.add(reservationId + ":" + amount.amount() + ":" + registeredBy);
-        return new UUID(9, 0xc00 + sequence++);
+        UUID movement = new UUID(9, 0xc00 + sequence++);
+        byKey.put(intentKey, movement);
+        return movement;
     }
 
     @Override
     public void reverse(UUID tenantId, UUID movementId) {
+        if (reverseFailure != null) throw reverseFailure;
         reversed.add(movementId);
     }
 
