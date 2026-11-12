@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentPaymentParameterChange;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentParameterOption;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentQuoteQuery;

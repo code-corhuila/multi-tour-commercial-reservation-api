@@ -5,6 +5,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 // Norm 5.3.8, RNF-06: a known key answers the stored resource and writes nothing and emits nothing. The key is registered in the same
@@ -27,11 +28,18 @@ public final class IdempotentWrites {
     }
 
     public <T> Outcome<T> run(UUID tenant, String key, String resourceType, Supplier<T> work, Function<T, UUID> idOf, Function<UUID, T> stored) {
+        return runWhen(tenant, key, resourceType, work, result -> true, idOf, stored);
+    }
+
+    // Only a result that passes `registers` takes the key (a refusal answered as a result, such as NOT_DUE, can be asked again with the same key).
+    public <T> Outcome<T> runWhen(UUID tenant, String key, String resourceType, Supplier<T> work, Predicate<T> registers, Function<T, UUID> idOf,
+            Function<UUID, T> stored) {
         Optional<UUID> known = keys.find(tenant, key);
         if (known.isPresent()) return new Outcome<>(stored.apply(known.get()), false);
         try {
             return transaction.inTransaction(() -> {
                 T created = work.get();
+                if (!registers.test(created)) return new Outcome<>(created, false);
                 if (!keys.register(tenant, key, resourceType, idOf.apply(created))) throw new KeyTaken();
                 return new Outcome<>(created, true);
             });

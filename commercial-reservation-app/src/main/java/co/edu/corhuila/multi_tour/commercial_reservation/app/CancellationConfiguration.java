@@ -1,8 +1,9 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CancellationController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CancellationHttpAccess;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCancellation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.NoCancellationPenaltyPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCancellationRecords;
@@ -74,9 +75,8 @@ class CancellationConfiguration {
     }
 
     @Bean
-    IdempotentCancellation idempotentCancellation(CancelReservation cancellation, GetCancellationRecord reads, IdempotencyKeys keys,
-            PlatformTransactionManager manager) {
-        return new IdempotentCancellation(cancellation, reads, keys, new TransactionTemplate(manager));
+    IdempotentCancellation idempotentCancellation(CancelReservation cancellation, GetCancellationRecord reads, IdempotentWrites writes) {
+        return new IdempotentCancellation(cancellation, reads, writes);
     }
 
     @Bean

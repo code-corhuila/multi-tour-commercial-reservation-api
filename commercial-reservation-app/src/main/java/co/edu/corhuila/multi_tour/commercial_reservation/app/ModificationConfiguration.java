@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentModification;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentModification;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ModificationController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ModificationHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
@@ -82,9 +83,8 @@ class ModificationConfiguration {
     }
 
     @Bean
-    IdempotentModification idempotentModification(ModifyReservation modification, GetReservationModification reads, IdempotencyKeys keys,
-            PlatformTransactionManager manager) {
-        return new IdempotentModification(modification, reads, keys, new TransactionTemplate(manager));
+    IdempotentModification idempotentModification(ModifyReservation modification, GetReservationModification reads, IdempotentWrites writes) {
+        return new IdempotentModification(modification, reads, writes);
     }
 
     @Bean
