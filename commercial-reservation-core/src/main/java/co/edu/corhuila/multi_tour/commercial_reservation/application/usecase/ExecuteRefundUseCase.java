@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExecuteRefund;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ClientNoticeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
@@ -23,6 +24,10 @@ public class ExecuteRefundUseCase implements ExecuteRefund {
         this.refunds = refunds;
         this.transaction = transaction;
         this.clock = clock;
+    }
+
+    public ExecuteRefundUseCase(RefundAuthorizationRepository refunds, PaymentTransaction transaction, Clock clock, ClientNoticeOutbox notices) {
+        this(refunds, transaction, clock);
     }
 
     @Override
