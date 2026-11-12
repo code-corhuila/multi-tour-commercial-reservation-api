@@ -5,11 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.DeferredFinancialDecisionOpener;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.NoCancellationPenaltyPolicy;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.NoReprogrammingMark;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCancellationRecords;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReprogrammingMark;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReschedulingRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityHolder;
@@ -47,7 +48,7 @@ class CancellationPersistenceTest {
         reservations = new JdbcReservationRepository(fixture.jdbc, fixture.cipher, fixture.transactions, new JdbcReservationCreatedOutbox(fixture.jdbc));
         records = new JdbcCancellationRecords(fixture.jdbc);
         cancel = new CancelReservationUseCase(reservations, new JdbcDepartureReader(fixture.jdbc), new JdbcSalidaCapacityHolder(fixture.jdbc),
-                new NoCancellationPenaltyPolicy(), new NoReprogrammingMark(), new DeferredFinancialDecisionOpener(), records,
+                new NoCancellationPenaltyPolicy(), new JdbcReprogrammingMark(fixture.jdbc), new DeferredFinancialDecisionOpener(), records,
                 new JdbcPaymentEventOutbox(fixture.jdbc), new JdbcPaymentTransaction(fixture.transactions), Clock.fixed(NOW.plusSeconds(60), ZoneOffset.UTC));
     }
 
@@ -107,5 +108,20 @@ class CancellationPersistenceTest {
         assertThat(records.find(stranger, reservation.reservationId())).isEmpty();
         assertThatThrownBy(() -> cancel.cancel(new CancelReservationCommand(new PaymentActor(stranger, fixture.actor, Role.TENANT_ADMINISTRATOR),
                 reservation.reservationId(), "Because", "CUSTOMER_REQUEST"))).isInstanceOf(ReservationNotFoundException.class);
+    }
+
+    // AC-13.6 with the real mark (DD-5): a reservation with an open episode of HU-COM-018 is refused with the sentence and nothing is written.
+    @Test
+    void aReservationWithAnOpenReschedulingEpisodeIsRefusedAndNothingIsWritten() {
+        Reservation reservation = stored();
+        new JdbcReschedulingRepository(fixture.jdbc).save(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReschedulingEpisode.open(
+                UUID.randomUUID(), fixture.tenant, reservation.reservationId(), reservation.departureId(), NOW.minusSeconds(3600), NOW));
+
+        assertThatThrownBy(() -> cancel.cancel(command(reservation))).isInstanceOf(co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation.class)
+                .hasMessageContaining("reject");
+
+        assertThat(records.find(fixture.tenant, reservation.reservationId())).isEmpty();
+        assertThat(fixture.jdbc.queryForObject("SELECT reservation_status FROM commercial_reservation.reservation WHERE reservation_id = ?", String.class,
+                reservation.reservationId())).isNotEqualTo("CANCELLED");
     }
 }
