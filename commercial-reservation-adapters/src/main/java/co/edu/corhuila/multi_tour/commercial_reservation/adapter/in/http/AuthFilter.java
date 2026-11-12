@@ -18,8 +18,14 @@ public class AuthFilter extends OncePerRequestFilter {
     private final Rs256Verifier verifier;
     private final ApiErrorWriter errors;
     private final TenantStatusReader statuses;
+    private final ExceptionalAccessAudit audit;
 
     public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses) {
+        this(verifier, errors, statuses, new LoggingExceptionalAccessAudit());
+    }
+
+    public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses, ExceptionalAccessAudit audit) {
+        this.audit = audit;
         this.verifier = verifier;
         this.errors = errors;
         this.statuses = statuses;
@@ -48,6 +54,17 @@ public class AuthFilter extends OncePerRequestFilter {
                 errors.write(request, response, ApiError.Code.FORBIDDEN, "the access is restricted to the work of an inactive tenant");
                 return;
             }
+            if (principal.exceptional() != null) {
+                // HU-SEC-007 G-SEC9-1 (ADR-004 D5): only a read inside the scope; any write, internal route or route not listed is refused, and each use is audited with the authorizationId.
+                String path = request.getRequestURI().substring(request.getContextPath().length());
+                ExceptionalAccess access = principal.exceptional();
+                if (!ExceptionalAccessPolicy.allows(request.getMethod(), path, access.scope())) {
+                    errors.write(request, response, ApiError.Code.FORBIDDEN, "the exceptional access is read only and limited to its scope");
+                    return;
+                }
+                audit.used(access.authorizationId(), access.access(), ExceptionalAccessPolicy.areaOf(request.getMethod(), path).orElseThrow(), request.getMethod(),
+                        ExceptionalAccessPolicy.template(path));
+            }
             if (inactive(request, principal)) {
                 errors.write(request, response, ApiError.Code.UNAUTHORIZED, "authentication is required");
                 return;
@@ -67,7 +84,8 @@ public class AuthFilter extends OncePerRequestFilter {
     // The receiving route is checked by its SERVICE role alone, because it must work for an inactive tenant.
     private boolean inactive(HttpServletRequest request, AuthenticatedPrincipal principal) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        if (principal.tenantId() == null || principal.restricted()
+        // The exceptional or emergency access reads only, so an inactive tenant does not close it (HU-SEC-007, Project Lead 2026-11-11).
+        if (principal.tenantId() == null || principal.restricted() || principal.exceptional() != null
                 || path.matches("/api/v1/commercial-reservation/internal/tenants/[^/]+/events")) {
             return false;
         }

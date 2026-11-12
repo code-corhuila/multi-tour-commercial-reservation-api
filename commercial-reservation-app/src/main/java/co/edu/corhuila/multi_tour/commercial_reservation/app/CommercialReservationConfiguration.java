@@ -2,6 +2,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.HealthController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ApiErrorWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ExceptionalAccessAudit;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.LoggingExceptionalAccessAudit;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogAuthorization;
@@ -231,9 +233,14 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors,
+    ExceptionalAccessAudit exceptionalAccessAudit() {
+        return new LoggingExceptionalAccessAudit();
+    }
+
+    @Bean
+    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors, ExceptionalAccessAudit audit,
             TenantStatusReader statuses) {
-        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses));
+        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses, audit));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }
