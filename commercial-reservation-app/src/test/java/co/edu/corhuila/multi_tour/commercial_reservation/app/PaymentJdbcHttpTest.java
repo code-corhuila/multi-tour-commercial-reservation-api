@@ -206,6 +206,42 @@ class PaymentJdbcHttpTest {
                 .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 422);
     }
 
+    // DP-05, decided 2026-11-11 (PDR v1.9: RN-RES-006A, RN-RES-004, GAP-03): the minimum (90.000 of 300.000) conditions the confirmation,
+    // not the registration. A deposit below it is stored, its approval leaves the reservation Parcial, and the sum reaching it confirms.
+    @Test void aDepositBelowTheMinimumIsStoredAndItsApprovalLeavesTheReservationPartialUntilTheMinimumIsReached() throws Exception {
+        String id = reservation("pay-jdbc-0020");
+        configure();
+
+        String small = transfer(id, 50_000, "pay-jdbc-0021").get("paymentId").asText();
+        JsonNode partial = CatalogHttpTest.json(exchange(post(BASE + "/payment-proofs/" + small + "/approve").header("Idempotency-Key", "pay-jdbc-0022")
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 50_000L))), admin(), 200));
+
+        assertThat(partial.get("reservationStatus").asText()).isEqualTo("PENDING_PAYMENT");
+        assertThat(partial.get("validatedValueCents").asLong()).isEqualTo(50_000L);
+        assertThat(jdbc.queryForObject("SELECT payment_status || ':' || pending_balance_cents FROM commercial_reservation.reservation WHERE reservation_id = ?",
+                String.class, UUID.fromString(id))).isEqualTo("PARTIAL:250000");
+
+        String rest = transfer(id, 40_000, "pay-jdbc-0023").get("paymentId").asText();
+        JsonNode confirmed = CatalogHttpTest.json(exchange(post(BASE + "/payment-proofs/" + rest + "/approve").header("Idempotency-Key", "pay-jdbc-0024")
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 40_000L))), admin(), 200));
+
+        assertThat(confirmed.get("reservationStatus").asText()).isEqualTo("CONFIRMED");
+        assertThat(confirmed.get("validatedValueCents").asLong()).isEqualTo(90_000L);
+    }
+
+    @Test void aTransferAboveThePendingBalanceIsStoredAsDeclared() throws Exception {
+        String id = reservation("pay-jdbc-0025");
+        configure();
+
+        JsonNode payment = transfer(id, 300_001, "pay-jdbc-0026");
+
+        assertThat(payment.get("validationStatus").asText()).isEqualTo("IN_VALIDATION");
+        assertThat(jdbc.queryForObject("SELECT received_amount_cents FROM commercial_reservation.payment_attempt WHERE reservation_id = ?",
+                Long.class, UUID.fromString(id))).isEqualTo(300_001L);
+        assertThat(jdbc.queryForObject("SELECT pending_balance_cents FROM commercial_reservation.reservation WHERE reservation_id = ?",
+                Long.class, UUID.fromString(id))).isEqualTo(300_000L);
+    }
+
     @Test void step2OfTheSagaAndTheOverdueListAnswerToAServiceTokenAndCashIsRefusedWithoutAVerifiableSession() throws Exception {
         String id = reservation("pay-jdbc-0010");
         configure();
