@@ -10,6 +10,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentDeadline;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RejectProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DeadlineKind;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
@@ -202,6 +203,23 @@ class DecidePaymentProofTest {
         assertThat(review.cancelled).isEmpty();
     }
 
+
+    // AC-10.15, RN-13 (DP-04): the value of a late approval is handed over together with the cause stored on the cancelled reservation, so the
+    // treatment of HU-COM-016 follows that cause (100 % refund, RF-021 policy, or pending treatment).
+    @Test
+    void theValueOfALateApprovalInheritsTheCancellationCause() {
+        for (CancellationCause cause : CancellationCause.values()) {
+            Reservation reservation = planted(PaymentType.DEPOSIT, 100_000);
+            reservation.restoredAs(ReservationStatus.CANCELLED, PaymentStatus.NO_PAYMENT, new Cents(300_000), false, reservation.attempts())
+                    .restoredCancellation(cause);
+
+            approve(100_000, null);
+        }
+
+        assertThat(review.causes).containsExactly(CancellationCause.PAYMENT_EXPIRY, CancellationCause.CUSTOMER_REQUEST,
+                CancellationCause.NOT_ATTRIBUTABLE_TO_CUSTOMER);
+        assertThat(review.values).hasSize(3).allMatch(value -> value.equals("APPROVED_AFTER_CANCELLATION:100000"));
+    }
     @Test
     void rejectingAfterTheDeadlineCancelsTheReservationAndReleasesTheSeat() {
         planted(PaymentType.DEPOSIT, 100_000);

@@ -8,6 +8,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentTyp
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ValidationStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SuspensionIntervals;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -22,11 +23,15 @@ public record ProofView(UUID reservationId, UUID customerId, UUID attemptId, Pay
         PaymentStatus paymentStatus, PaymentMethod expectedMethod) {
 
     public static ProofView of(Reservation reservation, PaymentAttempt attempt, Instant now) {
+        return of(reservation, attempt, now, new SuspensionIntervals(java.util.List.of()));
+    }
+
+    public static ProofView of(Reservation reservation, PaymentAttempt attempt, Instant now, SuspensionIntervals suspensions) {
         boolean transfer = attempt.method() == PaymentMethod.TRANSFER;
         return new ProofView(reservation.reservationId(), reservation.customerId(), attempt.attemptId(), reservation.expectedPaymentType(),
                 attempt.method(), attempt.amount(), attempt.verifiedAmount(), attempt.appliedAmount(), attempt.excessAmount(),
-                attempt.treatmentAmount(), attempt.validationStatus(), attempt.registeredAt(), transfer ? attempt.reviewDueAt() : null,
-                attempt.reviewOverdue(now), attempt.registeredBy(), attempt.decidedBy(), attempt.decidedAt(), attempt.decisionReason(),
+                attempt.treatmentAmount(), attempt.validationStatus(), attempt.registeredAt(), transfer ? attempt.reviewDueAt(suspensions).orElse(null) : null,
+                attempt.reviewOverdue(now, suspensions), attempt.registeredBy(), attempt.decidedBy(), attempt.decidedAt(), attempt.decisionReason(),
                 reservation.pendingBalance(), reservation.reservationStatus(), reservation.paymentStatus(), reservation.expectedPaymentMethod());
     }
 }

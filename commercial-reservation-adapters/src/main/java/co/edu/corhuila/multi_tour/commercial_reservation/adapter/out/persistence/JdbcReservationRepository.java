@@ -4,6 +4,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Fi
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCreatedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Companion;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FixedDiscount;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.HighRiskData;
@@ -70,11 +71,12 @@ public final class JdbcReservationRepository implements ReservationRepository {
     @Override
     public Optional<Reservation> findByTenantAndId(UUID tenantId, UUID reservationId) {
         return reader.findAsCreated(tenantId, reservationId).flatMap(created -> jdbc.query(
-                "SELECT reservation_status, payment_status, pending_balance_cents FROM commercial_reservation.reservation "
+                "SELECT reservation_status, payment_status, pending_balance_cents, cancellation_cause FROM commercial_reservation.reservation "
                 + "WHERE tenant_id = ? AND reservation_id = ?", (row, index) -> created.restoredAs(
                         ReservationStatus.valueOf(row.getString("reservation_status")), PaymentStatus.valueOf(row.getString("payment_status")),
                         new Cents(row.getLong("pending_balance_cents")), attempts.openSeat(tenantId, reservationId),
-                        attempts.read(tenantId, reservationId)), tenantId, reservationId).stream().findFirst());
+                        attempts.read(tenantId, reservationId)).restoredCancellation(causeOf(row.getString("cancellation_cause"))), tenantId, reservationId)
+                .stream().findFirst());
     }
 
 
@@ -88,12 +90,12 @@ public final class JdbcReservationRepository implements ReservationRepository {
         java.util.Set<UUID> holding = attempts.openSeats(tenantId, ids);
         java.util.Map<UUID, java.util.List<co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentAttempt>> stored =
                 attempts.readAll(tenantId, ids);
-        jdbc.query("SELECT reservation_id, reservation_status, payment_status, pending_balance_cents FROM commercial_reservation.reservation "
+        jdbc.query("SELECT reservation_id, reservation_status, payment_status, pending_balance_cents, cancellation_cause FROM commercial_reservation.reservation "
                 + "WHERE tenant_id = ? AND reservation_id = ANY (?::uuid[])", (row, index) -> {
                     UUID id = row.getObject("reservation_id", UUID.class);
                     return found.get(id).restoredAs(ReservationStatus.valueOf(row.getString("reservation_status")),
                             PaymentStatus.valueOf(row.getString("payment_status")), new Cents(row.getLong("pending_balance_cents")),
-                            holding.contains(id), stored.getOrDefault(id, java.util.List.of()));
+                            holding.contains(id), stored.getOrDefault(id, java.util.List.of())).restoredCancellation(causeOf(row.getString("cancellation_cause")));
                 }, tenantId, ids);
         return found;
     }
@@ -148,6 +150,10 @@ public final class JdbcReservationRepository implements ReservationRepository {
     private boolean exists(Reservation r) {
         return jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.reservation WHERE tenant_id = ? AND reservation_id = ?",
                 Integer.class, r.tenantId(), r.reservationId()) > 0;
+    }
+
+    private static CancellationCause causeOf(String stored) {
+        return stored == null ? null : CancellationCause.valueOf(stored);
     }
 
     private void updatePayment(Reservation r) {

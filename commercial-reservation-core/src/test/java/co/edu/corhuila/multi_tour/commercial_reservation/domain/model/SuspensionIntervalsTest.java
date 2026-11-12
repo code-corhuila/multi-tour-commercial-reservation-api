@@ -60,4 +60,16 @@ class SuspensionIntervalsTest {
     void anIntervalThatEndsBeforeItStartsIsRefused() {
         assertThatThrownBy(() -> new SuspensionIntervals.Interval(at(5), at(4))).isInstanceOf(DomainException.class);
     }
+
+    @Test
+    void theLatestStartOfAnElapsedPeriodSkipsTheSuspendedTimeLikeEndOfDoes() {
+        SuspensionIntervals intervals = new SuspensionIntervals(List.of(new SuspensionIntervals.Interval(at(10), at(40))));
+
+        assertThat(intervals.latestStartWithActive(at(54), Duration.ofHours(24))).isEqualTo(START);
+        assertThat(intervals.latestStartWithActive(at(30), Duration.ofHours(24))).as("only 10 active hours inside the window: no start has 24")
+                .isBefore(START);
+        assertThat(new SuspensionIntervals(List.of()).latestStartWithActive(at(24), Duration.ofHours(24))).isEqualTo(START);
+        assertThat(new SuspensionIntervals(List.of(new SuspensionIntervals.Interval(at(10), null))).latestStartWithActive(at(50), Duration.ofHours(24)))
+                .as("a suspension still open leaves 10 active hours before it").isBefore(START);
+    }
 }

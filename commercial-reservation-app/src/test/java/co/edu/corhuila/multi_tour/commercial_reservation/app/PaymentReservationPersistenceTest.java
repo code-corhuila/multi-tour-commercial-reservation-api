@@ -9,6 +9,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CancellationCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
@@ -238,5 +239,21 @@ class PaymentReservationPersistenceTest {
         assertThat(row.get("validation_status")).isEqualTo(ValidationStatus.IN_VALIDATION.name());
         assertThat(row.get("decided_by")).isNull();
         assertThat(row.get("applied_amount_cents")).isNull();
+    }
+
+    // HU-COM-010 AC-10.15: the late approval hands the stored cancellation cause to the treatment, so both loaders of the repository restore it.
+    @Test
+    void aCancelledReservationIsReadBackWithItsCancellationCauseByIdAndInAPage() {
+        Reservation reservation = stored();
+        reservation.cancel(CancellationCause.NOT_ATTRIBUTABLE_TO_CUSTOMER, fixture.actor, ReservationPersistenceFixture.NOW, 0);
+        transaction.inTransaction(() -> {
+            repository.save(reservation);
+            return null;
+        });
+
+        assertThat(repository.findByTenantAndId(fixture.tenant, reservation.reservationId()).orElseThrow().cancellationCause())
+                .isEqualTo(CancellationCause.NOT_ATTRIBUTABLE_TO_CUSTOMER);
+        assertThat(repository.findByTenantAndIds(fixture.tenant, List.of(reservation.reservationId())).get(reservation.reservationId()).cancellationCause())
+                .isEqualTo(CancellationCause.NOT_ATTRIBUTABLE_TO_CUSTOMER);
     }
 }

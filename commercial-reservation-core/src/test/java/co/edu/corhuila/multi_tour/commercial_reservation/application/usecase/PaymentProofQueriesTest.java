@@ -16,6 +16,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SuspensionIntervals;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BirthDateOrAge;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ContactInfo;
@@ -245,5 +246,37 @@ class PaymentProofQueriesTest {
         assertThatThrownBy(() -> file.read(new PaymentActor(OTHER_TENANT, ADMIN, Role.TENANT_ADMINISTRATOR), OLD))
                 .isInstanceOf(PaymentProofNotFoundException.class);
         assertThatThrownBy(() -> file.read(actor(Role.TENANT_ADMINISTRATOR), FRESH)).isInstanceOf(PaymentProofNotFoundException.class);
+    }
+
+    // DP-08, T-11: one hour of inactivity inside the 24 hours of OLD (presented 24 hours ago) puts its due instant one hour ahead; the list, the overdue
+    // filter, the counter and the single read agree, and the 23-hour-59-minute proof stays unmarked.
+    @Test
+    void theOverdueMarkLeavesOutTheTenantsSuspendedHoursInTheListTheFilterAndTheRead() {
+        SuspensionIntervals oneHour = new SuspensionIntervals(List.of(new SuspensionIntervals.Interval(NOW.minus(Duration.ofHours(12)), NOW.minus(Duration.ofHours(11)))));
+        ListPaymentProofsUseCase paused = new ListPaymentProofsUseCase(reader, statuses, tenant -> oneHour, clock);
+        PaymentProofQueriesUseCase pausedQueries = new PaymentProofQueriesUseCase(fakes, tenant -> oneHour, clock);
+
+        ProofPage page = paused.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), null, false, 1, 20));
+        assertThat(page.items()).extracting(ProofView::reviewOverdue).containsExactly(false, false);
+        assertThat(page.items().get(0).reviewDueAt()).isEqualTo(NOW.plus(Duration.ofHours(1)));
+        assertThat(page.overdueCount()).isZero();
+        assertThat(paused.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), null, true, 1, 20)).items()).isEmpty();
+        assertThat(paused.overdueOf(TENANT, 1, 20).items()).isEmpty();
+        assertThat(pausedQueries.get(actor(Role.MANAGER), OLD).reviewOverdue()).isFalse();
+        assertThat(pausedQueries.get(actor(Role.MANAGER), OLD).reviewDueAt()).isEqualTo(NOW.plus(Duration.ofHours(1)));
+        assertThat(pausedQueries.history(actor(Role.MANAGER), RESERVATION)).filteredOn(view -> view.attemptId().equals(OLD))
+                .extracting(ProofView::reviewOverdue).containsExactly(false);
+    }
+
+    @Test
+    void aTenantWithSuspensionsOutsideTheReviewKeepsTheMarkAtTwentyFourHours() {
+        SuspensionIntervals before = new SuspensionIntervals(List.of(new SuspensionIntervals.Interval(NOW.minus(Duration.ofDays(9)), NOW.minus(Duration.ofDays(8)))));
+        ListPaymentProofsUseCase other = new ListPaymentProofsUseCase(reader, statuses, tenant -> before, clock);
+
+        ProofPage overdue = other.list(new ListProofsQuery(actor(Role.TENANT_ADMINISTRATOR), null, true, 1, 20));
+
+        assertThat(overdue.items()).extracting(ProofView::attemptId).containsExactly(OLD);
+        assertThat(overdue.items().get(0).reviewDueAt()).isEqualTo(NOW);
+        assertThat(overdue.overdueCount()).isEqualTo(1);
     }
 }

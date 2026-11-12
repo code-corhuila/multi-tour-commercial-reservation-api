@@ -1,6 +1,8 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SuspensionIntervals;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,6 +17,14 @@ import org.springframework.context.annotation.Primary;
 @TestConfiguration
 class TenantStatusHttpFixture {
     @Bean @Primary MemoryStatus memoryStatus() { return new MemoryStatus(); }
+    // The history of suspensions is read by the review mark of the proofs; the JDBC reader is proved against the real engine in TenantInactivityPersistenceTest.
+    @Bean @Primary SuspensionStore noSuspensions() {
+        return new SuspensionStore() {
+            public boolean open(UUID id, UUID tenantId, java.time.Instant at, UUID openingEventId) { return true; }
+            public boolean closeOpen(UUID tenantId, java.time.Instant at, UUID closingEventId) { return false; }
+            public SuspensionIntervals intervals(UUID tenantId) { return new SuspensionIntervals(java.util.List.of()); }
+        };
+    }
 
     static final class MemoryStatus implements TenantStatusReader {
         final Map<UUID, TenantStatus> statuses = new HashMap<>();
