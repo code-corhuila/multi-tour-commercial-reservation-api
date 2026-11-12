@@ -9,6 +9,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RefundR
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RefundWriteController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.calendar.WeekdayBusinessCalendar;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcClientNoticeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcFinancialDecisionRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundAuthorizationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundAuthorizedOutbox;
@@ -19,6 +20,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Man
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadRefunds;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RefundAutomation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.BusinessCalendar;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FinancialDecisionRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
@@ -118,8 +120,10 @@ class RefundConfiguration {
     }
 
     @Bean
-    ExecuteRefund executeRefund(RefundAuthorizationRepository refunds, @Lazy PaymentTransaction transaction, Clock clock) {
-        return new ExecuteRefundUseCase(refunds, transaction, clock);
+    ExecuteRefund executeRefund(RefundAuthorizationRepository refunds, @Lazy PaymentTransaction transaction, Clock clock, JdbcTemplate jdbc,
+            @Lazy CustomerProfileReader customers) {
+        // HU-COM-015 AC-15.4: the REFUND_PROCESSED notice is written in the transaction of the completion step.
+        return new ExecuteRefundUseCase(refunds, transaction, clock, new JdbcClientNoticeOutbox(jdbc, customers));
     }
 
     @Bean
