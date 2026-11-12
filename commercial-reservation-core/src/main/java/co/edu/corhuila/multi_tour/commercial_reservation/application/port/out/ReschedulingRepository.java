@@ -12,6 +12,11 @@ public interface ReschedulingRepository {
 
     Optional<ReschedulingEpisode> find(UUID tenantId, UUID episodeId);
 
+    // HU-COM-018 AC-18.20: the read of a transition (answer, expiry, voiding) locks the episode row until the end of the transaction; the default is the plain read.
+    default Optional<ReschedulingEpisode> findForUpdate(UUID tenantId, UUID episodeId) {
+        return find(tenantId, episodeId);
+    }
+
     void save(ReschedulingEpisode episode);
 
     // HU-COM-018 AC-18.12: the open episodes whose pending proposal is for the given departure, to void them when it is cancelled.
