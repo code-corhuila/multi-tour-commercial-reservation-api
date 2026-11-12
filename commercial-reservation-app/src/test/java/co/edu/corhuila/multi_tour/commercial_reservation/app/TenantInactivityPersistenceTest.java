@@ -138,6 +138,21 @@ class TenantInactivityPersistenceTest {
         assertThat(suspensions.intervals(b.tenant)).isEqualTo(new SuspensionIntervals(java.util.List.of()));
     }
 
+    // AC-20.12, RN-10: the restricted Administrator may only decide proofs presented before the inactivation, so the decision asks since when the tenant is suspended.
+    @Test
+    void theOpenSuspensionOfATenantGivesItsStartAndNoOtherTenantNorAClosedOneDoes() {
+        assertThat(suspensions.openSince(a.tenant)).as("an active tenant has no open suspension").isEmpty();
+
+        apply.apply(event(TenantEventType.TENANT_INACTIVATED, a.tenant, T0, null));
+
+        assertThat(suspensions.openSince(a.tenant)).contains(T0);
+        assertThat(suspensions.openSince(b.tenant)).as("the other tenant is never suspended").isEmpty();
+
+        apply.apply(event(TenantEventType.TENANT_REACTIVATED, a.tenant, T0.plus(Duration.ofHours(30)), null));
+
+        assertThat(suspensions.openSince(a.tenant)).as("a closed suspension is not open").isEmpty();
+    }
+
     @Test
     void theInactivationFreezesTheOpenDecisionsOfThatTenantAndTheReactivationResumesThemWithWhatRemained() {
         var decisionsA = new JdbcFinancialDecisionRepository(a.jdbc);

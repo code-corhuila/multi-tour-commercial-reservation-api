@@ -3,16 +3,18 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistenc
 import static co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcFinancialDecisionRepository.instant;
 import static co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcFinancialDecisionRepository.time;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SuspensionIntervals;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 // HU-COM-020 RN-14, plan D-02 of the db (tenant_suspension, its guard and its unique keys): the append-only history of the periods of inactivity of a tenant. A period is opened once (the partial unique
 // key of the open one and the unique opening event refuse a second) and closed once by the guard; both writes run inside the transaction of the tenant event. Every query leads with the tenant.
-public final class JdbcTenantSuspensions implements SuspensionStore {
+public final class JdbcTenantSuspensions implements SuspensionStore, SuspensionReader {
     private final JdbcTemplate jdbc;
 
     public JdbcTenantSuspensions(JdbcTemplate jdbc) {
@@ -30,6 +32,12 @@ public final class JdbcTenantSuspensions implements SuspensionStore {
     public boolean closeOpen(UUID tenantId, Instant at, UUID closingEventId) {
         return jdbc.update("UPDATE commercial_reservation.tenant_suspension SET resumed_at = GREATEST(?, suspended_at), resumed_by_event_id = ? WHERE tenant_id = ? AND resumed_at IS NULL",
                 time(at), closingEventId, tenantId) == 1;
+    }
+
+    @Override
+    public Optional<Instant> openSince(UUID tenantId) {
+        return jdbc.query("SELECT suspended_at FROM commercial_reservation.tenant_suspension WHERE tenant_id = ? AND resumed_at IS NULL", (row, index) -> instant(row, "suspended_at"), tenantId)
+                .stream().findFirst();
     }
 
     @Override
