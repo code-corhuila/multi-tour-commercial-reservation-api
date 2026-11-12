@@ -15,12 +15,12 @@ public final class ExceptionalAccessPolicy {
     private static final Map<Pattern, String> AREAS = new LinkedHashMap<>();
 
     static {
-        area("SENSITIVE", "customers/[^/]+/sensitive-data", "sensitive-data-retention/due");
+        area("SENSITIVE", "customers/[^/]+/sensitive-data");
         area("RESERVATIONS", "catalog/services/[^/]+/departures/[^/]+/reservations");
         area("CUSTOMERS", "customers(/[^/]+)?");
         area("CATALOG", "catalog/.*", "discount-rules(/.*)?", "associated-establishments(/.*)?", "additional-discount-reasons(/.*)?", "departures/.*");
-        area("RESERVATIONS", "reservations(/.*)?", "payment-proofs(/.*)?", "payment-deadlines(/.*)?", "pending-payments", "payment-parameters", "financial-decisions(/.*)?",
-                "refund-authorizations(/.*)?", "credit-balances(/.*)?", "credit-balance-summary", "client-notices/.*", "discount-quotes(/.*)?");
+        area("RESERVATIONS", "reservations(/.*)?", "payment-proofs(/.*)?", "pending-payments", "payment-parameters", "financial-decisions(/.*)?",
+                "refund-authorizations(/.*)?", "credit-balances(/.*)?", "credit-balance-summary", "discount-quotes(/.*)?");
     }
 
     private ExceptionalAccessPolicy() {

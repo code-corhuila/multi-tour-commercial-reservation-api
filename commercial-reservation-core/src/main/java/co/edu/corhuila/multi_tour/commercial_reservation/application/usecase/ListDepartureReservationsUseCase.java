@@ -21,7 +21,7 @@ public class ListDepartureReservationsUseCase implements ListDepartureReservatio
 
     @Override
     public DepartureReservationPage list(CustomerActor actor, UUID serviceId, UUID salidaId, int page, int limit) {
-        boolean allowed = actor != null && actor.tenantId() != null && (actor.role() == Role.TENANT_ADMINISTRATOR
+        boolean allowed = actor != null && actor.tenantId() != null && (actor.role() == Role.TENANT_ADMINISTRATOR || actor.role() == Role.PLATFORM_SUPPORT
                 || (actor.role() == Role.OPERATIONAL_COLLABORATOR && actor.permissions().contains(PERMISSION)));
         if (!allowed) throw new ReservationAccessDeniedException();
         return queries.ofDeparture(actor.tenantId(), serviceId, salidaId, page, limit).orElseThrow(() -> new DepartureNotFoundException(salidaId));
