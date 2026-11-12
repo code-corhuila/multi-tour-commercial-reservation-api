@@ -132,6 +132,32 @@ class PaymentJdbcHttpTest {
         assertThat(quote.get("pendingBalanceCents").asLong()).isEqualTo(300_000L);
     }
 
+    // Two real tenants: the Final Customer of one tenant reads the options of that tenant only, reduced to the permitted fields.
+    @Test void theFinalCustomerReadsTheReducedOptionsOfItsOwnTenantOnly() throws Exception {
+        UUID other = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.ofInstant(TestJwtKeys.NOW, ZoneOffset.UTC);
+        jdbc.update("INSERT INTO commercial_reservation.tenant_status (tenant_id, identifier, status, time_zone, country, "
+                + "last_event_occurred_at, created_at, updated_at) VALUES (?, ?, 'ACTIVE', 'America/Bogota', 'CO', ?, ?, ?)",
+                other, "t-" + other, now, now, now);
+        var row = Map.of("paymentType", "FULL_PAYMENT", "initialWaitHours", 12, "additionalWaitHours", 24,
+                "transferEnabled", false, "cashEnabled", true);
+        exchange(put(BASE + "/payment-parameters").header("Idempotency-Key", "param-jdbc-0002").contentType(MediaType.APPLICATION_JSON)
+                .content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("reason", "Other tenant", "parameters", List.of(row)))),
+                CatalogHttpTest.token(other.toString(), ADMIN), 200);
+
+        JsonNode mine = CatalogHttpTest.json(exchange(get(BASE + "/payment-parameters"), CatalogHttpTest.token(tenant.toString(), "FINAL_CUSTOMER"), 200));
+        JsonNode theirs = CatalogHttpTest.json(exchange(get(BASE + "/payment-parameters"), CatalogHttpTest.token(other.toString(), "FINAL_CUSTOMER"), 200));
+
+        assertThat(mine.at("/meta/total").asInt()).isEqualTo(1);
+        assertThat(mine.at("/data/0/paymentType").asText()).isEqualTo("DEPOSIT");
+        assertThat(mine.at("/data/0/transferEnabled").asBoolean()).isTrue();
+        assertThat(mine.get("data").get(0).size()).isEqualTo(3);
+        assertThat(theirs.at("/meta/total").asInt()).isEqualTo(1);
+        assertThat(theirs.at("/data/0/paymentType").asText()).isEqualTo("FULL_PAYMENT");
+        assertThat(theirs.at("/data/0/transferEnabled").asBoolean()).isFalse();
+        assertThat(theirs.toString()).doesNotContain("changedBy").doesNotContain("changeReason").doesNotContain("Other tenant");
+    }
+
     @Test void aTransferIsStoredWithItsProofAndTheSeatAndIsReadBackByTheHistoryAndTheReview() throws Exception {
         String id = reservation("pay-jdbc-0002");
         configure();

@@ -36,8 +36,9 @@ public final class PaymentAuthorization {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST);
     }
 
+    // PDR 1.9, AC-RS.4: the Final Customer reads the enabled types and methods too, but only the reduced projection (readOptions).
     public static void requireReadParameters(PaymentActor actor) {
-        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST);
+        require(actor, Role.values());
     }
 
     public static void requireChangeParameters(PaymentActor actor) {
