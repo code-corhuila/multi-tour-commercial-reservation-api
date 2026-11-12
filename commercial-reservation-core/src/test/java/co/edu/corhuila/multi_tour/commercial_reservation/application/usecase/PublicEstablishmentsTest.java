@@ -24,7 +24,7 @@ class PublicEstablishmentsTest extends PublicOfferFixture {
 
     private AssociatedEstablishment plant(UUID tenant, long id, EstablishmentType type, boolean active) {
         AssociatedEstablishment item = AssociatedEstablishment.register(new UUID(5, id), tenant, type, "Place " + id,
-                "Contact details " + id, "opaque-reference", ACTOR, T0.plusSeconds(id));
+                "Contact details " + id, "opaque-reference", EstablishmentContact.of("info@hotel.example", null, null), ACTOR, T0.plusSeconds(id));
         if (!active) {
             item.inactivate(ACTOR, T0.plusSeconds(100));
         }

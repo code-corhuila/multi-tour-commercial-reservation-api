@@ -54,6 +54,6 @@ class AssociatedEstablishmentReadsTest {
     }
     private AssociatedEstablishment item(long id, EstablishmentType type, Instant time) {
         return AssociatedEstablishment.register(new UUID(0, id), tenant, type, "Sample establishment",
-                "Contact details", "opaque-reference", actor, time);
+                "Contact details", "opaque-reference", EstablishmentContact.of("info@hotel.example", null, null), actor, time);
     }
 }

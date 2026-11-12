@@ -123,6 +123,7 @@ class EstablishmentAnnexCChecklistTest {
         if (!missing.equals("commercialName")) request.param("commercialName", "Hotel");
         if (!missing.equals("commercialInformation")) request.param("commercialInformation", "Contact");
         if (!missing.equals("Idempotency-Key")) request.header("Idempotency-Key", "annex-c-key");
+        request.param("contactEmail", "info@hotel.example");
         var details = CatalogHttpTest.json(exchange(request, 400)).get("details");
         assertThat(details.get(0).get("field").asText()).isEqualTo(missing);
     }
@@ -151,7 +152,7 @@ class EstablishmentAnnexCChecklistTest {
         List<String> names = new ArrayList<>();
         body.fieldNames().forEachRemaining(names::add);
         assertThat(names).containsExactlyInAnyOrder("associationId", "establishmentType", "commercialName",
-                "commercialInformation", "imageReference", "associationStatus");
+                "commercialInformation", "imageReference", "associationStatus", "contactEmail");
         names.forEach(name -> assertThat(body.get(name).isTextual()).as(name).isTrue());
     }
 
@@ -235,7 +236,8 @@ class EstablishmentAnnexCChecklistTest {
     private MockMultipartHttpServletRequestBuilder upload() {
         var request = multipart(BASE).file(new MockMultipartFile("image", "image.png", "image/png", PNG));
         request.param("establishmentType", "HOTEL").param("commercialName", "Hotel annex C")
-                .param("commercialInformation", "Contact").header("Idempotency-Key", "annex-c-key");
+                .param("commercialInformation", "Contact").param("contactEmail", "info@hotel.example")
+                .header("Idempotency-Key", "annex-c-key");
         return request;
     }
 
