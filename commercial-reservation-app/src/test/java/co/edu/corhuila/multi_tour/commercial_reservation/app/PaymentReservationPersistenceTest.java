@@ -115,6 +115,25 @@ class PaymentReservationPersistenceTest {
         persist(read);
     }
 
+    // HU-CSH-003 DP-RM-B3: the stored ReservationConfirmed carries commercialValueCents (the final value at the confirmation) on top of the keys it
+    // already had, and nothing else; the closed list of the database admits exactly these keys.
+    @Test
+    void theStoredConfirmationCarriesTheCommercialValueInCentsAndNoOtherNewKey() {
+        Reservation reservation = stored();
+        reservation.registerCash(UUID.randomUUID(), new Cents(100_000), MINIMUM, fixture.actor, ReservationPersistenceFixture.NOW);
+        persist(reservation);
+
+        String payload = fixture.jdbc.queryForObject("SELECT payload::text FROM commercial_reservation.outbox_event WHERE reservation_id = ? "
+                + "AND event_type = 'ReservationConfirmed'", String.class, reservation.reservationId());
+        Number value = fixture.jdbc.queryForObject("SELECT (payload->>'commercialValueCents')::bigint FROM commercial_reservation.outbox_event "
+                + "WHERE reservation_id = ? AND event_type = 'ReservationConfirmed'", Number.class, reservation.reservationId());
+        assertThat(value.longValue()).isEqualTo(reservation.finalValue().amount());
+        assertThat(fixture.jdbc.queryForList("SELECT jsonb_object_keys(payload) FROM commercial_reservation.outbox_event WHERE reservation_id = ? "
+                + "AND event_type = 'ReservationConfirmed'", String.class, reservation.reservationId()))
+                .containsExactlyInAnyOrder("reservationId", "paymentStatus", "allocatedCapacity", "commercialValueCents");
+        assertThat(payload).doesNotContain("customer", "email", "document");
+    }
+
     @Test
     void cashIsStoredWithoutValidationStatusAndARejectionKeepsItsReason() {
         Reservation reservation = stored();
