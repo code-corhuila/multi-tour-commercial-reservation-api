@@ -26,6 +26,9 @@ import org.springframework.context.annotation.Primary;
 // the routes wrote and evented.
 @TestConfiguration
 class RefundHttpFixture {
+    // HU-COM-016 DP-16: the refund use cases ask the suspension history; these tests run without a database and the tenant is active.
+    @Bean @Primary co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader noRefundSuspensions() { return tenantId -> Optional.empty(); }
+
     @Bean @Primary MemoryDecisions memoryDecisions() { return new MemoryDecisions(); }
 
     @Bean @Primary MemoryRefunds memoryRefunds() { return new MemoryRefunds(); }
