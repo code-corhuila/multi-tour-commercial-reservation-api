@@ -13,7 +13,8 @@ public record DiscountLine(Cents base, Cents amount, Cents subtotal) {
         }
     }
 
-    // TODO DP-02: rounding is half up per line, PROPOSED only; no source confirms it yet.
+    // Rounding is half up per line, built by default (DP-02, PROPOSED: no source defines it; only integer cents and basis
+    // points are CONFIRMADO). It stays in this one function, so another rule replaces it alone.
     public static DiscountLine percentage(Cents base, BasisPoints rate) {
         long scaled;
         try {
