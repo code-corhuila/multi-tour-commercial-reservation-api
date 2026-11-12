@@ -12,7 +12,7 @@ public record AdditionalDiscount(UUID tenantId, UUID reservationId, BasisPoints 
     public static final int MIN_BASIS_POINTS = 100;
 
     // Used by both the preview and the registration, so they cannot disagree (AC-04.13).
-    // TODO DP-03: the cap of the additional discount is NO DEFINIDO; no cap is applied until the owner closes it.
+    // No cap, by decision (closing decision 2026-10-28, DP-03; prd.md RF-005B): only the minimum and "never below zero" rule.
     public static DiscountLine preview(Cents subtotalAfterCurrentDiscounts, BasisPoints rate) {
         if (rate.value() < MIN_BASIS_POINTS) {
             throw new DomainException("percentage", "the additional discount must be at least 1 %");

@@ -28,7 +28,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 // T-03: RN-04, RN-05, RN-06, RN-07, RN-11, RN-13 and AC-04.4, 04.6, 04.7, 04.8, 04.12, 04.13.
-// TODO DP-03: there is no cap test; the cap of the additional discount is NO DEFINIDO.
+// There is no cap test because no cap exists (closing decision 2026-10-28, DP-03).
 class RegisterAdditionalDiscountUseCaseTest {
     private final AdditionalDiscountFakes fakes = new AdditionalDiscountFakes()
             .withReservation(reservation(State.PENDING_PAYMENT, 1_000_000, 0))
