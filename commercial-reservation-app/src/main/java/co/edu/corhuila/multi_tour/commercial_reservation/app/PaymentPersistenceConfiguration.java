@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CashReportingIncome;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CashReportingSessionStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CurrentRequestToken;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashIncome;
@@ -154,11 +155,18 @@ class PaymentPersistenceConfiguration {
         return new CashReportingSessionStatus(baseUrl, CurrentRequestToken::bearer, Duration.ofMillis(timeoutMillis));
     }
 
-    // The income and its reversal are written in the cash only through the saga register-payment (ADR-004 D4, HU-WFL-002): until
-    // the saga starts the step or the Project Lead decides otherwise, they stay refused with an explicit message (declared debt DD-2).
+    // HU-COM-009 (decided 2026-11-12, PROPOSED): the income and its reversal are written directly in the cash with the service token
+    // (CASH_REPORTING_SERVICE_TOKEN, never in the repository), because the saga register-payment cannot start a cash payment. With no
+    // base url the stand-in refuses (fail closed); with no token the adapter answers "cash unavailable" and sends nothing.
     @Bean
-    CashIncomeRecorder cashIncomeRecorder() {
-        return new UnverifiedCashIncome();
+    CashIncomeRecorder cashIncomeRecorder(@Value("${cash.reporting.base-url:}") String baseUrl,
+            @Value("${cash.reporting.service-token:}") String serviceToken,
+            @Value("${cash.reporting.timeout-millis:2000}") long timeoutMillis) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return new UnverifiedCashIncome();
+        }
+        Duration timeout = Duration.ofMillis(timeoutMillis);
+        return new CashReportingIncome(baseUrl, serviceToken, new CashReportingSessionStatus(baseUrl, CurrentRequestToken::bearer, timeout), timeout);
     }
 
     // HU-COM-017: the credit balance is real (rows of the db, available value derived); the excess of a validated payment is recorded as one credit per attempt.
