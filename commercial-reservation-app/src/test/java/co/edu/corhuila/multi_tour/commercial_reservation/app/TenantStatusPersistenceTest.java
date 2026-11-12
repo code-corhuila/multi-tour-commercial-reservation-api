@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcProcessedEvents;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantEventTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcActiveTenantQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantStatusDirectory;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantStatusStore;
@@ -136,5 +137,22 @@ class TenantStatusPersistenceTest {
         assertThat(directory.resolve("t-no-such-tenant")).isEmpty();
         assertThat(new JdbcTenantStatusReader(jdbc).statusOf(tenant)).contains(TenantStatus.INACTIVE);
         assertThat(new JdbcTenantStatusReader(jdbc).statusOf(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void theActiveListHoldsOnlyActiveTenantsInPagesWithoutRepeats() {
+        UUID other = UUID.randomUUID();
+        apply.apply(created(UUID.randomUUID(), tenant, identifier, T0));
+        apply.apply(created(UUID.randomUUID(), other, "t-" + UUID.randomUUID().toString().substring(0, 8), T0));
+        apply.apply(inactivated(UUID.randomUUID(), T0.plusSeconds(5)));
+        var queries = new JdbcActiveTenantQueries(jdbc);
+
+        var all = queries.page(1, 100);
+        assertThat(all.items()).contains(other).doesNotContain(tenant);
+        var first = queries.page(1, 1);
+        var second = queries.page(2, 1);
+        assertThat(first.total()).isEqualTo(all.total());
+        assertThat(first.items()).hasSize(1);
+        if (all.total() > 1) assertThat(second.items()).hasSize(1).doesNotContainAnyElementsOf(first.items());
     }
 }
