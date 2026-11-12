@@ -59,8 +59,9 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
             throw new InvalidStatusTransitionException("the decision already has its refund authorized");
         Instant now = Instant.now(clock);
         return transaction.inTransaction(() -> {
+            // HU-COM-016 DP-02: the five business days count from the determination (recognizedAt), not from this authorization; a resumed decision keeps its recognition instant (question for the Project Lead).
             RefundAuthorization refund = RefundAuthorization.authorize(ids.newId(), decision, reason, actor.actorId(), now,
-                    calendar.addBusinessDays(now, RefundAuthorizationRules.BUSINESS_DAYS));
+                    calendar.addBusinessDays(decision.recognizedAt(), RefundAuthorizationRules.BUSINESS_DAYS));
             refunds.save(refund);
             outbox.append(refund);
             return refund;

@@ -143,6 +143,42 @@ class RefundUseCasesTest {
         assertThatThrownBy(() -> automation.markOverdue(UUID.randomUUID(), refund.id())).isInstanceOf(RefundNotFoundException.class);
     }
 
+    // HU-COM-016 DP-02 (Project Lead, 2026-11-12): the five business days count from the determination (recognizedAt of the decision), not from the authorization.
+    @Test
+    void theFiveBusinessDaysOfAnAuthorizedRefundCountFromTheDeterminationNotFromTheAuthorization() {
+        java.time.Instant recognized = RefundFakes.NOW.minus(Duration.ofHours(3));
+        FinancialDecision open = fakes.openAt(DecisionKind.CUSTOMER_CANCELLATION, 80_000, recognized);
+        manage.recordRefundDecision(admin, open.id());
+
+        RefundAuthorization refund = manage.authorize(admin, open.id(), "The customer cancelled in time");
+
+        assertThat(refund.authorizedAt()).isEqualTo(RefundFakes.NOW);
+        assertThat(refund.executionDueAt()).isEqualTo(recognized.plus(Duration.ofDays(5)));
+    }
+
+    @Test
+    void theRefundOfTheDefaultAfter24HoursAlsoCountsFromTheDetermination() {
+        FinancialDecision due = fakes.open(DecisionKind.CUSTOMER_CANCELLATION, 80_000);
+        UnderClock later = new UnderClock(fakes, RefundFakes.NOW.plus(Duration.ofHours(24)));
+
+        RefundAuthorization refund = later.automation.applyDefault(RefundFakes.TENANT, due.id());
+
+        assertThat(refund.executionDueAt()).isEqualTo(RefundFakes.NOW.plus(Duration.ofDays(5)));
+    }
+
+    // Simplest behaviour, reported as a question to the Project Lead: a decision frozen and resumed keeps its recognition instant, so the five days still count from it.
+    @Test
+    void aResumedDecisionCountsTheFiveDaysFromItsRecognitionInstantToo() {
+        java.time.Instant recognized = RefundFakes.NOW.minus(Duration.ofHours(10));
+        FinancialDecision open = fakes.openAt(DecisionKind.CUSTOMER_CANCELLATION, 80_000, recognized);
+        fakes.decisions.put(open.id(), open.freeze(RefundFakes.NOW.minus(Duration.ofHours(5))).resumed(RefundFakes.NOW.minus(Duration.ofHours(1))));
+        manage.recordRefundDecision(admin, open.id());
+
+        RefundAuthorization refund = manage.authorize(admin, open.id(), "Resumed");
+
+        assertThat(refund.executionDueAt()).isEqualTo(recognized.plus(Duration.ofDays(5)));
+    }
+
     // The same doubles under a later clock.
     private static final class UnderClock {
         final RefundAutomationUseCase automation;
