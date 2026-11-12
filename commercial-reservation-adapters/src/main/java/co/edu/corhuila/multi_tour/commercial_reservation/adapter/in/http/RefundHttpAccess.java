@@ -10,7 +10,7 @@ public final class RefundHttpAccess implements HandlerInterceptor {
     @Override public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         var principal = (AuthenticatedPrincipal) request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE);
         boolean administrator = principal.roles().contains("TENANT_ADMINISTRATOR");
-        boolean reader = administrator || principal.roles().contains("OPERATIONAL_COLLABORATOR");
+        boolean reader = administrator || principal.exceptional() != null || principal.roles().contains("OPERATIONAL_COLLABORATOR");
         if (!("POST".equals(request.getMethod()) ? administrator : reader)) throw new PaymentAccessDeniedException();
         return true;
     }

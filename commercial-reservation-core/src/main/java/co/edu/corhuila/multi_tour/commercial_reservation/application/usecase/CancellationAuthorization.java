@@ -15,7 +15,7 @@ public final class CancellationAuthorization {
     }
 
     public static void requireRead(PaymentActor actor) {
-        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST);
+        require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST, Role.PLATFORM_SUPPORT);
     }
 
     private static void require(PaymentActor actor, Role... allowed) {

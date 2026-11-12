@@ -12,7 +12,7 @@ public final class CreditHttpAccess implements HandlerInterceptor {
         var principal = (AuthenticatedPrincipal) request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE);
         boolean writer = principal.roles().stream().anyMatch(role -> role.equals("TENANT_ADMINISTRATOR") || role.equals("OPERATIONAL_COLLABORATOR")
                 || role.equals("FINAL_CUSTOMER"));
-        boolean reader = writer || principal.roles().stream().anyMatch(role -> role.equals("MANAGER") || role.equals("ACCOUNTANT") || role.equals("ANALYST"));
+        boolean reader = writer || principal.exceptional() != null || principal.roles().stream().anyMatch(role -> role.equals("MANAGER") || role.equals("ACCOUNTANT") || role.equals("ANALYST"));
         if (!("POST".equals(request.getMethod()) ? writer : reader)) throw new PaymentAccessDeniedException();
         return true;
     }
