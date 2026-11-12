@@ -73,4 +73,14 @@ class ReservationModifySituationTest {
         assertThat(pending.reservationStatus()).isEqualTo(ReservationStatus.PENDING_PAYMENT);
         assertThat(pending.paymentStatus()).isEqualTo(PaymentStatus.NO_PAYMENT);
     }
+
+    @Test
+    void aPendingDepositWithNoPaymentAndNoMinimumConfiguredStaysWithoutPayment() {
+        Reservation pending = born(PaymentType.DEPOSIT);
+
+        pending.modify(3, TOUR, DEPARTURE, List.of(), START, NOW);
+        pending.settleSituation(null);
+
+        assertThat(pending.paymentStatus()).isEqualTo(PaymentStatus.NO_PAYMENT);
+    }
 }
