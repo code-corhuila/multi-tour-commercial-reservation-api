@@ -26,6 +26,26 @@ Set `DB_URL` to a PostgreSQL JDBC URL and provide `DB_USER` and `DB_PASSWORD` fo
 Set `JWT_PUBLIC_KEY` (PEM with literal `\n`) or `JWT_PUBLIC_KEY_FILE` (an RSA public-key file).
 Startup requires a valid key; the inline value takes precedence when both variables are set.
 
+## Run with Docker
+
+`deploy/compose.yml` is the platform one (no database, `expose` 8083, network `platform`), included by `multi-tour-infra-postgres`; the file below is the standalone stand-in.
+
+Clone `multi-tour-commercial-reservation-db` next to this repository (its Liquibase runner applies the
+schema). Needs Docker and openssl; nothing else is installed.
+
+```bash
+cp .env.example .env     # fill in: passwords, JWT_PUBLIC_KEY='<PEM with literal \n>', field keys
+openssl genrsa -out dev-private.pem 2048 && openssl rsa -in dev-private.pem -pubout -out dev-public.pem
+# FIELD_ENCRYPTION_CURRENT_KEY_ID=k1   FIELD_ENCRYPTION_KEYS=k1=$(openssl rand -base64 32)
+docker compose --env-file .env -f deploy/compose.standalone.yml up -d --build   # postgres 18, db runner, api
+curl http://localhost:8083/health                                    # 200 {"status":"ok",...}
+docker compose --env-file .env -f deploy/compose.standalone.yml down -v
+```
+
+The image is `multi-tour-commercial-reservation-api:dev`: multi-stage (Maven, then a JRE 21 Alpine), runs as
+user 10001, healthcheck on `GET /health`, configured only by environment variables. In the platform
+`multi-tour-infra-postgres` replaces the local `postgres` service.
+
 ## Where its data is
 
 In the shared PostgreSQL instance of `multi-tour-infra-postgres`, in this domain's own schema,
