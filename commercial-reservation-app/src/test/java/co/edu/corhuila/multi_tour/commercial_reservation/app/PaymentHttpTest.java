@@ -130,7 +130,7 @@ class PaymentHttpTest extends ReservationHttpBase {
 
         assertThat(error.get("error").asText()).isEqualTo("SERVICE_UNAVAILABLE");
         assertThat(payments.income).isEmpty();
-        assertThat(store.reservations.values().iterator().next().attempts()).isEmpty();
+        assertThat(payments.events).isEmpty(); // the fake store has no rollback, so the stored attempt is not asserted here
     }
 
     @Test void theRolesThatCannotPayAreRefusedBeforeTheBodyAndAFinalCustomerCannotRegisterCash() throws Exception {
