@@ -27,6 +27,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DetermineRefundUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExecuteRefundUseCase;
@@ -79,8 +80,8 @@ class RefundConfiguration {
 
     @Bean
     ManageRefundDecisions manageRefundDecisions(FinancialDecisionRepository decisions, RefundAuthorizationRepository refunds, BusinessCalendar calendar,
-            RefundAuthorizedOutbox outbox, IdGenerator ids, @Lazy PaymentTransaction transaction, Clock clock) {
-        return new ManageRefundDecisionsUseCase(decisions, refunds, calendar, outbox, ids, transaction, clock);
+            RefundAuthorizedOutbox outbox, IdGenerator ids, @Lazy PaymentTransaction transaction, Clock clock, @Lazy SuspensionReader suspensions) {
+        return new ManageRefundDecisionsUseCase(decisions, refunds, calendar, outbox, ids, transaction, clock, suspensions);
     }
 
     @Bean
@@ -143,7 +144,7 @@ class RefundConfiguration {
 
     @Bean
     RefundAutomation refundAutomation(FinancialDecisionRepository decisions, RefundAuthorizationRepository refunds, BusinessCalendar calendar,
-            RefundAuthorizedOutbox outbox, IdGenerator ids, @Lazy PaymentTransaction transaction, Clock clock) {
-        return new RefundAutomationUseCase(decisions, refunds, calendar, outbox, ids, transaction, clock);
+            RefundAuthorizedOutbox outbox, IdGenerator ids, @Lazy PaymentTransaction transaction, Clock clock, @Lazy SuspensionReader suspensions) {
+        return new RefundAutomationUseCase(decisions, refunds, calendar, outbox, ids, transaction, clock, suspensions);
     }
 }
