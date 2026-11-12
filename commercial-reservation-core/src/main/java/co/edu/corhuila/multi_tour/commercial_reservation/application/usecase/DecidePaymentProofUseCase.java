@@ -18,6 +18,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
@@ -49,10 +50,19 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
     private final PaymentEventOutbox outbox;
     private final PaymentTransaction transaction;
     private final Clock clock;
+    private final SuspensionReader suspensions;
 
     public DecidePaymentProofUseCase(ReservationRepository reservations, PaymentDeadlineReader deadlines, DepartureReader departures, PaymentConditionReader conditions,
             SalidaCapacityHolder holder, ReservationCancellation cancellation, CancelledValueRecorder cancelledValues,
             CreditBalanceRecorder credit, PaymentEventOutbox outbox, PaymentTransaction transaction, Clock clock) {
+        this(reservations, deadlines, departures, conditions, holder, cancellation, cancelledValues, credit, outbox, transaction, clock, tenantId -> Optional.empty());
+    }
+
+    // HU-COM-020: the suspension reader tells whether the tenant is inactive and since when (AC-20.10 to AC-20.12).
+    public DecidePaymentProofUseCase(ReservationRepository reservations, PaymentDeadlineReader deadlines, DepartureReader departures, PaymentConditionReader conditions,
+            SalidaCapacityHolder holder, ReservationCancellation cancellation, CancelledValueRecorder cancelledValues,
+            CreditBalanceRecorder credit, PaymentEventOutbox outbox, PaymentTransaction transaction, Clock clock, SuspensionReader suspensions) {
+        this.suspensions = suspensions;
         this.reservations = reservations;
         this.deadlines = deadlines;
         this.departures = departures;
