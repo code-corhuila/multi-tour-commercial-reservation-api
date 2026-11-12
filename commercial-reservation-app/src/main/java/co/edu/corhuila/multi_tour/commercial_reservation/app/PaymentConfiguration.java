@@ -25,7 +25,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Exp
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDuePaymentDeadlines;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentPaymentParameterChange;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentPaymentRegistration;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentPaymentRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PaymentProofDecisionController;
