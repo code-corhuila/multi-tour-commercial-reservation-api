@@ -2,8 +2,8 @@ package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 
 import java.util.Optional;
 
-// HU-COM-015 RN-02, plan D-02: which fact of the payment family notifies the customer. A pure function: no HTTP, no SQL, no mail. The refund, the
-// credit balance and the rescheduling notices wait for the events of HU-COM-016, 017 and 018 (spec DP-15-04) and are not mapped here.
+// HU-COM-015 RN-02, plan D-02: which fact of the payment family notifies the customer. A pure function: no HTTP, no SQL, no mail. The refund notice is written
+// by the refund execution (HU-COM-016) and the rescheduling proposal waits for its event (spec DP-15-04); neither is mapped here.
 public final class NoticePolicy {
 
     private NoticePolicy() {
@@ -20,6 +20,7 @@ public final class NoticePolicy {
                 case NOT_ATTRIBUTABLE_TO_CUSTOMER -> Optional.of(NoticeType.DEPARTURE_CANCELLED);
                 case CUSTOMER_REQUEST -> Optional.empty();
             };
+            case CreditBalanceRecorded recorded -> Optional.of(NoticeType.CREDIT_BALANCE_RECORDED);
             default -> Optional.empty();
         };
     }
