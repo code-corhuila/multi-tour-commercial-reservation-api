@@ -31,7 +31,7 @@ class ExceptionalAccessOutboxPersistenceTest {
 
         new JdbcExceptionalAccessAudit(fixture.jdbc).used(use);
 
-        List<Map<String, Object>> rows = fixture.jdbc.queryForList("SELECT event_type, tenant_id, authorization_id, actor_id, correlation_id, payload::text AS payload "
+        List<Map<String, Object>> rows = fixture.jdbc.queryForList("SELECT event_type, tenant_id, authorization_id, actor_id, correlation_id, occurred_at, payload::text AS payload "
                 + "FROM commercial_reservation.outbox_event WHERE authorization_id = ?", authorization);
         assertThat(rows).hasSize(1);
         Map<String, Object> row = rows.get(0);
@@ -39,6 +39,7 @@ class ExceptionalAccessOutboxPersistenceTest {
         assertThat(row.get("tenant_id")).isEqualTo(fixture.tenant);
         assertThat(row.get("actor_id")).isEqualTo(fixture.actor);
         assertThat(row.get("correlation_id")).isEqualTo("trace-1");
-        assertThat((String) row.get("payload")).contains("\"area\": \"RESERVATIONS\"").contains("\"occurredAt\": \"2026-11-11T10:00:00Z\"").doesNotContain("access");
+        assertThat(((java.sql.Timestamp) row.get("occurred_at")).toInstant()).isEqualTo(Instant.parse("2026-11-11T10:00:00Z"));
+        assertThat((String) row.get("payload")).contains("\"area\": \"RESERVATIONS\"").contains("\"usedAt\": \"2026-11-11T10:00:00Z\"").doesNotContain("access").doesNotContain("occurredAt");
     }
 }
