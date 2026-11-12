@@ -34,7 +34,7 @@ public final class JdbcReservationCancellation implements ReservationCancellatio
                 tenantId, reservationId);
         if (updated == 0) return;
         int seats = jdbc.query("SELECT party_size FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? AND reservation_id = ? "
-                + "AND released_at IS NOT NULL ORDER BY released_at DESC LIMIT 1", (row, index) -> row.getInt("party_size"), tenantId,
+                + "AND released_at IS NOT NULL AND allocation_kind = 'RESERVATION' ORDER BY released_at DESC LIMIT 1", (row, index) -> row.getInt("party_size"), tenantId,
                 reservationId).stream().findFirst().orElse(0);
         outbox.append(new ReservationCancelled(tenantId, reservationId, CancellationCause.PAYMENT_EXPIRY, seats, now));
     }

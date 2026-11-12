@@ -90,7 +90,7 @@ public final class JdbcReservationQueries implements ReservationQueries, OwnRese
         if (customerId != null) arguments.add(customerId);
         return jdbc.query("SELECT r.reservation_status, r.payment_status, r.pending_balance_cents, r.cancellation_cause, EXISTS (SELECT 1 FROM "
                 + "commercial_reservation.capacity_allocation a WHERE a.tenant_id = r.tenant_id AND a.reservation_id = r.reservation_id "
-                + "AND a.released_at IS NULL) AS seat_held FROM commercial_reservation.reservation r "
+                + "AND a.released_at IS NULL AND a.allocation_kind = 'RESERVATION') AS seat_held FROM commercial_reservation.reservation r "
                 + "WHERE r.tenant_id = ? AND r.reservation_id = ?" + (customerId == null ? "" : " AND r.customer_id = ?"),
                 (row, index) -> new Stored(ReservationStatus.valueOf(row.getString("reservation_status")),
                         PaymentStatus.valueOf(row.getString("payment_status")), new Cents(row.getLong("pending_balance_cents")),

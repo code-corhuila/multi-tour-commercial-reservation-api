@@ -14,6 +14,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvi
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentRejected;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentValidated;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationConfirmed;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationRescheduled;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.ZoneOffset;
@@ -50,6 +51,7 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
         return switch (event) {
             case CreditBalanceRecorded e -> e.actorId();
             case CreditBalanceApplied e -> e.actorId();
+            case ReservationRescheduled e -> e.approvedBy();
             default -> null;
         };
     }
@@ -121,6 +123,15 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
                 payload.put("targetReservationId", e.reservationId().toString());
                 payload.put("appliedAmountCents", e.appliedAmount().amount());
                 payload.put("appliedByKind", e.appliedBy().name());
+            }
+            case ReservationRescheduled e -> {
+                // HU-COM-018 plan D-08: the seven keys of the closed list of the db; the evidence and the channel of an outside answer never travel.
+                payload.put("reschedulingRecordId", e.reschedulingRecordId().toString());
+                payload.put("linkedReservationId", e.linkedReservationId() == null ? null : e.linkedReservationId().toString());
+                payload.put("originalSalidaId", e.originalSalidaId().toString());
+                payload.put("agreedSalidaId", e.agreedSalidaId().toString());
+                payload.put("agreedStartAt", e.agreedStartAt().toString());
+                payload.put("approvedBy", e.approvedBy().toString());
             }
             default -> throw new IllegalArgumentException("not a payment event: " + event.getClass().getSimpleName());
         }
