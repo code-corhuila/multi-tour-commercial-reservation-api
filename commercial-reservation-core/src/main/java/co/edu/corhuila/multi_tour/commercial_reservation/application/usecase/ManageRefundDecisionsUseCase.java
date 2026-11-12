@@ -40,7 +40,7 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
     }
 
     @Override
-    public FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId) {
+    public FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId, String reason) {
         RefundAuthorizationRules.requireAdministrator(actor);
         FinancialDecision decision = load(actor.tenantId(), financialDecisionId);
         Instant now = Instant.now(clock);

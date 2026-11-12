@@ -8,7 +8,12 @@ import java.util.UUID;
 // HU-COM-016: the three acts of the Tenant Administrator. No amount travels in any of them (RN-01).
 public interface ManageRefundDecisions {
 
-    FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId);
+    // DP-01: the decision of the 100 % refund is also its authorization; the reason is optional.
+    FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId, String reason);
+
+    default FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId) {
+        return recordRefundDecision(actor, financialDecisionId, null);
+    }
 
     RefundAuthorization authorize(PaymentActor actor, UUID financialDecisionId, String reason);
 
