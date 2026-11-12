@@ -149,7 +149,7 @@ class CashReportingSessionStatusTest {
     void theRecordingAndTheReversalOfTheIncomeStayRefusedWithAnExplicitMessage() {
         UnverifiedCashSession standIn = new UnverifiedCashSession();
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> standIn.record(TENANT, TENANT, null, TENANT))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> standIn.record(TENANT, TENANT, "k", null, TENANT))
                 .hasMessageContaining("cannot be recorded");
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> standIn.reverse(TENANT, TENANT))
                 .hasMessageContaining("cannot be reversed");

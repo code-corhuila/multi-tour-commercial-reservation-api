@@ -62,7 +62,7 @@ public class RegisterCashPaymentUseCase implements RegisterCashPayment {
             if (!session.isOpen(command.tenantId())) throw new BusinessRuleViolation("there is no open cash session");
             Cents minimum = preconditions.minimumFor(reservation);
             CashReceipt receipt = reservation.registerCash(ids.newId(), amount, minimum, command.actorId(), preconditions.now());
-            UUID movement = income.record(command.tenantId(), reservation.reservationId(), amount, command.actorId());
+            UUID movement = income.record(command.tenantId(), reservation.reservationId(), receipt.attempt().attemptId().toString(), amount, command.actorId());
             try {
                 preconditions.holdFirstSeat(reservation);
             } catch (BusinessRuleViolation noAvailability) {
