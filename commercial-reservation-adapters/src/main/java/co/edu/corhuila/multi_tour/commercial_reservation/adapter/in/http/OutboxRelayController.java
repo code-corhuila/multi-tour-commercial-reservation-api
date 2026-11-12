@@ -25,8 +25,14 @@ import org.springframework.web.server.ResponseStatusException;
 public final class OutboxRelayController {
     private static final int MAX_ERROR = 1000;
 
+    // The reason is free text from the mail provider: the web layer prints the body it read when it logs at DEBUG, so the text is kept out of toString (RN-11).
     @JsonIgnoreProperties(ignoreUnknown = false)
-    public record AttemptRequest(String error) {}
+    public record AttemptRequest(String error) {
+        @Override
+        public String toString() {
+            return "AttemptRequest[error=<withheld>]";
+        }
+    }
 
     private final RelayOutboxDelivery relay;
 
