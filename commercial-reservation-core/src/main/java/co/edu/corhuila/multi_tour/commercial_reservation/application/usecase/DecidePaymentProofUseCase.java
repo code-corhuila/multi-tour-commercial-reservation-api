@@ -18,11 +18,14 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DeadlineKind;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EconomicCancellationPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FreezeCause;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingPaymentDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProofDecision;
@@ -49,10 +52,19 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
     private final PaymentEventOutbox outbox;
     private final PaymentTransaction transaction;
     private final Clock clock;
+    private final SuspensionReader suspensions;
 
     public DecidePaymentProofUseCase(ReservationRepository reservations, PaymentDeadlineReader deadlines, DepartureReader departures, PaymentConditionReader conditions,
             SalidaCapacityHolder holder, ReservationCancellation cancellation, CancelledValueRecorder cancelledValues,
             CreditBalanceRecorder credit, PaymentEventOutbox outbox, PaymentTransaction transaction, Clock clock) {
+        this(reservations, deadlines, departures, conditions, holder, cancellation, cancelledValues, credit, outbox, transaction, clock, tenantId -> Optional.empty());
+    }
+
+    // HU-COM-020: the suspension reader tells whether the tenant is inactive and since when (AC-20.10 to AC-20.12).
+    public DecidePaymentProofUseCase(ReservationRepository reservations, PaymentDeadlineReader deadlines, DepartureReader departures, PaymentConditionReader conditions,
+            SalidaCapacityHolder holder, ReservationCancellation cancellation, CancelledValueRecorder cancelledValues,
+            CreditBalanceRecorder credit, PaymentEventOutbox outbox, PaymentTransaction transaction, Clock clock, SuspensionReader suspensions) {
+        this.suspensions = suspensions;
         this.reservations = reservations;
         this.deadlines = deadlines;
         this.departures = departures;
@@ -69,17 +81,21 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
     @Override
     public DecidedProof approve(ApproveProofCommand command) {
         PaymentProofAuthorization.requireDecide(command.actor());
-        return recordApproval(command.actor().tenantId(), command.actor().actorId(), command.attemptId(), command.verifiedAmountCents(),
-                command.reason());
+        return recordApproval(command.actor().tenantId(), command.actor().actorId(), command.attemptId(), command.verifiedAmountCents(), command.reason(), true);
     }
 
     // The work of an approval, whoever opens the door: the human route checks the permission first, the saga step 2 is trusted.
     DecidedProof recordApproval(UUID tenantId, UUID reviewer, UUID attemptId, Long verifiedAmountCents, String reason) {
+        return recordApproval(tenantId, reviewer, attemptId, verifiedAmountCents, reason, false);
+    }
+
+    private DecidedProof recordApproval(UUID tenantId, UUID reviewer, UUID attemptId, Long verifiedAmountCents, String reason, boolean byPerson) {
         if (verifiedAmountCents == null) throw new MissingPaymentDataException(List.of("verifiedAmountCents"));
         Cents verified = Cents.of("verifiedAmountCents", verifiedAmountCents);
         return transaction.inTransaction(() -> {
             Reservation reservation = lock(tenantId, attemptId);
             Instant now = Instant.now(clock);
+            if (byPerson) requirePresentedBeforeTheInactivation(reservation, attemptId);
             Optional<PaymentDeadline> deadline = deadlines.openDeadline(tenantId, reservation.reservationId());
             boolean expired = expired(deadline, reservation, now);
             Cents minimum = minimumFor(reservation);
@@ -108,6 +124,7 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
         return transaction.inTransaction(() -> {
             Reservation reservation = lock(actor.tenantId(), command.attemptId());
             Instant now = Instant.now(clock);
+            requirePresentedBeforeTheInactivation(reservation, command.attemptId());
             boolean expired = expired(deadlines.openDeadline(actor.tenantId(), reservation.reservationId()), reservation, now);
             var rejected = reservation.reject(command.attemptId(), command.reason(), actor.actorId(), now);
             if (expired) releaseSeat(reservation, CapacityReleased.CANCELLED_FOR_NON_PAYMENT, now);
@@ -118,13 +135,27 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
         });
     }
 
-    // The deadline in force (RN-02: the extension counts, never past the departure start); a frozen one does not expire (RN-17), as in the expiry job.
+    // The deadline in force (RN-02: the extension counts, never past the departure start); a frozen one does not expire (RN-17), as in the expiry job, except the one the inactivation froze with nothing left
+    // (it had already expired, AC-20.10). While the tenant is suspended a cancelled or reached departure bars the cancellation for non-payment (AC-20.11, EconomicCancellationPolicy).
     private boolean expired(Optional<PaymentDeadline> deadline, Reservation reservation, Instant now) {
+        boolean suspended = suspensions.openSince(reservation.tenantId()).isPresent();
+        Optional<DepartureState> departure = departures.find(reservation.tenantId(), reservation.departureId());
         return deadline.map(found -> {
-            if (found.frozen()) return false;
-            Instant start = departures.find(reservation.tenantId(), reservation.departureId()).map(DepartureState::startsAt).orElse(null);
-            return !now.isBefore(found.effective(start));
+            boolean expiredBeforeTheFreeze = suspended && found.frozen() && found.freezeCause() == FreezeCause.TENANT_INACTIVE
+                    && found.remainingAtFreezeMinutes() != null && found.remainingAtFreezeMinutes() == 0;
+            if (found.frozen() && !expiredBeforeTheFreeze) return false;
+            if (departure.isPresent() && !EconomicCancellationPolicy.allows(departure.get(), suspended, now)) return false;
+            return expiredBeforeTheFreeze || !now.isBefore(found.effective(departure.map(DepartureState::startsAt).orElse(null)));
         }).orElse(false);
+    }
+
+    // AC-20.12, RN-10: while the tenant is suspended only the proofs presented before the inactivation are decided; a proof presented at or after it is refused with 422.
+    private void requirePresentedBeforeTheInactivation(Reservation reservation, UUID attemptId) {
+        Optional<Instant> since = suspensions.openSince(reservation.tenantId());
+        if (since.isEmpty()) return;
+        boolean after = reservation.attempts().stream().filter(attempt -> attempt.attemptId().equals(attemptId))
+                .anyMatch(attempt -> !attempt.registeredAt().isBefore(since.get()));
+        if (after) throw new BusinessRuleViolation("the proof was presented after the tenant was inactivated and cannot be decided");
     }
 
     // Another tenant's proof looks missing (AC-10.17). The row lock of the reservation is taken before the state of the proof is read for the
