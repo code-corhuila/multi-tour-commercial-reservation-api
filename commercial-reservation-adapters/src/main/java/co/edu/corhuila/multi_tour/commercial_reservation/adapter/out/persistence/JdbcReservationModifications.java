@@ -9,6 +9,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Modificati
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -35,20 +36,29 @@ public final class JdbcReservationModifications implements ReservationModificati
     }
 
     @Override
+    public Optional<ReservationModificationRecord> find(UUID tenantId, UUID modificationId) {
+        return jdbc.query("SELECT * FROM commercial_reservation.reservation_modification WHERE tenant_id = ? AND reservation_modification_id = ?",
+                (row, index) -> record(row), tenantId, modificationId).stream().findFirst();
+    }
+
+    @Override
     public ModificationPage page(UUID tenantId, UUID reservationId, int page, int limit) {
         List<ReservationModificationRecord> items = jdbc.query("SELECT * FROM commercial_reservation.reservation_modification WHERE tenant_id = ? "
-                + "AND reservation_id = ? ORDER BY registered_at DESC, reservation_modification_id LIMIT ? OFFSET ?", (row, index) ->
-                new ReservationModificationRecord(row.getObject("reservation_modification_id", UUID.class), reservationId,
+                + "AND reservation_id = ? ORDER BY registered_at DESC, reservation_modification_id LIMIT ? OFFSET ?", (row, index) -> record(row),
+                tenantId, reservationId, limit, (long) (page - 1) * limit);
+        long total = jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.reservation_modification WHERE tenant_id = ? "
+                + "AND reservation_id = ?", Long.class, tenantId, reservationId);
+        return new ModificationPage(items, total);
+    }
+
+    private static ReservationModificationRecord record(java.sql.ResultSet row) throws java.sql.SQLException {
+        return new ReservationModificationRecord(row.getObject("reservation_modification_id", UUID.class), row.getObject("reservation_id", UUID.class),
                         ChangeType.valueOf(row.getString("change_type")), row.getString("reason"),
                         new ModificationOutcome(new Cents(row.getLong("previous_final_value_cents")), new Cents(row.getLong("new_final_value_cents")),
                                 new Cents(row.getLong("previous_pending_balance_cents")), new Cents(row.getLong("new_pending_balance_cents")),
                                 new Cents(row.getLong("excess_amount_cents")), row.getInt("new_party_size") - row.getInt("previous_party_size")),
                         row.getInt("previous_party_size"), row.getInt("new_party_size"), row.getObject("new_service_id", UUID.class),
                         row.getObject("previous_salida_id", UUID.class), row.getObject("new_salida_id", UUID.class),
-                        row.getObject("registered_by", UUID.class), row.getObject("registered_at", OffsetDateTime.class).toInstant()),
-                tenantId, reservationId, limit, (long) (page - 1) * limit);
-        long total = jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.reservation_modification WHERE tenant_id = ? "
-                + "AND reservation_id = ?", Long.class, tenantId, reservationId);
-        return new ModificationPage(items, total);
+                        row.getObject("registered_by", UUID.class), row.getObject("registered_at", OffsetDateTime.class).toInstant());
     }
 }
