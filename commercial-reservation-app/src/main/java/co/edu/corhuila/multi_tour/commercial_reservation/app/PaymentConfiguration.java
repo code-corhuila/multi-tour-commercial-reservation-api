@@ -67,6 +67,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Te
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DecidePaymentProofUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentDecidePaymentProofUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyStore;
@@ -184,9 +185,9 @@ class PaymentConfiguration {
     DecidePaymentProofUseCase decidePaymentProof(@Lazy ReservationRepository reservations, @Lazy PaymentDeadlineReader deadlines, @Lazy DepartureReader departures,
             @Lazy PaymentConditionReader conditions, @Lazy SalidaCapacityHolder holder, @Lazy ReservationCancellation cancellation,
             @Lazy CancelledValueRecorder cancelledValues, @Lazy CreditBalanceRecorder credit, @Lazy PaymentEventOutbox outbox,
-            @Lazy PaymentTransaction transaction, Clock clock) {
+            @Lazy PaymentTransaction transaction, Clock clock, @Lazy SuspensionReader suspensions) {
         return new DecidePaymentProofUseCase(reservations, deadlines, departures, conditions, holder, cancellation, cancelledValues, credit, outbox,
-                transaction, clock);
+                transaction, clock, suspensions);
     }
 
     @Bean
