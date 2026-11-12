@@ -9,4 +9,8 @@ public record RegisterCashCommand(UUID tenantId, UUID actorId, UUID reservationI
     public RegisterCashCommand(UUID tenantId, UUID actorId, UUID reservationId, Long amountCents) {
         this(tenantId, actorId, reservationId, amountCents, null);
     }
+
+    public RegisterCashCommand withKey(String key) {
+        return new RegisterCashCommand(tenantId, actorId, reservationId, amountCents, key);
+    }
 }

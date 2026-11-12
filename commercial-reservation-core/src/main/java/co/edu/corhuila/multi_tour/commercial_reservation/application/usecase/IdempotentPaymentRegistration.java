@@ -38,7 +38,7 @@ public final class IdempotentPaymentRegistration {
 
     public Result cash(RegisterCashCommand command, String key) {
         return run(command.tenantId(), command.reservationId(), key, PaymentMethod.CASH, command.amountCents(),
-                () -> cash.register(command));
+                () -> cash.register(command.withKey(key)));
     }
 
     private Result run(UUID tenant, UUID reservationId, String key, PaymentMethod method, Long amountCents,
