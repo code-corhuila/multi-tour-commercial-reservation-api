@@ -165,6 +165,43 @@ class SensitiveDataRetentionJdbcHttpTest {
         assertThat(done.get("outcome").asText()).isEqualTo("DELETED");
     }
 
+    // AC-19.15 (T-07): a backup taken before the deletion is restored, so the sensitive rows are back and the record of the deletion is gone. Restoring is an act of the database
+    // administrator: the application user holds no DELETE on the record (the schema refuses it), so this one step needs the privileged connection of the test environment.
+    @Test void aRestoredSnapshotIsDeletedAgainByTheSameCall() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv("TEST_DATABASE_ADMIN_USER") != null && System.getenv("TEST_DATABASE_ADMIN_PASSWORD") != null,
+                "The restore of a snapshot needs TEST_DATABASE_ADMIN_USER and TEST_DATABASE_ADMIN_PASSWORD");
+        var admin = new JdbcTemplate(new org.springframework.jdbc.datasource.DriverManagerDataSource(System.getenv("TEST_DATABASE_URL"), System.getenv("TEST_DATABASE_ADMIN_USER"),
+                System.getenv("TEST_DATABASE_ADMIN_PASSWORD")));
+        var before = CatalogHttpTest.json(exchange(delete(tenant, first, "delete-key-0007"), service(), 200));
+        assertThat(before.get("outcome").asText()).isEqualTo("DELETED");
+        assertThat(sensitiveRows()).isZero();
+
+        // The restore: the rows of the snapshot are back (the data was only deleted after it) and the snapshot has no record of the deletion.
+        for (int index = 0; index < 2; index++) {
+            UUID companion = jdbc.queryForObject("SELECT reservation_companion_id FROM commercial_reservation.reservation_companion WHERE tenant_id = ? AND reservation_id = ?::uuid "
+                    + "AND document_number = 'DOC-FICT-" + index + "'", UUID.class, tenant, first);
+            jdbc.update("INSERT INTO commercial_reservation.reservation_companion_sensitive_data (reservation_companion_id, tenant_id, activity_requirements) VALUES (?, ?, '{\"envelope\":\"x\"}'::jsonb)", companion, tenant);
+        }
+        jdbc.update("INSERT INTO commercial_reservation.customer_sensitive_data (customer_id, tenant_id, emergency_info) VALUES (?, ?, '{\"envelope\":\"x\"}'::jsonb)", customer, tenant);
+        assertThat(admin.update("DELETE FROM commercial_reservation.sensitive_data_deletion WHERE tenant_id = ? AND reservation_id = ?::uuid", tenant, first)).isEqualTo(1);
+        assertThat(sensitiveRows()).isEqualTo(3);
+        assertThat(records()).isZero();
+
+        var again = CatalogHttpTest.json(exchange(delete(tenant, first, "delete-key-0008"), service(), 200));
+
+        assertThat(again.get("outcome").asText()).isEqualTo("DELETED");
+        assertThat(again.get("companionRowsDeleted").asInt()).isEqualTo(2);
+        assertThat(again.get("customerDataDeleted").asBoolean()).isTrue();
+        assertThat(sensitiveRows()).isZero();
+        assertThat(records()).isEqualTo(1);
+        // Whether the second deletion must emit its own event is not decided (open question to the Project Lead), so the number of events is not asserted.
+    }
+
+    int sensitiveRows() {
+        return jdbc.queryForObject("SELECT (SELECT count(*) FROM commercial_reservation.reservation_companion_sensitive_data WHERE tenant_id = ?) + "
+                + "(SELECT count(*) FROM commercial_reservation.customer_sensitive_data WHERE tenant_id = ?)", Integer.class, tenant, tenant);
+    }
+
     @Test void theDueListNeverReturnsADeletedReservation() throws Exception {
         exchange(delete(tenant, first, "delete-key-0006"), service(), 200);
 
