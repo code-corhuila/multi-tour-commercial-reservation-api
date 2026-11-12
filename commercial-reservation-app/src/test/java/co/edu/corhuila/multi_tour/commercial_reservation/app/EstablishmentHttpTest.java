@@ -123,7 +123,7 @@ class EstablishmentHttpTest {
     // AC-06.17: an inactive association has no public image; the same not found as a missing one.
     @Test void publicImageOfAnInactiveAssociationIsNotFound() throws Exception {
         var item = seed();
-        exchange(post(path(item) + "/inactivate"), 200, "TENANT_ADMINISTRATOR");
+        exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR");
         var inactive = exchange(get(imagePath(tenant, item)), 404, null);
         var missing = exchange(operation("image", UUID.randomUUID().toString()), 404, null);
         assertThat(json(inactive)).isEqualTo(json(missing));
@@ -223,7 +223,7 @@ class EstablishmentHttpTest {
 
     @Test void transitionsAreIdempotentAndListingRetainsHistory() throws Exception {
         var item = seed();
-        var inactive = json(exchange(post(path(item) + "/inactivate"), 200, "TENANT_ADMINISTRATOR"));
+        var inactive = json(exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR"));
         assertThat(inactive.get("associationStatus").asText()).isEqualTo("INACTIVE");
         assertThat(json(exchange(get(path(item)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(inactive);
         assertThat(json(exchange(post(path(item) + "/inactivate"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(inactive);
@@ -231,9 +231,47 @@ class EstablishmentHttpTest {
                 "TENANT_ADMINISTRATOR")).get("data")).isEmpty();
         assertThat(json(exchange(get(BASE).param("associationStatus", "INACTIVE").param("establishmentType", "HOTEL"),
                 200, "TENANT_ADMINISTRATOR")).at("/meta/total").intValue()).isEqualTo(1);
-        var active = json(exchange(post(path(item) + "/reactivate"), 200, "TENANT_ADMINISTRATOR"));
+        var active = json(exchange(post(path(item) + "/reactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR"));
         assertThat(active).isEqualTo(item);
         assertThat(json(exchange(post(path(item) + "/reactivate"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(active);
+    }
+
+    // AC-02.13: a transition without a reason names the field and changes nothing; AC-02.14: with one it is traced.
+    @ParameterizedTest @ValueSource(strings = {"missing", "blank", "long"})
+    void aTransitionWithoutAValidReasonIsRefused(String kind) throws Exception {
+        var item = seed();
+        var request = post(path(item) + "/inactivate");
+        if (!kind.equals("missing")) request.contentType("application/json").content("{\"reason\":\"" + (kind.equals("blank") ? "  " : "x".repeat(501)) + "\"}");
+        assertField(exchange(request, 400, "TENANT_ADMINISTRATOR"), "reason");
+        assertThat(json(exchange(get(path(item)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(item);
+    }
+
+    @Test void everyChangeIsListedNewestFirstWithItsReasonAndAuthor() throws Exception {
+        var item = seed();
+        exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR");
+        exchange(post(path(item) + "/reactivate").contentType("application/json").content("{\"reason\":\"Works finished\"}"), 200, "TENANT_ADMINISTRATOR");
+        var log = json(exchange(get(BASE + "/changes"), 200, "TENANT_ADMINISTRATOR"));
+        assertThat(log.at("/meta/total").intValue()).isEqualTo(3);
+        assertThat(log.at("/data/0/eventType").asText()).isEqualTo("REACTIVATED");
+        assertThat(log.at("/data/0/reason").asText()).isEqualTo("Works finished");
+        assertThat(log.at("/data/1/eventType").asText()).isEqualTo("INACTIVATED");
+        assertThat(log.at("/data/2/eventType").asText()).isEqualTo("REGISTERED");
+        assertThat(log.at("/data/2/commercialName").asText()).isEqualTo("Hotel example");
+        assertThat(log.at("/data/0/actorId").asText()).isNotBlank();
+        assertThat(json(exchange(get(BASE + "/changes").param("establishmentType", "RESTAURANT"), 200, "TENANT_ADMINISTRATOR")).at("/meta/total").intValue()).isZero();
+        tenant = UUID.randomUUID().toString();
+        assertThat(json(exchange(get(BASE + "/changes"), 200, "TENANT_ADMINISTRATOR")).at("/meta/total").intValue()).isZero();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"MANAGER", "ANALYST", "ACCOUNTANT", "OPERATIONAL_COLLABORATOR"})
+    void onlyAdministratorManagerAndAnalystReadTheLog(String role) throws Exception {
+        seed();
+        exchange(get(BASE + "/changes"), role.equals("MANAGER") || role.equals("ANALYST") ? 200 : 403, role);
+    }
+
+    @ParameterizedTest @CsvSource({"page,0", "limit,101", "unknown,value", "establishmentType,OTHER"})
+    void aBadLogQueryNamesTheField(String field, String value) throws Exception {
+        assertField(exchange(get(BASE + "/changes").param(field, value), 400, "TENANT_ADMINISTRATOR"), field);
     }
 
     @ParameterizedTest @CsvSource({"page,0", "limit,0", "limit,101", "limit,invalid", "associationStatus,OTHER", "establishmentType,OTHER", "unknown,value"})
@@ -292,7 +330,7 @@ class EstablishmentHttpTest {
         var result = mvc.perform(request.header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn();
         status().is(code).match(result);
         String path = result.getRequest().getRequestURI().substring(30);
-        String template = path.replaceFirst("/associated-establishments/[^/]+(?=/|$)", "/associated-establishments/{associationId}")
+        String template = path.replaceFirst("/associated-establishments/(?!changes(?:/|$))[^/]+(?=/|$)", "/associated-establishments/{associationId}")
                 .replaceFirst("/public/tenants/[^/]+", "/public/tenants/{identifier}");
         var method = PathItem.HttpMethod.valueOf(result.getRequest().getMethod());
         var response = validator.validateResponse(path, com.atlassian.oai.validator.model.Request.Method.valueOf(method.name()), MockMvcResponse.of(result.getResponse()));
