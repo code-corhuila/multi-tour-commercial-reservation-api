@@ -47,7 +47,7 @@ public class RefundAutomationUseCase implements RefundAutomation {
         return transaction.inTransaction(() -> {
             FinancialDecision decided = decision.applyDefault(now);
             decisions.save(decided);
-            return authorized(RefundAuthorization.authorizeByDefault(ids.newId(), decided, now, due(now)));
+            return authorized(RefundAuthorization.authorizeByDefault(ids.newId(), decided, now, due(decided.recognizedAt())));
         });
     }
 
