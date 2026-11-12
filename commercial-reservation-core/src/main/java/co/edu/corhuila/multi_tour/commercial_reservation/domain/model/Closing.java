@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,6 +12,9 @@ public record Closing(Instant at, boolean blockedByInactivation) {
     // PROPOSED rule (owner Project Lead): the reservation is closed when every one of its decisions is settled, at the latest settlement; an open decision frozen by the
     // inactivation blocks the closing; any other open decision leaves it open; no decision at all means nothing to close (the anchor is the cancellation).
     public static Optional<Closing> of(List<DecisionSettlement> decisions) {
-        return Optional.empty();
+        if (decisions.isEmpty()) return Optional.empty();
+        if (decisions.stream().anyMatch(d -> d.settledAt() == null && d.frozen())) return Optional.of(new Closing(null, true));
+        if (decisions.stream().anyMatch(d -> d.settledAt() == null)) return Optional.empty();
+        return decisions.stream().map(DecisionSettlement::settledAt).max(Comparator.naturalOrder()).map(at -> new Closing(at, false));
     }
 }
