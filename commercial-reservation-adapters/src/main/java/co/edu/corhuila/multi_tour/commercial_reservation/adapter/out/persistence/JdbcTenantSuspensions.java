@@ -36,7 +36,8 @@ public final class JdbcTenantSuspensions implements SuspensionStore, SuspensionR
 
     @Override
     public Optional<Instant> openSince(UUID tenantId) {
-        return Optional.empty();
+        return jdbc.query("SELECT suspended_at FROM commercial_reservation.tenant_suspension WHERE tenant_id = ? AND resumed_at IS NULL", (row, index) -> instant(row, "suspended_at"), tenantId)
+                .stream().findFirst();
     }
 
     @Override
