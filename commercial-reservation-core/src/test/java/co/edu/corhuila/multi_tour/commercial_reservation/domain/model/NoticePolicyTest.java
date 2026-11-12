@@ -14,7 +14,7 @@ class NoticePolicyTest {
     private static final Instant NOW = Instant.parse("2026-11-05T12:00:00Z");
 
     private static PaymentValidated validated() {
-        return new PaymentValidated(TENANT, RESERVATION, new Cents(100_000), PaymentStatus.DEPOSIT_RECEIVED, new Cents(224_000), UUID.randomUUID(), NOW);
+        return new PaymentValidated(TENANT, RESERVATION, UUID.randomUUID(), new Cents(100_000), PaymentStatus.DEPOSIT_RECEIVED, new Cents(224_000), UUID.randomUUID(), NOW);
     }
 
     private static ReservationCancelled cancelled(CancellationCause cause) {
@@ -24,7 +24,7 @@ class NoticePolicyTest {
     @Test
     void noticePolicyMapsEachNotifyingFactToItsType() {
         assertThat(NoticePolicy.of(validated(), true)).contains(NoticeType.PROOF_APPROVED);
-        assertThat(NoticePolicy.of(new PaymentRejected(TENANT, RESERVATION, "The proof is illegible", new Cents(324_000), UUID.randomUUID(), NOW), true))
+        assertThat(NoticePolicy.of(new PaymentRejected(TENANT, RESERVATION, UUID.randomUUID(), new Cents(324_000), UUID.randomUUID(), NOW), true))
                 .contains(NoticeType.PROOF_REJECTED);
         assertThat(NoticePolicy.of(new ReservationConfirmed(TENANT, RESERVATION, PaymentStatus.DEPOSIT_RECEIVED, 2, NOW), false))
                 .contains(NoticeType.RESERVATION_CONFIRMED);
