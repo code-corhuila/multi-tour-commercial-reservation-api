@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RegisterCashCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RegisteredPayment;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CashUnavailableException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
@@ -154,6 +155,76 @@ class RegisterCashPaymentTest {
         assertThat(stored.pendingBalance()).isEqualTo(new Cents(250_000));
         assertThat(cash.income).containsExactly(RESERVATION + ":50000:" + ACTOR);
         assertThat(cash.excess).isEmpty();
+    }
+
+    @Test
+    void aCashThatDoesNotAnswerRefusesThePaymentWithNothingStoredAndNoSeatHeld() {
+        cash.recordFailure = new CashUnavailableException("the cash does not answer");
+
+        assertThatThrownBy(() -> register.register(command(100_000L))).isInstanceOf(CashUnavailableException.class);
+
+        assertThat(cash.income).isEmpty();
+        assertThat(fakes.saved).isEmpty();
+        assertThat(fakes.events).isEmpty();
+        assertThat(fakes.holdCalls).isZero();
+    }
+
+    @Test
+    void theCashRefusingTheIncomeRefusesThePaymentWithNothingStored() {
+        cash.recordFailure = new BusinessRuleViolation("there is no open cash session");
+
+        assertThatThrownBy(() -> register.register(command(100_000L))).isInstanceOf(BusinessRuleViolation.class)
+                .hasMessageContaining("cash session");
+
+        assertThat(fakes.saved).isEmpty();
+        assertThat(fakes.holdCalls).isZero();
+        assertThat(cash.reversed).isEmpty();
+    }
+
+    @Test
+    void aRetryOfTheSameRequestRecordsOneIncomeOnly() {
+        // The first call failed after the cash recorded the income (the write of the reservation was lost); the retry carries the same key.
+        fakes.saveFailure = new IllegalStateException("write lost");
+        assertThatThrownBy(() -> register.register(keyed("request-key-0001", 100_000L))).isInstanceOf(IllegalStateException.class);
+        fakes.saveFailure = null;
+
+        register.register(keyed("request-key-0001", 100_000L));
+
+        assertThat(cash.keys).hasSize(2).containsOnly(cash.keys.get(0));
+        assertThat(cash.income).hasSize(1);
+    }
+
+    @Test
+    void theKeyOfTheIncomeFollowsTheRequestAndTheAmount() {
+        register.register(keyed("request-key-0001", 100_000L));
+        register.register(keyed("request-key-0002", 50_000L));
+
+        assertThat(cash.keys).doesNotHaveDuplicates();
+        assertThat(cash.keys.get(0)).contains("request-key-0001");
+    }
+
+    @Test
+    void aFailureAfterTheIncomeReversesItWhateverItIs() {
+        fakes.saveFailure = new IllegalStateException("write lost");
+
+        assertThatThrownBy(() -> register.register(command(100_000L))).isInstanceOf(IllegalStateException.class);
+
+        assertThat(cash.income).hasSize(1);
+        assertThat(cash.reversed).hasSize(1);
+        assertThat(fakes.saved).isEmpty();
+    }
+
+    @Test
+    void aReversalThatFailsKeepsTheOriginalErrorAndAttachesTheFailureOfTheReversal() {
+        fakes.saveFailure = new IllegalStateException("write lost");
+        cash.reverseFailure = new CashUnavailableException("the cash does not answer");
+
+        assertThatThrownBy(() -> register.register(command(100_000L))).isSameAs(fakes.saveFailure)
+                .satisfies(e -> assertThat(e.getSuppressed()).containsExactly(cash.reverseFailure));
+    }
+
+    private RegisterCashCommand keyed(String key, Long amount) {
+        return new RegisterCashCommand(TENANT, ACTOR, RESERVATION, amount, key);
     }
 
     @Test
