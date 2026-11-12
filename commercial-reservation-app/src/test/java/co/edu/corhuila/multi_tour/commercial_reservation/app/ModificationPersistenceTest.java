@@ -15,6 +15,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ModificationRequest;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationModificationRecord;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ModifyReservationUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ChangeType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
@@ -153,5 +154,44 @@ class ModificationPersistenceTest {
 
         assertThat(history.page(fixture.tenant, reservation.reservationId(), 1, 20).total()).isZero();
         assertThat(held(fixture.salida)).isEqualTo(3);
+    }
+
+    // RNF-06 (the concurrency test the spec named): two modifications of one reservation that arrive at the same moment are serialized by the
+    // row lock; the second reads what the first stored, so the history is a chain (3 to a, then a to b) and the seats held follow the last one.
+    @Test
+    void twoModificationsAtTheSameMomentAreSerializedAndTheSecondSeesTheFirst() throws Exception {
+        for (int round = 0; round < 4; round++) {
+            Reservation reservation = stored(true);
+            UUID id = reservation.reservationId();
+            int heldBefore = held(fixture.salida);
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+            try {
+                var four = pool.submit(() -> {
+                    start.await();
+                    return modify.modify(actor(), id, new ModificationRequest(ChangeType.MODIFICATION, 4, fixture.salida,
+                            List.of(fixture.plainCompanion())), "Adds a traveller");
+                });
+                var two = pool.submit(() -> {
+                    start.await();
+                    return modify.modify(actor(), id, new ModificationRequest(ChangeType.MODIFICATION, 2, fixture.salida, List.of()), "One less");
+                });
+                start.countDown();
+                var first = four.get(30, java.util.concurrent.TimeUnit.SECONDS);
+                var second = two.get(30, java.util.concurrent.TimeUnit.SECONDS);
+
+                // either order is valid, but never both from 3: the later one started from what the earlier one stored
+                var earlier = first.previousPartySize() == 3 ? first : second;
+                var later = earlier == first ? second : first;
+                assertThat(earlier.previousPartySize()).isEqualTo(3);
+                assertThat(later.previousPartySize()).isEqualTo(earlier.newPartySize());
+                Reservation again = reservations.findByTenantAndId(fixture.tenant, id).orElseThrow();
+                assertThat(again.people()).isEqualTo(later.newPartySize());
+                assertThat(history.page(fixture.tenant, id, 1, 20).total()).isEqualTo(2);
+                assertThat(held(fixture.salida)).isEqualTo(heldBefore + later.newPartySize() - 3);
+            } finally {
+                pool.shutdownNow();
+            }
+        }
     }
 }

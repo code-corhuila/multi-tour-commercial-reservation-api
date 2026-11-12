@@ -19,7 +19,10 @@ import java.util.OptionalInt;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -27,6 +30,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 // HU-COM-013 over HTTP (api spec T-05, T-06; AC-13.1 to AC-13.10, AC-13.12): the quote, the cancellation and the record. The user and the
 // instant are the token and the clock; the role gate runs before the body is read; every write needs its Idempotency-Key.
 @Import(CancellationHttpFixture.class)
+@ExtendWith(OutputCaptureExtension.class)
 class CancellationHttpTest extends ReservationHttpBase {
 
     private final UUID reservationId = new UUID(41, 1), otherTenantReservation = new UUID(41, 2);
@@ -158,5 +162,21 @@ class CancellationHttpTest extends ReservationHttpBase {
             assertThat(record.get("refundDecisionOpened").asBoolean()).isTrue();
         }
         exchange(withToken(get(BASE + "/reservations/" + reservationId + "/cancellation"), FINAL_CUSTOMER), 403);
+    }
+
+    // AC-13.12 (RN-12, RNF-03): the event is written once, a repeat of the key writes none, and no log line of the three routes carries
+    // the reason, a name, a document, an e-mail or a phone (the spec named this scan; before it only the event count was proved).
+    @Test void theEventsAndTheLogsCarryNoPersonalDataNorTheReason(CapturedOutput output) throws Exception {
+        String reason = "Motivo reservado ficticio 7731";
+        cancellations.basisPoints = OptionalInt.of(5_000);
+
+        exchange(withToken(get(BASE + "/reservations/" + reservationId + "/cancellation-quote"), ADMIN), 200);
+        exchange(cancel(reservationId, body(reason), "cancel-key-010", COLLABORATOR), 201);
+        exchange(cancel(reservationId, body(reason), "cancel-key-010", COLLABORATOR), 200);
+        exchange(withToken(get(BASE + "/reservations/" + reservationId + "/cancellation"), ADMIN), 200);
+
+        assertThat(names(payments.events)).containsExactly("ReservationCancelled");
+        assertThat(payments.events.toString()).doesNotContain(reason, "Persona Ficticia", "persona@example.invalid", "CC12345", "3000000000");
+        assertThat(output.getAll()).doesNotContain(reason, "Persona Ficticia", "persona@example.invalid", "CC12345", "3000000000");
     }
 }

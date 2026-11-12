@@ -6,11 +6,12 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservatio
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.UUID;
 
-// The quote of a modification (contract ModificationQuote). A refused quote has no recomputation: it answers the values as they are.
+// The quote of a modification (contract ModificationQuote). A refused quote has no recomputation: it answers the values as they are. The
+// projected value and the discounts (projected - discounts = new final value) are the two figures the admin detail draws beside the totals.
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ModificationQuoteResponse(UUID reservationId, String changeType, boolean allowed, String refusalReason, long originalFinalValueCents,
         long newFinalValueCents, long differenceCents, long validatedValueCents, long newPendingBalanceCents, long excessCents, int seatDelta,
-        boolean seatsAvailable) {
+        boolean seatsAvailable, long projectedValueCents, long discountCents) {
 
     static ModificationQuoteResponse of(ModificationQuote quote, ChangeType type, Reservation reservation) {
         long validated = reservation.finalValue().amount() - reservation.pendingBalance().amount();
@@ -20,6 +21,7 @@ public record ModificationQuoteResponse(UUID reservationId, String changeType, b
         return new ModificationQuoteResponse(quote.reservationId(), type.name(), quote.allowed(), quote.reason() == null ? null : quote.reason().name(),
                 original, recomputed, recomputed - original, validated,
                 outcome == null ? reservation.pendingBalance().amount() : outcome.newPendingBalance().amount(),
-                outcome == null ? 0 : outcome.excess().amount(), outcome == null ? 0 : outcome.seatDelta(), quote.seatsAvailable());
+                outcome == null ? 0 : outcome.excess().amount(), outcome == null ? 0 : outcome.seatDelta(), quote.seatsAvailable(),
+                quote.projectedValue().amount(), quote.discount().amount());
     }
 }
