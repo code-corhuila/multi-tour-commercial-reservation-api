@@ -142,9 +142,19 @@ class RegisterCashPaymentTest {
     }
 
     @Test
-    void cashBelowTheMinimumOrWithoutAmountIsRefusedBeforeTheIncomeIsRecorded() {
-        assertThatThrownBy(() -> register.register(command(50_000L))).isInstanceOfSatisfying(DomainException.class,
-                e -> assertThat(e.field()).isEqualTo("amountCents"));
+    void cashBelowTheMinimumIsRegisteredAndTheReservationStaysPartial() {
+        register.register(command(50_000L));
+
+        Reservation stored = fakes.reservations.get(RESERVATION);
+        assertThat(stored.reservationStatus()).isEqualTo(ReservationStatus.PENDING_PAYMENT);
+        assertThat(stored.paymentStatus()).isEqualTo(PaymentStatus.PARTIAL);
+        assertThat(stored.pendingBalance()).isEqualTo(new Cents(250_000));
+        assertThat(cash.income).containsExactly(RESERVATION + ":50000:" + ACTOR);
+        assertThat(cash.excess).isEmpty();
+    }
+
+    @Test
+    void cashWithoutAnAmountIsRefusedBeforeTheIncomeIsRecorded() {
         assertThatThrownBy(() -> register.register(command(null))).isInstanceOfSatisfying(MissingPaymentDataException.class,
                 e -> assertThat(e.fields()).containsExactly("amountCents"));
 

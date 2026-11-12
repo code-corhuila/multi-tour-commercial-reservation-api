@@ -116,19 +116,20 @@ public final class Reservation {
         if (pendingBalance.amount() == 0) throw new BusinessRuleViolation("the reservation has no pending balance");
     }
 
-    // RN-01: a transfer is born in validation and changes neither the status nor the situation. DP-05 (default): at most the
-    // pending balance, and the first deposit at least the minimum.
+    // RN-01: a transfer is born in validation and changes neither the status nor the situation. DP-05 (decided 2026-11-11, PDR
+    // v1.9): the amount is registered as declared, even below the minimum deposit or above the pending balance; the minimum only
+    // conditions the confirmation and the excess is settled at validation (RN-RES-006A, CA-015A).
     public PaymentAttempt registerTransfer(UUID attemptId, Cents amount, Cents minimumDeposit, UUID registeredBy, Instant now) {
         requireOpenToPayment();
         requireAmount(amount, minimumDeposit);
-        if (amount.amount() > pendingBalance.amount()) throw new DomainException("amountCents", "the transfer cannot exceed the pending balance");
         PaymentAttempt attempt = new PaymentAttempt(attemptId, PaymentMethod.TRANSFER, amount, ValidationStatus.IN_VALIDATION, paymentStatus, registeredBy, now);
         attempts.add(attempt);
         events.add(new PaymentEvidenceRegistered(tenantId, reservationId, attemptId, PaymentMethod.TRANSFER, amount, ValidationStatus.IN_VALIDATION, now));
         return attempt;
     }
 
-    // DP-01: cash is money received, validated at once; the excess over the balance is returned, never dropped (DP-05).
+    // DP-01: cash is money received, validated at once; below the minimum it is registered and the reservation stays Parcial, and
+    // the excess over the balance is returned for the credit balance, never dropped (DP-05, decided 2026-11-11).
     public CashReceipt registerCash(UUID attemptId, Cents amount, Cents minimumDeposit, UUID registeredBy, Instant now) {
         requireOpenToPayment();
         requireAmount(amount, minimumDeposit);
@@ -163,13 +164,8 @@ public final class Reservation {
 
     private void requireAmount(Cents amount, Cents minimumDeposit) {
         if (amount == null || amount.amount() <= 0) throw new DomainException("amountCents", "amountCents must be greater than zero");
-        boolean firstPayment = pendingBalance.equals(finalValue) && reservationStatus == ReservationStatus.PENDING_PAYMENT
-                && attempts.stream().noneMatch(a -> a.validationStatus() == ValidationStatus.IN_VALIDATION
-                        || a.validationStatus() == ValidationStatus.APPROVED);
         if (expectedPaymentType == PaymentType.DEPOSIT && minimumDeposit == null)
             throw new DomainException("minimumDeposit", "a deposit needs its minimum");
-        if (firstPayment && expectedPaymentType == PaymentType.DEPOSIT && amount.amount() < minimumDeposit.amount())
-            throw new DomainException("amountCents", "the first deposit cannot be below the minimum deposit");
     }
 
     // HU-COM-010 RN-01 to RN-04, RN-08, RN-10, RN-13: the reviewer sets the verified amount. Only the pending balance is applied
