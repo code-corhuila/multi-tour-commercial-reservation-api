@@ -51,7 +51,7 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
     }
 
     @Override
-    public FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId) {
+    public FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId, String reason) {
         RefundAuthorizationRules.requireAdministrator(actor);
         requireActiveTenant(actor.tenantId());
         FinancialDecision decision = load(actor.tenantId(), financialDecisionId);

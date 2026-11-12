@@ -54,12 +54,15 @@ class RefundWriteHttpTest extends ReservationHttpBase {
         assertThat(first.has("decidedBy")).isTrue();
         assertThat(first.get("decidedBySystem").asBoolean()).isFalse();
         assertThat(again).isEqualTo(first);
+        assertThat(refunds.refunds).as("DP-01: the decision is also the authorization").hasSize(1);
+        assertThat(refunds.events).hasSize(1);
+        assertThat(first.get("refundAuthorizationId").asText()).isEqualTo(refunds.refunds.keySet().iterator().next().toString());
         exchange(write(cancellation.id(), "refund-decision", Map.of(), "decision-key-02", ADMIN), 422);
         exchange(write(request.id(), "refund-decision", Map.of(), "decision-key-03", ADMIN), 422);
     }
 
     @Test void authorizingCreatesTheRefundOnceWithOneEventAndNoReasonInIt() throws Exception {
-        exchange(write(cancellation.id(), "refund-decision", Map.of(), "decision-key-04", ADMIN), 200);
+        exchange(write(cancellation.id(), "refund-decision", Map.of("reason", "  The customer cancelled in time "), "decision-key-04", ADMIN), 200);
 
         var first = CatalogHttpTest.json(exchange(write(cancellation.id(), "refund-authorization", Map.of("reason", "  The customer cancelled in time "),
                 "authorize-key-01", ADMIN), 201));
@@ -74,8 +77,16 @@ class RefundWriteHttpTest extends ReservationHttpBase {
         assertThat(again).isEqualTo(first);
         assertThat(refunds.refunds).hasSize(1);
         assertThat(refunds.events).hasSize(1);
-        exchange(write(cancellation.id(), "refund-authorization", Map.of("reason", "Again"), "authorize-key-02", ADMIN), 422);
+        exchange(write(cancellation.id(), "refund-authorization", Map.of("reason", "Again"), "authorize-key-02", ADMIN), 201);
         assertThat(refunds.refunds).hasSize(1);
+    }
+
+    @Test void theReasonOfTheDecisionIsOptionalAndABlankOneIsRefusedNamingTheField() throws Exception {
+        var decided = CatalogHttpTest.json(exchange(write(cancellation.id(), "refund-decision", Map.of(), "decision-key-08", ADMIN), 200));
+
+        assertThat(decided.get("refundAuthorizationId").asText()).isNotBlank();
+        assertThat(refunds.refunds.values()).extracting(refund -> refund.reason()).containsExactly("Refund of 100 % decided by the Tenant Administrator");
+        CatalogHttpTest.assertField(exchange(write(request.id(), "refund-decision", Map.of("reason", "  "), "decision-key-09", ADMIN), 400), "reason");
     }
 
     @Test void aDecisionWithoutTheRefundOutcomeCannotBeAuthorizedAndNothingIsWritten() throws Exception {
@@ -118,7 +129,7 @@ class RefundWriteHttpTest extends ReservationHttpBase {
         exchange(write(ajena.id(), "refund-decision", Map.of(), "decision-key-07", ADMIN), 404);
         exchange(write(ajena.id(), "refund-authorization", Map.of("reason", "Reason"), "authorize-key-06", ADMIN), 404);
         exchange(write(new UUID(71, 99), "rejection", Map.of("justification", "Reason"), "reject-key-04", ADMIN), 404);
-        assertThat(refunds.refunds).isEmpty();
+        assertThat(refunds.refunds).as("DP-01: only the decision of decision-key-05 wrote a refund; every refusal wrote none").hasSize(1);
     }
 
     @Test void aKeyAlreadyUsedByAnotherRequestIsRefused() throws Exception {
