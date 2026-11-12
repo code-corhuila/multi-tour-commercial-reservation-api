@@ -165,6 +165,34 @@ class TenantInactivityTest {
         assertThat(kept.freezeCause()).isEqualTo(FreezeCause.DEPARTURE_CANCELLED_OR_INTERRUPTED);
     }
 
+    // AC-20.9, PDR I1 ("la reactivacion no reactiva una salida cuya hora ya haya transcurrido"): a departure whose scheduled time arrived during the inactivation is handled as not attributable to
+    // the customer even when the mirror has not yet marked it cancelled, so its deadline is not resumed past the start and never expires for non-payment.
+    @Test
+    void aDeadlineWhoseDepartureTimeArrivedDuringTheInactivationIsNotResumedAndNeverExpires() {
+        start();
+        Instant reached = T0.plus(Duration.ofHours(10));
+        PaymentDeadline initial = open(5);
+        deadlines.put(new UUID(5, 1), new TenantDeadline(new UUID(5, 1), TENANT, new UUID(6, 1), initial, reached, false));
+        apply.apply(event(TENANT, TenantEventType.TENANT_INACTIVATED, T0));
+
+        apply.apply(event(TENANT, TenantEventType.TENANT_REACTIVATED, T0.plus(Duration.ofHours(30))));
+
+        PaymentDeadline kept = deadlines.get(new UUID(5, 1)).deadline();
+        assertThat(kept.frozen()).as("not resumed: it would expire at once at the departure start").isTrue();
+        assertThat(kept.freezeCause()).isEqualTo(FreezeCause.DEPARTURE_CANCELLED_OR_INTERRUPTED);
+    }
+
+    @Test
+    void aDepartureStillInTheFutureAtTheReactivationResumesItsDeadlineAsBefore() {
+        start();
+        deadlines.put(new UUID(5, 1), new TenantDeadline(new UUID(5, 1), TENANT, new UUID(6, 1), open(5), START, false));
+        apply.apply(event(TENANT, TenantEventType.TENANT_INACTIVATED, T0));
+
+        apply.apply(event(TENANT, TenantEventType.TENANT_REACTIVATED, T0.plus(Duration.ofHours(30))));
+
+        assertThat(deadlines.get(new UUID(5, 1)).deadline().frozen()).isFalse();
+    }
+
     @Test
     void theHookTouchesOnlyTheSuspensionAndTheDeadlinesNeverASecurityTimer() {
         start();
