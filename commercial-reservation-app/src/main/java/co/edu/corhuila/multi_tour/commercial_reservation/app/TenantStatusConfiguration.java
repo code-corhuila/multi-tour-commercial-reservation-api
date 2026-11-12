@@ -1,8 +1,10 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ActiveTenantsController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.PlatformEventController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TenantEventController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.memory.CachedTenantStatusReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAccountSessionCutoffs;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcActiveTenantQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCustomerAccountLink;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantEventTransaction;
@@ -14,8 +16,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantStatusStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcTenantSuspensions;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.UuidGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyAccountSessionsRevoked;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyTenantEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListActiveTenants;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AccountSessionCutoffs;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ActiveTenantQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListActiveTenantsUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.LinkAccountOnEmailVerified;
@@ -29,6 +33,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Te
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantInactivityEffects;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusStore;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ApplyAccountSessionsRevokedUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ApplyTenantEventUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.LinkAccountOnEmailVerifiedUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.TenantInactivityUseCase;
@@ -116,5 +121,21 @@ class TenantStatusConfiguration {
     @Bean
     ActiveTenantsController activeTenantsController(ListActiveTenants tenants) {
         return new ActiveTenantsController(tenants);
+    }
+
+    // HU-SEC-005 AC4, HU-SEC-006 AC7 (api spec 022): the cutoff per account, read by the authentication filter and written by the route without tenant.
+    @Bean
+    AccountSessionCutoffs accountSessionCutoffs(JdbcTemplate jdbc) {
+        return new JdbcAccountSessionCutoffs(jdbc);
+    }
+
+    @Bean
+    ApplyAccountSessionsRevoked applyAccountSessionsRevoked(AccountSessionCutoffs cutoffs, ProcessedEvents processed, TenantEventTransaction transaction) {
+        return new ApplyAccountSessionsRevokedUseCase(cutoffs, processed, transaction);
+    }
+
+    @Bean
+    PlatformEventController platformEventController(ApplyAccountSessionsRevoked apply, ObjectMapper json) {
+        return new PlatformEventController(apply, json);
     }
 }

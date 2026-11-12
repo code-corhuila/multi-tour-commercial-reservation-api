@@ -6,6 +6,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExceptionalAccessAudit;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.LoggingExceptionalAccessAudit;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthFilter;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AccountSessionCutoffs;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogAuthorization;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalCatalogUpdate;
@@ -246,8 +247,8 @@ class CommercialReservationConfiguration {
 
     @Bean
     FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors, ExceptionalAccessAudit audit,
-            TenantStatusReader statuses, Clock clock) {
-        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses, audit, clock));
+            TenantStatusReader statuses, Clock clock, AccountSessionCutoffs cutoffs) {
+        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses, audit, clock, cutoffs));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }

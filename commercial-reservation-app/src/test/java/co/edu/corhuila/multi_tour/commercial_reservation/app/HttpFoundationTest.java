@@ -36,7 +36,7 @@ import org.springframework.web.bind.annotation.*;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ContextConfiguration(initializers = TestJwtKeys.class)
-@Import(HttpFoundationTest.Support.class)
+@Import({HttpFoundationTest.Support.class, AccountSessionCutoffHttpFixture.class})
 class HttpFoundationTest {
     private static final String PATH = "/test-support/protected";
     private static final String TRACE = "request-123_test.safe";

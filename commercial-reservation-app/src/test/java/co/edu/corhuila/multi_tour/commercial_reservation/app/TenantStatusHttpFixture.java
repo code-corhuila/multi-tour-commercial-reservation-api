@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Primary;
 // Test fake only: the JDBC reader is exercised against the real engine in its own test. No cache here, so a test
 // that changes a status sees it on the next request; the 5 seconds are proved in CachedTenantStatusReaderTest.
 @TestConfiguration
+@org.springframework.context.annotation.Import(AccountSessionCutoffHttpFixture.class)
 class TenantStatusHttpFixture {
     @Bean @Primary MemoryStatus memoryStatus() { return new MemoryStatus(); }
     // The history of suspensions is read by the review mark of the proofs; the JDBC reader is proved against the real engine in TenantInactivityPersistenceTest.
