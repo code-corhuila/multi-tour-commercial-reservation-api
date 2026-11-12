@@ -9,11 +9,13 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 // HU-COM-016 plan D-04, D-07, D-09: the aggregates decide, this class orders what surrounds them in one transaction (the decision or the refund and its
@@ -27,9 +29,17 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
     private final IdGenerator ids;
     private final PaymentTransaction transaction;
     private final Clock clock;
+    private final SuspensionReader suspensions;
 
     public ManageRefundDecisionsUseCase(FinancialDecisionRepository decisions, RefundAuthorizationRepository refunds, BusinessCalendar calendar,
             RefundAuthorizedOutbox outbox, IdGenerator ids, PaymentTransaction transaction, Clock clock) {
+        this(decisions, refunds, calendar, outbox, ids, transaction, clock, tenantId -> Optional.empty());
+    }
+
+    // HU-COM-016 DP-16: the suspension reader tells whether the tenant is inactive (HU-COM-020).
+    public ManageRefundDecisionsUseCase(FinancialDecisionRepository decisions, RefundAuthorizationRepository refunds, BusinessCalendar calendar,
+            RefundAuthorizedOutbox outbox, IdGenerator ids, PaymentTransaction transaction, Clock clock, SuspensionReader suspensions) {
+        this.suspensions = suspensions;
         this.decisions = decisions;
         this.refunds = refunds;
         this.calendar = calendar;
