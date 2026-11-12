@@ -1,15 +1,16 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
-import java.util.UUID;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ExceptionalAccessUse;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExceptionalAccessAudit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-// Default adapter: a structured log line with no sensitive data. The outbox event PlatformExceptionalAccessUsed replaces it once its name and payload are confirmed by the Project Lead.
+// A structured log line with no sensitive data; the default of the filter when no other audit is given, and the line the outbox audit also writes.
 public class LoggingExceptionalAccessAudit implements ExceptionalAccessAudit {
     private static final Logger LOG = LoggerFactory.getLogger(LoggingExceptionalAccessAudit.class);
 
     @Override
-    public void used(UUID authorizationId, String access, String area, String method, String routeTemplate) {
-        LOG.info("exceptional access used authorizationId={} access={} area={} method={} route={}", authorizationId, access, area, method, routeTemplate);
+    public void used(ExceptionalAccessUse use) {
+        LOG.info("exceptional access used authorizationId={} access={} area={} method={} route={}", use.authorizationId(), use.access(), use.area(), use.method(), use.routeTemplate());
     }
 }

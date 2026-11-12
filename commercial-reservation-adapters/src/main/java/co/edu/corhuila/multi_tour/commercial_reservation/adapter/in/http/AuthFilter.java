@@ -1,5 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ExceptionalAccessUse;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExceptionalAccessAudit;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
 import jakarta.servlet.FilterChain;
@@ -7,6 +9,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Clock;
+import java.util.UUID;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,12 +23,14 @@ public class AuthFilter extends OncePerRequestFilter {
     private final ApiErrorWriter errors;
     private final TenantStatusReader statuses;
     private final ExceptionalAccessAudit audit;
+    private final Clock clock;
 
     public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses) {
-        this(verifier, errors, statuses, new LoggingExceptionalAccessAudit());
+        this(verifier, errors, statuses, new LoggingExceptionalAccessAudit(), Clock.systemUTC());
     }
 
-    public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses, ExceptionalAccessAudit audit) {
+    public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses, ExceptionalAccessAudit audit, Clock clock) {
+        this.clock = clock;
         this.audit = audit;
         this.verifier = verifier;
         this.errors = errors;
@@ -62,8 +68,9 @@ public class AuthFilter extends OncePerRequestFilter {
                     errors.write(request, response, ApiError.Code.FORBIDDEN, "the exceptional access is read only and limited to its scope");
                     return;
                 }
-                audit.used(access.authorizationId(), access.access(), ExceptionalAccessPolicy.areaOf(request.getMethod(), path).orElseThrow(), request.getMethod(),
-                        ExceptionalAccessPolicy.template(path));
+                audit.used(new ExceptionalAccessUse(access.authorizationId(), UUID.fromString(principal.sub()), principal.tenantId(), access.access(),
+                        ExceptionalAccessPolicy.areaOf(request.getMethod(), path).orElseThrow(), request.getMethod(), ExceptionalAccessPolicy.template(path), clock.instant(),
+                        (String) request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE)));
             }
             if (inactive(request, principal)) {
                 errors.write(request, response, ApiError.Code.UNAUTHORIZED, "authentication is required");

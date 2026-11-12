@@ -70,8 +70,10 @@ public class Rs256Verifier {
                     granted.add(permission.textValue());
                 }
             }
+            ExceptionalAccess exceptionalAccess = exceptional(claims, tenantId);
+            if (exceptionalAccess != null) require(UUID.fromString(sub.textValue()).toString().equalsIgnoreCase(sub.textValue()), "an exceptional access needs the administrator identifier as subject");
             return new AuthenticatedPrincipal(sub.textValue(), tenantId, names, granted,
-                    "restricted".equals(claims.path("access").textValue()), exceptional(claims, tenantId));
+                    "restricted".equals(claims.path("access").textValue()), exceptionalAccess);
         } catch (Exception failure) {
             LOG.warn("Access token rejected: {}", failure instanceof IllegalArgumentException
                     ? failure.getMessage() : failure.getClass().getSimpleName());

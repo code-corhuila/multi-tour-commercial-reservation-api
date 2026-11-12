@@ -41,7 +41,7 @@ class Rs256VerifierExceptionalAccessTest {
 
     private static String token(Map<String, Object> extra) throws Exception {
         Map<String, Object> claims = new LinkedHashMap<>();
-        claims.put("sub", "platform-admin");
+        claims.put("sub", UUID.randomUUID().toString());
         claims.put("tenantId", TENANT.toString());
         claims.put("roles", List.of("PLATFORM_ADMINISTRATOR"));
         claims.put("exp", NOW.getEpochSecond() + 3600);
@@ -96,6 +96,13 @@ class Rs256VerifierExceptionalAccessTest {
     void anExceptionalTokenWithoutTenantIsRefused() throws Exception {
         Map<String, Object> claims = new LinkedHashMap<>(Map.of("access", "emergency", "scope", List.of("CASH"), "authorizationId", AUTHORIZATION.toString()));
         claims.put("tenantId", null);
+        assertThatThrownBy(() -> verifier.verify(token(claims))).isInstanceOf(InvalidTokenException.class);
+    }
+
+    @Test
+    void anExceptionalTokenWhoseSubjectIsNotTheIdentifierOfTheAdministratorIsRefused() throws Exception {
+        Map<String, Object> claims = new LinkedHashMap<>(Map.of("access", "exceptional", "scope", List.of("CASH"), "authorizationId", AUTHORIZATION.toString(), "sub", "platform-admin-1"));
+
         assertThatThrownBy(() -> verifier.verify(token(claims))).isInstanceOf(InvalidTokenException.class);
     }
 }
