@@ -26,7 +26,7 @@ class NoticePolicyTest {
         assertThat(NoticePolicy.of(validated(), true)).contains(NoticeType.PROOF_APPROVED);
         assertThat(NoticePolicy.of(new PaymentRejected(TENANT, RESERVATION, UUID.randomUUID(), new Cents(324_000), UUID.randomUUID(), NOW), true))
                 .contains(NoticeType.PROOF_REJECTED);
-        assertThat(NoticePolicy.of(new ReservationConfirmed(TENANT, RESERVATION, PaymentStatus.DEPOSIT_RECEIVED, 2, NOW), false))
+        assertThat(NoticePolicy.of(new ReservationConfirmed(TENANT, RESERVATION, PaymentStatus.DEPOSIT_RECEIVED, 2, new Cents(324_000), NOW), false))
                 .contains(NoticeType.RESERVATION_CONFIRMED);
         assertThat(NoticePolicy.of(cancelled(CancellationCause.PAYMENT_EXPIRY), false)).contains(NoticeType.RESERVATION_CANCELLED_NON_PAYMENT);
         assertThat(NoticePolicy.of(cancelled(CancellationCause.NOT_ATTRIBUTABLE_TO_CUSTOMER), false)).contains(NoticeType.DEPARTURE_CANCELLED);

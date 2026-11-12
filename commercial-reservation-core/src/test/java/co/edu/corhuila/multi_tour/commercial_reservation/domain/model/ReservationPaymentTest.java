@@ -113,6 +113,31 @@ class ReservationPaymentTest {
                 .containsExactly("PaymentEvidenceRegistered", "PaymentValidated", "ReservationConfirmed");
     }
 
+    // HU-CSH-003 DP-RM-B3: the confirmation carries the final value of the reservation at that instant, in cents, so that the cash report
+    // can add the confirmed sales of a month without asking commercial again.
+    @Test
+    void theConfirmationCarriesTheFinalValueOfTheReservationInCents() {
+        Reservation reservation = born(PaymentType.DEPOSIT);
+
+        reservation.registerCash(ATTEMPT, new Cents(100_000), MIN, OPERATOR, NOW);
+
+        assertThat(reservation.pullEvents()).filteredOn(ReservationConfirmed.class::isInstance).singleElement()
+                .isInstanceOfSatisfying(ReservationConfirmed.class, e -> {
+                    assertThat(e.commercialValue()).isEqualTo(new Cents(300_000));
+                    assertThat(e.commercialValue()).isEqualTo(reservation.finalValue());
+                });
+    }
+
+    @Test
+    void aFullPaymentConfirmationCarriesTheSameValueAndNotThePaidAmount() {
+        Reservation reservation = born(PaymentType.FULL_PAYMENT);
+
+        reservation.registerCash(ATTEMPT, new Cents(350_000), null, OPERATOR, NOW);
+
+        assertThat(reservation.pullEvents()).filteredOn(ReservationConfirmed.class::isInstance).singleElement()
+                .isInstanceOfSatisfying(ReservationConfirmed.class, e -> assertThat(e.commercialValue()).isEqualTo(new Cents(300_000)));
+    }
+
     @Test
     void cashBelowTheTotalOfAFullPaymentStaysPartialAndPendingWithoutConfirmation() {
         Reservation reservation = born(PaymentType.FULL_PAYMENT);
