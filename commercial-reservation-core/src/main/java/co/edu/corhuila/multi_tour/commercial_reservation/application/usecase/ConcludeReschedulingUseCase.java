@@ -74,7 +74,7 @@ public class ConcludeReschedulingUseCase implements ConcludeRescheduling {
     private ReschedulingEpisode conclude(UUID tenantId, UUID episodeId, UUID by, Function<Reservation, Void> check, Predicate<ReschedulingEpisode> repeated, Move move) {
         Instant now = clock.instant();
         return transaction.inTransaction(() -> {
-            ReschedulingEpisode episode = episodes.find(tenantId, episodeId).orElseThrow(() -> new ReschedulingNotFoundException(episodeId));
+            ReschedulingEpisode episode = episodes.findForUpdate(tenantId, episodeId).orElseThrow(() -> new ReschedulingNotFoundException(episodeId));
             Reservation reservation = reservations.findByTenantAndId(tenantId, episode.reservationId()).orElseThrow(() -> new ReservationNotFoundException(episode.reservationId()));
             if (repeated.test(episode)) return episode;
             check.apply(reservation);
