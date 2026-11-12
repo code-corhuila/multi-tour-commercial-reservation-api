@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -179,5 +180,38 @@ class CreditBalanceWriteJdbcHttpTest {
         exchange(apply(credit, UUID.randomUUID().toString(), 10_000, "apply-key-00008"), token(ADMIN), 404);
         exchange(apply(credit, target, 10_000, "apply-key-00009"), CatalogHttpTest.token(UUID.randomUUID().toString(), ADMIN), 404);
         assertThat(pending(target)).isEqualTo(before);
+    }
+
+    MockHttpServletRequestBuilder refundRequest(String credit, Object body, String key) throws Exception {
+        var request = post(BASE + "/credit-balances/" + credit + "/refund-requests").contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(body));
+        return key == null ? request : request.header("Idempotency-Key", key);
+    }
+
+    // T-04 / AC-17.10, AC-17.11: the request opens the decision of HU-COM-016, sets the amount aside (the credit shows it in refund) and a repeat answers the stored one.
+    @Test void aRefundRequestOpensTheDecisionSetsTheAmountAsideAndARepeatAnswersTheStoredOne() throws Exception {
+        String credit = credit("credit-key-0007").get("creditBalanceId").asText();
+        var body = Map.of("amountCents", 30_000, "reason", "El cliente pide la devolucion");
+
+        var first = CatalogHttpTest.json(exchange(refundRequest(credit, body, "refund-key-00001"), token(ADMIN), 201));
+        var again = CatalogHttpTest.json(exchange(refundRequest(credit, body, "refund-key-00001"), token(ADMIN), 200));
+
+        assertThat(first.get("kind").asText()).isEqualTo("CREDIT_BALANCE_REFUND_REQUEST");
+        assertThat(first.get("baseAmountCents").asLong()).isEqualTo(30_000);
+        assertThat(first.get("creditBalanceId").asText()).isEqualTo(credit);
+        assertThat(again).isEqualTo(first);
+        var read = CatalogHttpTest.json(exchange(get(BASE + "/credit-balances/" + credit), token(ADMIN), 200));
+        assertThat(read.get("inRefundCents").asLong()).isEqualTo(30_000);
+        assertThat(read.get("availableCents").asLong()).isEqualTo(50_000);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.financial_decision WHERE credit_balance_id = ?::uuid", Integer.class, credit)).isEqualTo(1);
+    }
+
+    @Test void aRefundRequestAboveTheAvailableOrWithoutReasonOrFromAReadOnlyRoleChangesNothing() throws Exception {
+        String credit = credit("credit-key-0008").get("creditBalanceId").asText();
+        exchange(refundRequest(credit, Map.of("amountCents", 80_001, "reason", "Motivo"), "refund-key-00002"), token(ADMIN), 422);
+        CatalogHttpTest.assertField(exchange(refundRequest(credit, Map.of("amountCents", 1_000), "refund-key-00003"), token(ADMIN), 400), "reason");
+        CatalogHttpTest.assertField(exchange(refundRequest(credit, Map.of("amountCents", 0, "reason", "Motivo"), "refund-key-00004"), token(ADMIN), 400), "amountCents");
+        for (String role : List.of("MANAGER", "ACCOUNTANT", "ANALYST")) exchange(refundRequest(credit, Map.of("amountCents", 1_000, "reason", "Motivo"), "refund-key-00005"), token(role), 403);
+        exchange(refundRequest(UUID.randomUUID().toString(), Map.of("amountCents", 1_000, "reason", "Motivo"), "refund-key-00006"), token(ADMIN), 404);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.financial_decision WHERE credit_balance_id = ?::uuid", Integer.class, credit)).isZero();
     }
 }

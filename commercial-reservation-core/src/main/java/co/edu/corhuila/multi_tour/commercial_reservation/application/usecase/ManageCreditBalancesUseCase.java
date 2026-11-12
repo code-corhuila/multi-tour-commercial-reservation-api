@@ -2,6 +2,9 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ApplyCreditCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RequestCreditRefundCommand;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.FinancialDecisionRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCreditBalances;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditApplicationReader;
@@ -26,16 +29,20 @@ public class ManageCreditBalancesUseCase implements ManageCreditBalances {
     private final CreditApplicationReader applications;
     private final CustomerByAccount accounts;
     private final ReservationRepository reservations;
+    private final RequestCreditRefundUseCase request;
+    private final FinancialDecisionRepository decisions;
 
     public ManageCreditBalancesUseCase(RecordCreditBalanceUseCase record, ApplyCreditBalanceUseCase apply, CreditBalanceRepository credits,
             CreditApplicationReader applications, CustomerByAccount accounts,
-            ReservationRepository reservations) {
+            ReservationRepository reservations, RequestCreditRefundUseCase request, FinancialDecisionRepository decisions) {
         this.record = record;
         this.apply = apply;
         this.credits = credits;
         this.applications = applications;
         this.accounts = accounts;
         this.reservations = reservations;
+        this.request = request;
+        this.decisions = decisions;
     }
 
     @Override
@@ -45,11 +52,19 @@ public class ManageCreditBalancesUseCase implements ManageCreditBalances {
 
     @Override
     public CreditApplication apply(PaymentActor actor, UUID creditBalanceId, UUID targetReservationId, long amountCents) {
-        UUID customer = actor.role() == Role.FINAL_CUSTOMER
-                ? accounts.findByTenantAndAccount(actor.tenantId(), actor.actorId()).map(Customer::customerId)
-                        .orElseThrow(() -> new CreditBalanceNotFoundException(creditBalanceId))
-                : null;
+        UUID customer = ownCustomer(actor, creditBalanceId);
         return apply.apply(new ApplyCreditCommand(actor.tenantId(), actor.actorId(), actor.role(), customer, creditBalanceId, targetReservationId, amountCents));
+    }
+
+    @Override
+    public FinancialDecision requestRefund(PaymentActor actor, UUID creditBalanceId, long amountCents, String reason) {
+        return request.request(new RequestCreditRefundCommand(actor.tenantId(), actor.actorId(), actor.role(), ownCustomer(actor, creditBalanceId), creditBalanceId, amountCents, reason));
+    }
+
+    @Override
+    public FinancialDecision refundRequest(PaymentActor actor, UUID creditBalanceId, UUID financialDecisionId) {
+        return decisions.find(actor.tenantId(), financialDecisionId).filter(found -> creditBalanceId.equals(found.creditBalanceId()))
+                .orElseThrow(() -> new CreditBalanceNotFoundException(creditBalanceId));
     }
 
     @Override
@@ -61,6 +76,12 @@ public class ManageCreditBalancesUseCase implements ManageCreditBalances {
     public CreditApplication application(PaymentActor actor, UUID creditBalanceId, UUID applicationId) {
         return applications.findApplication(actor.tenantId(), applicationId).filter(found -> found.creditBalanceId().equals(creditBalanceId))
                 .orElseThrow(() -> new CreditBalanceNotFoundException(creditBalanceId));
+    }
+
+    private UUID ownCustomer(PaymentActor actor, UUID creditBalanceId) {
+        return actor.role() == Role.FINAL_CUSTOMER
+                ? accounts.findByTenantAndAccount(actor.tenantId(), actor.actorId()).map(Customer::customerId).orElseThrow(() -> new CreditBalanceNotFoundException(creditBalanceId))
+                : null;
     }
 
     private CreditBalanceView view(PaymentActor actor, CreditBalance credit) {

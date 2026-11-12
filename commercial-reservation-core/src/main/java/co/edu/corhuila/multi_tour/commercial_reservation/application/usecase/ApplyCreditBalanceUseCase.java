@@ -20,6 +20,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditApplication;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditApplication.AppliedBy;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalance;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalanceApplied;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import java.time.Clock;
 import java.util.Set;
@@ -71,6 +72,8 @@ public class ApplyCreditBalanceUseCase {
             applications.save(application);
             credits.save(updated);
             reservations.save(target);
+            outbox.append(new CreditBalanceApplied(command.tenantId(), target.reservationId(), application.appliedAt(), credit.id(), credit.sourceReservationId(), amount,
+                    application.kind(), command.actorId()));
             target.pullEvents().forEach(outbox::append);
             return application;
         });

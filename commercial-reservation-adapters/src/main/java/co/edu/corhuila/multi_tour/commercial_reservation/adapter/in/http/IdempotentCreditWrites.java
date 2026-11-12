@@ -5,6 +5,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCreditBalances;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditApplication;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
@@ -43,6 +44,11 @@ public class IdempotentCreditWrites {
     public Outcome<CreditApplication> apply(PaymentActor actor, String key, UUID creditId, UUID target, long amountCents) {
         return once(actor, key, "credit-application", () -> credits.apply(actor, creditId, target, amountCents), CreditApplication::id,
                 id -> credits.application(actor, creditId, id), found -> found.creditBalanceId().equals(creditId));
+    }
+
+    public Outcome<FinancialDecision> requestRefund(PaymentActor actor, String key, UUID creditId, long amountCents, String reason) {
+        return once(actor, key, "credit-refund-request", () -> credits.requestRefund(actor, creditId, amountCents, reason), FinancialDecision::id,
+                id -> credits.refundRequest(actor, creditId, id), found -> creditId.equals(found.creditBalanceId()));
     }
 
     private <T> Outcome<T> once(PaymentActor actor, String key, String type, Supplier<T> act, Function<T, UUID> idOf, Function<UUID, T> load, Predicate<T> mine) {

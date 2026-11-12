@@ -3,8 +3,10 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalance;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalanceRecorded;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
@@ -18,17 +20,21 @@ public class CreditBalanceRecording implements CreditBalanceRecorder {
 
     private final CreditBalanceRepository credits;
     private final IdGenerator ids;
+    private final PaymentEventOutbox outbox;
     private final Clock clock;
 
-    public CreditBalanceRecording(CreditBalanceRepository credits, IdGenerator ids, Clock clock) {
+    public CreditBalanceRecording(CreditBalanceRepository credits, IdGenerator ids, PaymentEventOutbox outbox, Clock clock) {
         this.credits = credits;
         this.ids = ids;
+        this.outbox = outbox;
         this.clock = clock;
     }
 
     @Override
     public void recordExcess(UUID tenantId, UUID reservationId, UUID attemptId, Cents amount) {
         if (credits.findByAttempt(tenantId, attemptId).isPresent()) return;
-        credits.save(CreditBalance.ofExcess(ids.newId(), tenantId, reservationId, attemptId, amount, SYSTEM_ACTOR, Instant.now(clock)));
+        CreditBalance credit = CreditBalance.ofExcess(ids.newId(), tenantId, reservationId, attemptId, amount, SYSTEM_ACTOR, Instant.now(clock));
+        credits.save(credit);
+        outbox.append(new CreditBalanceRecorded(tenantId, reservationId, credit.recordedAt(), credit.id(), amount, credit.origin(), null));
     }
 }

@@ -25,6 +25,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Sa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ApplyCreditBalanceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManageCreditBalancesUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RecordCreditBalanceUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RequestCreditRefundUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReadCreditBalancesUseCase;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
@@ -43,8 +44,8 @@ class CreditBalanceConfiguration {
 
     @Bean
     RecordCreditBalanceUseCase recordCreditBalance(@Lazy FinancialDecisionRepository decisions, @Lazy CreditBalanceRepository credits, IdGenerator ids,
-            @Lazy PaymentTransaction transaction, Clock clock) {
-        return new RecordCreditBalanceUseCase(decisions, credits, ids, transaction, clock);
+            @Lazy PaymentEventOutbox outbox, @Lazy PaymentTransaction transaction, Clock clock) {
+        return new RecordCreditBalanceUseCase(decisions, credits, ids, outbox, transaction, clock);
     }
 
     @Bean
@@ -56,9 +57,16 @@ class CreditBalanceConfiguration {
     }
 
     @Bean
+    RequestCreditRefundUseCase requestCreditRefund(@Lazy CreditBalanceRepository credits, @Lazy ReservationRepository reservations, @Lazy FinancialDecisionRepository decisions,
+            IdGenerator ids, @Lazy PaymentTransaction transaction, Clock clock) {
+        return new RequestCreditRefundUseCase(credits, reservations, decisions, ids, transaction, clock);
+    }
+
+    @Bean
     ManageCreditBalances manageCreditBalances(RecordCreditBalanceUseCase record, ApplyCreditBalanceUseCase apply, @Lazy CreditBalanceRepository credits,
-            @Lazy CreditApplicationReader applications, @Lazy CustomerByAccount accounts, @Lazy ReservationRepository reservations) {
-        return new ManageCreditBalancesUseCase(record, apply, credits, applications, accounts, reservations);
+            @Lazy CreditApplicationReader applications, @Lazy CustomerByAccount accounts, @Lazy ReservationRepository reservations,
+            RequestCreditRefundUseCase request, @Lazy FinancialDecisionRepository decisions) {
+        return new ManageCreditBalancesUseCase(record, apply, credits, applications, accounts, reservations, request, decisions);
     }
 
     @Bean

@@ -4,6 +4,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cl
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityAllocated;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalanceApplied;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalanceRecorded;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.NoticePolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationCancelled;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationChanged;
@@ -41,6 +43,15 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
 
     private static String type(PaymentEvent event) {
         return event instanceof ReservationChanged ? "ReservationModified" : event.getClass().getSimpleName();
+    }
+
+    // The credit events name the person who decided or applied; the rest take the person of the latest attempt (null here).
+    private static UUID actor(PaymentEvent event) {
+        return switch (event) {
+            case CreditBalanceRecorded e -> e.actorId();
+            case CreditBalanceApplied e -> e.actorId();
+            default -> null;
+        };
     }
 
     @Override
@@ -94,15 +105,31 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
                 payload.put("departureChanged", e.departureChanged());
                 payload.put("reasonCode", e.reasonCode());
             }
+            case CreditBalanceRecorded e -> {
+                // The closed list of the db (-db 031): identifiers, the amount and the origin; the customer is the one of the source reservation.
+                payload.put("creditBalanceId", e.creditBalanceId().toString());
+                payload.put("customerId", jdbc.queryForObject("SELECT customer_id FROM commercial_reservation.reservation WHERE reservation_id = ?", UUID.class,
+                        e.reservationId()).toString());
+                payload.put("amountCents", e.amount().amount());
+                payload.put("origin", e.origin().name());
+            }
+            case CreditBalanceApplied e -> {
+                payload.remove("reservationId");
+                payload.put("creditBalanceId", e.creditBalanceId().toString());
+                payload.put("sourceReservationId", e.sourceReservationId().toString());
+                payload.put("targetReservationId", e.reservationId().toString());
+                payload.put("appliedAmountCents", e.appliedAmount().amount());
+                payload.put("appliedByKind", e.appliedBy().name());
+            }
             default -> throw new IllegalArgumentException("not a payment event: " + event.getClass().getSimpleName());
         }
         try {
             UUID eventId = UUID.randomUUID();
             jdbc.update("INSERT INTO commercial_reservation.outbox_event (outbox_event_id, tenant_id, event_type, reservation_id, actor_id, occurred_at, "
-                    + "payload) VALUES (?, ?, ?, ?, COALESCE((SELECT COALESCE(decided_by, registered_by) FROM "
+                    + "payload) VALUES (?, ?, ?, ?, COALESCE(?, (SELECT COALESCE(decided_by, registered_by) FROM "
                     + "commercial_reservation.payment_attempt WHERE reservation_id = ? ORDER BY COALESCE(decided_at, registered_at) DESC "
                     + "LIMIT 1), (SELECT created_by FROM commercial_reservation.reservation WHERE reservation_id = ?)), ?, ?::jsonb)",
-                    eventId, event.tenantId(), type(event), event.reservationId(), event.reservationId(),
+                    eventId, event.tenantId(), type(event), event.reservationId(), actor(event), event.reservationId(),
                     event.reservationId(), event.occurredAt().truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC),
                     JSON.writeValueAsString(payload));
             notice(event, eventId);
