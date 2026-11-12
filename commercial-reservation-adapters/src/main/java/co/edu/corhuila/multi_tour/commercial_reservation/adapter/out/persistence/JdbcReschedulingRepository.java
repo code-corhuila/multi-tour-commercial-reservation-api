@@ -45,6 +45,12 @@ public final class JdbcReschedulingRepository implements ReschedulingRepository 
     }
 
 
+    // HU-COM-018 AC-18.20: the same read with the episode row locked until the transaction ends, so the transitions over one episode go one after the other and the loser reads it closed.
+    @Override
+    public Optional<ReschedulingEpisode> findForUpdate(UUID tenantId, UUID episodeId) {
+        return jdbc.query(EPISODE + "rescheduling_episode_id = ? FOR UPDATE", (row, index) -> row(row), tenantId, episodeId).stream().findFirst().map(this::withProposals);
+    }
+
     // HU-COM-020 AC-18.13: the open episodes of a tenant, read whole, for the freeze and the resume of the inactivation.
     public List<ReschedulingEpisode> openOf(UUID tenantId) {
         return jdbc.query(EPISODE + "episode_state = 'OPEN' ORDER BY rescheduling_episode_id", (row, index) -> row(row), tenantId).stream().map(this::withProposals).toList();
@@ -54,7 +60,7 @@ public final class JdbcReschedulingRepository implements ReschedulingRepository 
     @Override
     public List<ReschedulingEpisode> findPendingOn(UUID tenantId, UUID proposedSalidaId) {
         return jdbc.query(EPISODE + "rescheduling_episode_id IN (SELECT rescheduling_episode_id FROM commercial_reservation.rescheduling_proposal WHERE tenant_id = ? AND proposed_salida_id = ? AND proposal_state = 'PENDING') "
-                + "ORDER BY rescheduling_episode_id", (row, index) -> row(row), tenantId, tenantId, proposedSalidaId).stream().map(this::withProposals).toList();
+                + "AND episode_state = 'OPEN' ORDER BY rescheduling_episode_id FOR UPDATE", (row, index) -> row(row), tenantId, tenantId, proposedSalidaId).stream().map(this::withProposals).toList();
     }
 
     @Override
