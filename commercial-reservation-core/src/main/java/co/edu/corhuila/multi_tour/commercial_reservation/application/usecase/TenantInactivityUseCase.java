@@ -68,7 +68,7 @@ public class TenantInactivityUseCase implements TenantInactivityEffects {
     public void reactivated(UUID tenantId, UUID eventId, Instant at) {
         if (!suspensions.closeOpen(tenantId, at, eventId)) return;
         for (TenantDeadline row : deadlines.openOf(tenantId)) {
-            var resumed = row.deadline().resumed(at, row.departureStart(), FreezeCause.TENANT_INACTIVE, row.departureCancelled());
+            var resumed = row.deadline().resumed(at, row.departureStart(), FreezeCause.TENANT_INACTIVE, row.departureCancelled() || reached(row, at));
             if (!resumed.equals(row.deadline())) deadlines.save(row.withDeadline(resumed));
         }
         for (FinancialDecision decision : decisions.openOf(tenantId)) {
@@ -77,5 +77,10 @@ public class TenantInactivityUseCase implements TenantInactivityEffects {
         for (ReschedulingEpisode episode : episodes.openOf(tenantId)) {
             if (episode.isFrozen()) episodes.save(episode.resumed(at));
         }
+    }
+
+    // AC-20.9, PDR I1: the reactivation does not reactivate a departure whose time has already passed; it is handled as not attributable to the customer, so its deadline is not resumed to expire at the start.
+    private static boolean reached(TenantDeadline row, Instant at) {
+        return row.departureStart() != null && !row.departureStart().isAfter(at);
     }
 }
