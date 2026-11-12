@@ -6,15 +6,17 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Payme
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentParameterOption;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManagePaymentParameters;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParametersChangeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParameter;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParametersChange;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
-// D-10: the values are bounded and a change carries a reason and its author. The read roles derive from Consult reservations
+// D-10, DP-04: the values are bounded and a change carries a reason and its author; each changed row also writes PaymentParametersChanged to the outbox in the same transaction. The read roles derive from Consult reservations
 // (PROPOSED, the matrix has no payment-read row); the Final Customer reads only the reduced options. Nothing here touches a reservation.
 public class ManagePaymentParametersUseCase implements ManagePaymentParameters {
 
@@ -23,11 +25,14 @@ public class ManagePaymentParametersUseCase implements ManagePaymentParameters {
 
     private final PaymentParameterRepository parameters;
     private final PaymentTransaction transaction;
+    private final PaymentParametersChangeOutbox outbox;
     private final Clock clock;
 
-    public ManagePaymentParametersUseCase(PaymentParameterRepository parameters, PaymentTransaction transaction, Clock clock) {
+    public ManagePaymentParametersUseCase(PaymentParameterRepository parameters, PaymentTransaction transaction, PaymentParametersChangeOutbox outbox,
+            Clock clock) {
         this.parameters = parameters;
         this.transaction = transaction;
+        this.outbox = outbox;
         this.clock = clock;
     }
 
