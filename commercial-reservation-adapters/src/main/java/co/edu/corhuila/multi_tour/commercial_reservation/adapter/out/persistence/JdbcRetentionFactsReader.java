@@ -8,7 +8,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureF
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationFacts;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationStatus;
+import java.time.Instant;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,6 +26,16 @@ public final class JdbcRetentionFactsReader implements RetentionFactsReader {
 
     public JdbcRetentionFactsReader(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    // A year of the tenant zone is never more than a day away from a year of UTC, so the pre-filter reads one day short and the pure function decides.
+    @Override
+    public List<UUID> dueCandidates(UUID tenantId, Instant now, int limit, UUID after) {
+        var threshold = now.minusSeconds(364L * 86_400).atOffset(ZoneOffset.UTC);
+        return jdbc.queryForList("SELECT r.reservation_id FROM commercial_reservation.reservation r LEFT JOIN commercial_reservation.salida_capacity s ON s.tenant_id = r.tenant_id "
+                + "AND s.salida_id = r.salida_id WHERE r.tenant_id = ? AND (?::uuid IS NULL OR r.reservation_id > ?::uuid) AND NOT EXISTS (SELECT 1 FROM "
+                + "commercial_reservation.sensitive_data_deletion d WHERE d.reservation_id = r.reservation_id) AND (s.finalized_at <= ? OR s.estimated_ends_at <= ? "
+                + "OR r.cancelled_at <= ?) ORDER BY r.reservation_id LIMIT ?", UUID.class, tenantId, after, after, threshold, threshold, threshold, limit);
     }
 
     @Override
