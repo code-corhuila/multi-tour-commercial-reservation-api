@@ -61,7 +61,7 @@ public class AcceptReschedulingProposalUseCase implements AnswerReschedulingProp
         if (!command.accepted()) throw new UnsupportedOperationException("the rejection is handled by the next slice");
         Instant now = clock.instant();
         return transaction.inTransaction(() -> {
-            ReschedulingEpisode episode = episodes.find(command.tenantId(), command.episodeId()).orElseThrow(() -> new ReschedulingNotFoundException(command.episodeId()));
+            ReschedulingEpisode episode = episodes.findForUpdate(command.tenantId(), command.episodeId()).orElseThrow(() -> new ReschedulingNotFoundException(command.episodeId()));
             Reservation reservation = reservations.findByTenantAndId(command.tenantId(), episode.reservationId())
                     .orElseThrow(() -> new ReservationNotFoundException(episode.reservationId()));
             if (command.role() == Role.FINAL_CUSTOMER && !reservation.customerId().equals(command.actorCustomerId())) throw new PaymentAccessDeniedException();
