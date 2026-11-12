@@ -28,7 +28,7 @@ class AccountSessionCutoffHttpFixture {
         public boolean moveForward(AccountSessionCutoff cutoff) {
             AccountSessionCutoff kept = cutoffs.get(cutoff.accountId());
             if (kept == null || !kept.revokedFrom().isBefore(cutoff.revokedFrom())) return false;
-            cutoffs.put(cutoff.accountId(), cutoff);
+            cutoffs.put(cutoff.accountId(), new AccountSessionCutoff(cutoff.accountId(), cutoff.tenantId() != null ? cutoff.tenantId() : kept.tenantId(), cutoff.revokedFrom()));
             return true;
         }
     }
