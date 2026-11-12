@@ -42,10 +42,10 @@ class AssociatedEstablishmentUseCasesTest {
         assertThat(result.created()).isTrue();
         assertThat(item.pullEvents()).isEmpty();
         assertThat(get.get(admin, item.associationId()).commercialInformation()).isEqualTo("Contact details");
-        inactivate.inactivate(admin, item.associationId());
+        inactivate.inactivate(admin, item.associationId(), "Closed for works");
         var laterActor = new EstablishmentActor(TENANT, new UUID(0, 104), TENANT_ADMINISTRATOR);
         var later = new ReactivateAssociatedEstablishmentUseCase(repository, Clock.offset(clock, Duration.ofSeconds(60)));
-        later.reactivate(laterActor, item.associationId());
+        later.reactivate(laterActor, item.associationId(), "Closed for works");
         assertThat(repository.outbox).containsExactly(
                 new EstablishmentAssociationPublished(TENANT, item.associationId(), ACTOR, NOW),
                 new EstablishmentAssociationInactivated(TENANT, item.associationId(), ACTOR, NOW),
@@ -54,7 +54,7 @@ class AssociatedEstablishmentUseCasesTest {
 
     @Test void retryWithTheSameKeyCreatesOneAssociation() {
         var first = register.register(admin, "register-key", command());
-        inactivate.inactivate(admin, first.association().associationId());
+        inactivate.inactivate(admin, first.association().associationId(), "Closed for works");
         var retry = register.register(admin, "register-key", command());
         assertThat(retry.created()).isFalse();
         assertThat(retry.association().associationId()).isEqualTo(first.association().associationId());
@@ -112,13 +112,13 @@ class AssociatedEstablishmentUseCasesTest {
     }
     @Test void collaboratorIsDeniedInactivation() {
         var item = plant(AssociationStatus.ACTIVE);
-        assertThatThrownBy(() -> inactivate.inactivate(actor(OPERATIONAL_COLLABORATOR), item.associationId()))
+        assertThatThrownBy(() -> inactivate.inactivate(actor(OPERATIONAL_COLLABORATOR), item.associationId(), "Closed for works"))
                 .isInstanceOf(EstablishmentAccessDeniedException.class);
         assertThat(repository.saves).isZero(); assertThat(repository.outbox).isEmpty();
     }
     @Test void collaboratorIsDeniedReactivation() {
         var item = plant(AssociationStatus.INACTIVE);
-        assertThatThrownBy(() -> reactivate.reactivate(actor(OPERATIONAL_COLLABORATOR), item.associationId()))
+        assertThatThrownBy(() -> reactivate.reactivate(actor(OPERATIONAL_COLLABORATOR), item.associationId(), "Closed for works"))
                 .isInstanceOf(EstablishmentAccessDeniedException.class);
         assertThat(repository.saves).isZero(); assertThat(repository.outbox).isEmpty();
     }
@@ -129,8 +129,8 @@ class AssociatedEstablishmentUseCasesTest {
         assertThat(get.get(reader, item.associationId()).associationId()).isEqualTo(item.associationId());
         assertThat(list.list(reader, Optional.empty(), Optional.empty(), 1, 20).total()).isEqualTo(1);
         assertThatThrownBy(() -> register.register(reader, "register-key", command())).isInstanceOf(EstablishmentAccessDeniedException.class);
-        assertThatThrownBy(() -> inactivate.inactivate(reader, item.associationId())).isInstanceOf(EstablishmentAccessDeniedException.class);
-        assertThatThrownBy(() -> reactivate.reactivate(reader, item.associationId())).isInstanceOf(EstablishmentAccessDeniedException.class);
+        assertThatThrownBy(() -> inactivate.inactivate(reader, item.associationId(), "Closed for works")).isInstanceOf(EstablishmentAccessDeniedException.class);
+        assertThatThrownBy(() -> reactivate.reactivate(reader, item.associationId(), "Closed for works")).isInstanceOf(EstablishmentAccessDeniedException.class);
         assertThat(repository.saves).isZero(); assertThat(keys.entries).isEmpty(); assertThat(repository.outbox).isEmpty();
     }
 
@@ -140,15 +140,15 @@ class AssociatedEstablishmentUseCasesTest {
         assertThatThrownBy(() -> get.get(denied, id)).isInstanceOf(EstablishmentAccessDeniedException.class);
         assertThatThrownBy(() -> list.list(denied, Optional.empty(), Optional.empty(), 1, 20)).isInstanceOf(EstablishmentAccessDeniedException.class);
         assertThatThrownBy(() -> register.register(denied, "register-key", command())).isInstanceOf(EstablishmentAccessDeniedException.class);
-        assertThatThrownBy(() -> inactivate.inactivate(denied, id)).isInstanceOf(EstablishmentAccessDeniedException.class);
-        assertThatThrownBy(() -> reactivate.reactivate(denied, id)).isInstanceOf(EstablishmentAccessDeniedException.class);
+        assertThatThrownBy(() -> inactivate.inactivate(denied, id, "Closed for works")).isInstanceOf(EstablishmentAccessDeniedException.class);
+        assertThatThrownBy(() -> reactivate.reactivate(denied, id, "Closed for works")).isInstanceOf(EstablishmentAccessDeniedException.class);
     }
 
     @Test void inactiveAssociationRemainsReadableByIdentifier() {
         var item = plant(AssociationStatus.INACTIVE);
         assertThat(get.get(admin, item.associationId()).associationStatus()).isEqualTo(AssociationStatus.INACTIVE);
         assertThat(list.list(admin, Optional.of(AssociationStatus.ACTIVE), Optional.empty(), 1, 20).items()).isEmpty();
-        reactivate.reactivate(admin, item.associationId());
+        reactivate.reactivate(admin, item.associationId(), "Closed for works");
         assertThat(list.list(admin, Optional.of(AssociationStatus.ACTIVE), Optional.empty(), 1, 20).items())
                 .extracting(AssociatedEstablishment::associationId).containsExactly(item.associationId());
     }
@@ -191,14 +191,14 @@ class AssociatedEstablishmentUseCasesTest {
 
     @Test void repeatedTransitionsWriteNeitherTheStateNorAnotherEvent() {
         var item = plant(AssociationStatus.ACTIVE);
-        reactivate.reactivate(admin, item.associationId()); assertThat(repository.saves).isZero();
-        inactivate.inactivate(admin, item.associationId()); inactivate.inactivate(admin, item.associationId());
+        reactivate.reactivate(admin, item.associationId(), "Closed for works"); assertThat(repository.saves).isZero();
+        inactivate.inactivate(admin, item.associationId(), "Closed for works"); inactivate.inactivate(admin, item.associationId(), "Closed for works");
         assertThat(repository.saves).isEqualTo(1); assertThat(repository.outbox).hasSize(1);
     }
 
     @Test void aFailedSaveLeavesTheStoredAssociationAndOutboxUntouched() {
         var item = plant(AssociationStatus.ACTIVE); repository.failNextSave = true;
-        assertThatThrownBy(() -> inactivate.inactivate(admin, item.associationId())).hasMessage("save rejected");
+        assertThatThrownBy(() -> inactivate.inactivate(admin, item.associationId(), "Closed for works")).hasMessage("save rejected");
         assertThat(get.get(admin, item.associationId()).associationStatus()).isEqualTo(AssociationStatus.ACTIVE);
         assertThat(repository.outbox).isEmpty(); assertThat(repository.saves).isZero();
     }
@@ -207,7 +207,7 @@ class AssociatedEstablishmentUseCasesTest {
         var invalid = AssociatedEstablishment.restore(new UUID(0, 111), TENANT, EstablishmentType.HOTEL,
                 "Sample establishment", " ", "opaque-reference", AssociationStatus.INACTIVE, NOW, NOW);
         repository.plant(invalid);
-        assertThatThrownBy(() -> reactivate.reactivate(admin, invalid.associationId())).isInstanceOf(BusinessRuleViolation.class);
+        assertThatThrownBy(() -> reactivate.reactivate(admin, invalid.associationId(), "Closed for works")).isInstanceOf(BusinessRuleViolation.class);
         assertThat(get.get(admin, invalid.associationId()).associationStatus()).isEqualTo(AssociationStatus.INACTIVE);
         assertThat(repository.outbox).isEmpty(); assertThat(repository.saves).isZero();
     }
@@ -232,8 +232,8 @@ class AssociatedEstablishmentUseCasesTest {
     private void invoke(String operation, EstablishmentActor actor, UUID id, InMemoryAssociatedEstablishmentRepository store) {
         switch (operation) {
             case "read" -> new GetAssociatedEstablishmentUseCase(store).get(actor, id);
-            case "inactivate" -> new InactivateAssociatedEstablishmentUseCase(store, clock).inactivate(actor, id);
-            case "reactivate" -> new ReactivateAssociatedEstablishmentUseCase(store, clock).reactivate(actor, id);
+            case "inactivate" -> new InactivateAssociatedEstablishmentUseCase(store, clock).inactivate(actor, id, "Closed for works");
+            case "reactivate" -> new ReactivateAssociatedEstablishmentUseCase(store, clock).reactivate(actor, id, "Closed for works");
             default -> throw new AssertionError("Unknown test operation");
         }
     }

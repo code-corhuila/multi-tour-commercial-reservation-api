@@ -70,7 +70,7 @@ class EstablishmentTransitionOutboxTest {
         var actor = actor();
         UUID id = registered(actor);
 
-        inactivate.inactivate(actor, id);
+        inactivate.inactivate(actor, id, "Closed for works");
 
         assertThat(status(actor, id)).isEqualTo("INACTIVE");
         assertThat(transitionRows(actor, id, "EstablishmentAssociationInactivated")).singleElement()
@@ -83,9 +83,9 @@ class EstablishmentTransitionOutboxTest {
     void reactivationWritesItsOutboxRowWithTheStatusChange() {
         var actor = actor();
         UUID id = registered(actor);
-        inactivate.inactivate(actor, id);
+        inactivate.inactivate(actor, id, "Closed for works");
 
-        reactivate.reactivate(actor, id);
+        reactivate.reactivate(actor, id, "Closed for works");
 
         assertThat(status(actor, id)).isEqualTo("ACTIVE");
         assertThat(transitionRows(actor, id, "EstablishmentAssociationReactivated")).singleElement()
@@ -98,14 +98,14 @@ class EstablishmentTransitionOutboxTest {
     void repeatingTheSameTransitionChangesNothingAndWritesNoSecondEvent() {
         var actor = actor();
         UUID id = registered(actor);
-        inactivate.inactivate(actor, id);
-        inactivate.inactivate(actor, id);
+        inactivate.inactivate(actor, id, "Closed for works");
+        inactivate.inactivate(actor, id, "Closed for works");
         assertThat(status(actor, id)).isEqualTo("INACTIVE");
         assertThat(eventTypes(actor, id)).containsExactly("EstablishmentAssociationPublished",
                 "EstablishmentAssociationInactivated");
 
-        reactivate.reactivate(actor, id);
-        reactivate.reactivate(actor, id);
+        reactivate.reactivate(actor, id, "Closed for works");
+        reactivate.reactivate(actor, id, "Closed for works");
         assertThat(status(actor, id)).isEqualTo("ACTIVE");
         assertThat(eventTypes(actor, id)).containsExactly("EstablishmentAssociationPublished",
                 "EstablishmentAssociationInactivated", "EstablishmentAssociationReactivated");
@@ -117,7 +117,7 @@ class EstablishmentTransitionOutboxTest {
         UUID id = registered(actor);
 
         assertThatThrownBy(() -> transactions.executeWithoutResult(tx -> {
-            inactivate.inactivate(actor, id);
+            inactivate.inactivate(actor, id, "Closed for works");
             throw new IllegalStateException("forced failure after save");
         })).isInstanceOf(IllegalStateException.class).hasMessage("forced failure after save");
 
@@ -129,16 +129,37 @@ class EstablishmentTransitionOutboxTest {
     void aFailureAfterReactivatingLeavesNeitherTheStatusChangeNorTheEvent() {
         var actor = actor();
         UUID id = registered(actor);
-        inactivate.inactivate(actor, id);
+        inactivate.inactivate(actor, id, "Closed for works");
 
         assertThatThrownBy(() -> transactions.executeWithoutResult(tx -> {
-            reactivate.reactivate(actor, id);
+            reactivate.reactivate(actor, id, "Closed for works");
             throw new IllegalStateException("forced failure after save");
         })).isInstanceOf(IllegalStateException.class);
 
         assertThat(status(actor, id)).isEqualTo(AssociationStatus.INACTIVE.name());
         assertThat(eventTypes(actor, id)).containsExactly("EstablishmentAssociationPublished",
                 "EstablishmentAssociationInactivated");
+    }
+
+    // HU-COM-002 AC-02.14: the change entry commits with the status change and carries the reason, the actor and the instant.
+    @Test
+    void everyTransitionWritesItsChangeEntryWithItsReasonInTheSameTransaction() {
+        var actor = actor();
+        UUID id = registered(actor);
+        inactivate.inactivate(actor, id, "Closed for works");
+        reactivate.reactivate(actor, id, "Works finished");
+        inactivate.inactivate(actor, id, "Closed again");
+        reactivate.reactivate(actor, id, "Works finished again");
+        assertThat(jdbc.queryForList("SELECT event_type || ':' || coalesce(reason, '-') FROM commercial_reservation.associated_establishment_change "
+                + "WHERE tenant_id = ? AND association_id = ? ORDER BY occurred_at, event_type", String.class, actor.tenantId(), id))
+                .containsExactlyInAnyOrder("REGISTERED:-", "INACTIVATED:Closed for works", "REACTIVATED:Works finished",
+                        "INACTIVATED:Closed again", "REACTIVATED:Works finished again");
+        var log = new JdbcAssociatedEstablishmentRepository(jdbc, transactions).listByTenant(actor.tenantId(), java.util.Optional.empty(), 1, 20);
+        assertThat(log.total()).isEqualTo(5);
+        assertThat(log.items()).allSatisfy(change -> {
+            assertThat(change.commercialName()).isEqualTo("Transition hotel");
+            assertThat(change.actorId()).isEqualTo(actor.actorId());
+        });
     }
 
     private void assertRow(Map<String, Object> row, EstablishmentActor actor, UUID id, String next, Instant at) {
