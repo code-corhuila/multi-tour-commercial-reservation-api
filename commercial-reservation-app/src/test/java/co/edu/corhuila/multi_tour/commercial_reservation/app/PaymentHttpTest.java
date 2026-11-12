@@ -122,6 +122,17 @@ class PaymentHttpTest extends ReservationHttpBase {
         assertThat(store.reservations.values().iterator().next().attempts()).isEmpty();
     }
 
+    @Test void aCashThatDoesNotAnswerIsAnUnavailableServiceAndNothingIsStored() throws Exception {
+        String id = reservation();
+        payments.cashDown = true;
+
+        var error = CatalogHttpTest.json(exchange(cash(id, Map.of("paymentMethod", "CASH", "amountCents", 90_000L), "payment-key-0041", ADMIN), 503));
+
+        assertThat(error.get("error").asText()).isEqualTo("SERVICE_UNAVAILABLE");
+        assertThat(payments.income).isEmpty();
+        assertThat(store.reservations.values().iterator().next().attempts()).isEmpty();
+    }
+
     @Test void theRolesThatCannotPayAreRefusedBeforeTheBodyAndAFinalCustomerCannotRegisterCash() throws Exception {
         String id = reservation();
         for (String role : List.of(MANAGER, ACCOUNTANT, ANALYST)) {
