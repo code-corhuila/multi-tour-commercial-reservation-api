@@ -102,7 +102,7 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
                     + "payload) VALUES (?, ?, ?, ?, COALESCE((SELECT COALESCE(decided_by, registered_by) FROM "
                     + "commercial_reservation.payment_attempt WHERE reservation_id = ? ORDER BY COALESCE(decided_at, registered_at) DESC "
                     + "LIMIT 1), (SELECT created_by FROM commercial_reservation.reservation WHERE reservation_id = ?)), ?, ?::jsonb)",
-                    eventId, event.tenantId(), event.getClass().getSimpleName(), event.reservationId(), event.reservationId(),
+                    eventId, event.tenantId(), type(event), event.reservationId(), event.reservationId(),
                     event.reservationId(), event.occurredAt().truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC),
                     JSON.writeValueAsString(payload));
             notice(event, eventId);
