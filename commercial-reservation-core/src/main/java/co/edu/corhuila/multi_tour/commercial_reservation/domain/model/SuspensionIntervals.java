@@ -49,6 +49,23 @@ public record SuspensionIntervals(List<Interval> intervals) {
         return Optional.of(cursor.plus(left));
     }
 
+    // The latest start whose period of active time (not suspended) has elapsed at the end: a proof presented at or before it is past its review period
+    // at that end. It walks the intervals backwards, the mirror of endOf, so the overdue filter of the list keeps its single cutoff.
+    public Instant latestStartWithActive(Instant end, Duration period) {
+        Instant cursor = end;
+        Duration left = period;
+        for (int i = intervals.size() - 1; i >= 0; i--) {
+            Interval interval = intervals.get(i);
+            if (interval.suspendedAt().isAfter(cursor)) continue;
+            Instant activeFrom = interval.resumedAt() == null || interval.resumedAt().isAfter(cursor) ? cursor : interval.resumedAt();
+            Duration free = Duration.between(activeFrom, cursor);
+            if (free.compareTo(left) >= 0) return cursor.minus(left);
+            left = left.minus(free);
+            cursor = interval.suspendedAt();
+        }
+        return cursor.minus(left);
+    }
+
     // RN-05: the 24 hours to propose a rescheduling and the 5 business days to execute a refund keep running during the inactivation.
     public Instant contingencyEnd(Instant start, Duration period) {
         return start.plus(period);
