@@ -22,6 +22,7 @@ services:
       # where "is the cash open?" is read before a cash payment (AC-09.5): the service name of the cash api on the platform
       # network. Empty would make the api refuse every cash payment (fail closed). No secret here, the token is the person's.
       CASH_REPORTING_BASE_URL: ${CASH_REPORTING_BASE_URL:-http://multi-tour-cash-reporting-api:8085}
+      CASH_REPORTING_SERVICE_TOKEN: ${CASH_REPORTING_SERVICE_TOKEN:-}
     expose: ["8083"]
     restart: unless-stopped
     networks: [platform]

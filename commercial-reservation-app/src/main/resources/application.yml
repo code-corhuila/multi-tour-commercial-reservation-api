@@ -35,8 +35,10 @@ server:
     keep-alive-timeout: 60s
 
 # P1 of the cash internal routes: where "is the cash open?" is read (the cash api, through the gateway or its service name).
-# Empty means no cash api is configured: no cash payment is accepted (fail closed). No secret here: the token is the person's.
+# Empty means no cash api is configured: no cash payment is accepted (fail closed). No secret here: the person's token comes with the request.
 cash:
   reporting:
     base-url: ${CASH_REPORTING_BASE_URL:}
+    # Token of the service for the internal routes of the cash (HU-COM-009); supplied by the environment, empty means unavailable.
+    service-token: ${CASH_REPORTING_SERVICE_TOKEN:}
     timeout-millis: 2000
