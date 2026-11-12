@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.Set;
@@ -70,10 +71,13 @@ public class Rs256Verifier {
                     granted.add(permission.textValue());
                 }
             }
+            JsonNode iat = claims.path("iat");
+            require(iat.isMissingNode() || iat.isIntegralNumber() && iat.canConvertToLong(), "invalid issued-at");
+            Instant issuedAt = iat.isMissingNode() ? null : Instant.ofEpochSecond(iat.longValue());
             ExceptionalAccess exceptionalAccess = exceptional(claims, tenantId);
             if (exceptionalAccess != null) require(UUID.fromString(sub.textValue()).toString().equalsIgnoreCase(sub.textValue()), "an exceptional access needs the administrator identifier as subject");
             return new AuthenticatedPrincipal(sub.textValue(), tenantId, names, granted,
-                    "restricted".equals(claims.path("access").textValue()), exceptionalAccess);
+                    "restricted".equals(claims.path("access").textValue()), exceptionalAccess, issuedAt);
         } catch (Exception failure) {
             LOG.warn("Access token rejected: {}", failure instanceof IllegalArgumentException
                     ? failure.getMessage() : failure.getClass().getSimpleName());

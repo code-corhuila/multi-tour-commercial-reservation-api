@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ExceptionalAccessUse;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AccountSessionCutoffs;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExceptionalAccessAudit;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
@@ -24,12 +25,12 @@ public class AuthFilter extends OncePerRequestFilter {
     private final TenantStatusReader statuses;
     private final ExceptionalAccessAudit audit;
     private final Clock clock;
+    private final AccountSessionCutoffs cutoffs;
 
-    public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses) {
-        this(verifier, errors, statuses, new LoggingExceptionalAccessAudit(), Clock.systemUTC());
-    }
 
-    public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses, ExceptionalAccessAudit audit, Clock clock) {
+    public AuthFilter(Rs256Verifier verifier, ApiErrorWriter errors, TenantStatusReader statuses, ExceptionalAccessAudit audit, Clock clock,
+            AccountSessionCutoffs cutoffs) {
+        this.cutoffs = cutoffs;
         this.clock = clock;
         this.audit = audit;
         this.verifier = verifier;
@@ -56,6 +57,10 @@ public class AuthFilter extends OncePerRequestFilter {
             if (authorization == null || !authorization.startsWith("Bearer ")) throw new InvalidTokenException();
             AuthenticatedPrincipal principal = verifier.verify(authorization.substring(7));
             request.setAttribute(PRINCIPAL_ATTRIBUTE, principal);
+            if (revoked(principal)) {
+                errors.write(request, response, ApiError.Code.UNAUTHORIZED, "authentication is required");
+                return;
+            }
             if (principal.restricted() && !RestrictedAccessPolicy.allows(request.getMethod(), request.getRequestURI().substring(request.getContextPath().length()), principal.roles())) {
                 errors.write(request, response, ApiError.Code.FORBIDDEN, "the access is restricted to the work of an inactive tenant");
                 return;
@@ -88,12 +93,25 @@ public class AuthFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
+    // A token issued before the cutoff of its account (ADR-004 D5, api spec 022). A SERVICE token or a subject that is not an account id never has one.
+    // The lookup fails loudly: an exception here is the 500 of the catch below, never a token let through.
+    private boolean revoked(AuthenticatedPrincipal principal) {
+        if (principal.roles().contains("SERVICE")) return false;
+        UUID account;
+        try {
+            account = UUID.fromString(principal.sub());
+        } catch (IllegalArgumentException notAnAccount) {
+            return false;
+        }
+        return cutoffs.find(account).filter(cutoff -> cutoff.refuses(principal.issuedAt())).isPresent();
+    }
+
     // The receiving route is checked by its SERVICE role alone, because it must work for an inactive tenant.
     private boolean inactive(HttpServletRequest request, AuthenticatedPrincipal principal) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         // The exceptional or emergency access reads only, so an inactive tenant does not close it (HU-SEC-007, Project Lead 2026-11-11).
         if (principal.tenantId() == null || principal.restricted() || principal.exceptional() != null
-                || path.matches("/api/v1/commercial-reservation/internal/tenants/[^/]+/events")) {
+                || path.matches("/api/v1/commercial-reservation/internal/tenants/[^/]+/events") || "/api/v1/commercial-reservation/internal/events".equals(path)) {
             return false;
         }
         Optional<TenantStatus> status = statuses.statusOf(principal.tenantId());
