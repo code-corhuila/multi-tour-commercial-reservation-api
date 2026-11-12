@@ -56,7 +56,7 @@ public final class ReschedulingWriteController {
 
     @PostMapping("/proposals/{proposalId}/external-answer")
     public ResponseEntity<ReschedulingResponse> externalAnswer(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal, @PathVariable("reschedulingId") UUID id,
-            @PathVariable("proposalId") UUID proposalId, @RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestBody(required = false) Map<String, Object> body) {
+            @PathVariable("proposalId") UUID proposalId, @RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestBody(required = false) RedactedBody body) {
         Map<String, Object> fields = fields(body, "decision", "channel", "evidence", "answeredAt");
         boolean accepted = decision(fields);
         String channel = text(fields, "channel");
