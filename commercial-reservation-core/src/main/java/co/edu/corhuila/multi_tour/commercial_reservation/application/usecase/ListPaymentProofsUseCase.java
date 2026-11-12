@@ -11,9 +11,12 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainExce
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentAttempt;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ValidationStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SuspensionIntervals;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.function.Function;
 
 // D-08: the mark is derived at read time from the clock; the overdue filter asks the reader for the proofs presented at or
 // before now minus 24 hours. Nothing is stored and no job flips a column. Paginated: page from 1, limit 1 to 100.
@@ -21,9 +24,15 @@ public class ListPaymentProofsUseCase implements ListPaymentProofs {
 
     private final PaymentProofReader reader;
     private final TenantStatusReader statuses;
+    private final Function<UUID, SuspensionIntervals> suspensions;
     private final Clock clock;
 
     public ListPaymentProofsUseCase(PaymentProofReader reader, TenantStatusReader statuses, Clock clock) {
+        this(reader, statuses, tenant -> new SuspensionIntervals(List.of()), clock);
+    }
+
+    public ListPaymentProofsUseCase(PaymentProofReader reader, TenantStatusReader statuses, Function<UUID, SuspensionIntervals> suspensions, Clock clock) {
+        this.suspensions = suspensions;
         this.reader = reader;
         this.statuses = statuses;
         this.clock = clock;
@@ -41,7 +50,7 @@ public class ListPaymentProofsUseCase implements ListPaymentProofs {
     @Override
     public ProofPage overdueOf(UUID tenantId, int page, int limit) {
         requirePaging(page, limit);
-        if (statuses.statusOf(tenantId).orElse(TenantStatus.ACTIVE) == TenantStatus.INACTIVE) return new ProofPage(java.util.List.of(), page, limit, 0, 0);
+        if (statuses.statusOf(tenantId).orElse(TenantStatus.ACTIVE) == TenantStatus.INACTIVE) return new ProofPage(List.of(), page, limit, 0, 0);
         return page(tenantId, ValidationStatus.IN_VALIDATION, true, page, limit);
     }
 
@@ -53,9 +62,10 @@ public class ListPaymentProofsUseCase implements ListPaymentProofs {
     private ProofPage page(UUID tenantId, ValidationStatus status, boolean overdueOnly, int page, int limit) {
         requirePaging(page, limit);
         Instant now = Instant.now(clock);
-        Instant cutoff = now.minus(PaymentAttempt.REVIEW_WINDOW);
+        SuspensionIntervals tenantSuspensions = suspensions.apply(tenantId);
+        Instant cutoff = tenantSuspensions.latestStartWithActive(now, PaymentAttempt.REVIEW_WINDOW);
         ProofSourcePage found = reader.find(tenantId, status, overdueOnly ? cutoff : null, page, limit);
-        var items = found.items().stream().map(source -> ProofView.of(source.reservation(), source.attempt(), now)).toList();
+        var items = found.items().stream().map(source -> ProofView.of(source.reservation(), source.attempt(), now, tenantSuspensions)).toList();
         return new ProofPage(items, page, limit, found.total(), reader.countAtOrBefore(tenantId, ValidationStatus.IN_VALIDATION, cutoff));
     }
 }

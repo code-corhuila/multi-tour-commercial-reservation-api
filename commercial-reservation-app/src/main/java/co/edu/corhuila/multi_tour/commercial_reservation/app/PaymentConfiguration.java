@@ -61,6 +61,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
@@ -159,13 +160,13 @@ class PaymentConfiguration {
     }
 
     @Bean
-    ListPaymentProofs listPaymentProofs(@Lazy PaymentProofReader reader, TenantStatusReader statuses, Clock clock) {
-        return new ListPaymentProofsUseCase(reader, statuses, clock);
+    ListPaymentProofs listPaymentProofs(@Lazy PaymentProofReader reader, TenantStatusReader statuses, @Lazy SuspensionStore suspensions, Clock clock) {
+        return new ListPaymentProofsUseCase(reader, statuses, suspensions::intervals, clock);
     }
 
     @Bean
-    ReadPaymentProofs readPaymentProofs(@Lazy ReservationRepository reservations, Clock clock) {
-        return new PaymentProofQueriesUseCase(reservations, clock);
+    ReadPaymentProofs readPaymentProofs(@Lazy ReservationRepository reservations, @Lazy SuspensionStore suspensions, Clock clock) {
+        return new PaymentProofQueriesUseCase(reservations, suspensions::intervals, clock);
     }
 
     @Bean
