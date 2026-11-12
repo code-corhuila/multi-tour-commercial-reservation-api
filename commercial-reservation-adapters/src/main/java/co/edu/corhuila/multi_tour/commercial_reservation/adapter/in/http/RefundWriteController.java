@@ -30,8 +30,10 @@ public final class RefundWriteController {
     public FinancialDecisionResponse record(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
             @PathVariable("financialDecisionId") UUID id, @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @RequestBody(required = false) Map<String, Object> body) {
-        fields(body, "");
-        return FinancialDecisionResponse.of(writes.record(PaymentActors.of(principal), key(key), id).value());
+        String reason = optionalField(body, "reason");
+        var actor = PaymentActors.of(principal);
+        var decision = writes.record(actor, key(key), id, reason).value();
+        return FinancialDecisionResponse.of(decision, writes.refundIdOf(actor, id).orElse(null));
     }
 
     @PostMapping("/refund-authorization")
@@ -54,6 +56,12 @@ public final class RefundWriteController {
     private static String key(String key) {
         if (key == null || key.length() < 8 || key.length() > 128) throw new DomainException("Idempotency-Key", "header required, 8 to 128 characters");
         return key;
+    }
+
+    // DP-01: the reason of the 100 % refund is optional; when named it must not be blank.
+    private static String optionalField(Map<String, Object> body, String allowed) {
+        if (body == null || body.isEmpty()) return null;
+        return fields(body, allowed);
     }
 
     // The only field allowed ("" for none); returns its text, or null when none is named. A blank text is a 400 that names the field.

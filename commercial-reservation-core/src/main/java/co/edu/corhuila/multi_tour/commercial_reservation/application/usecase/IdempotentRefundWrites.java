@@ -26,9 +26,14 @@ public class IdempotentRefundWrites {
         this.writes = writes;
     }
 
-    public Outcome<FinancialDecision> record(PaymentActor actor, String key, UUID decisionId) {
-        return once(actor, key, "refund-decision", decisionId, () -> manage.recordRefundDecision(actor, decisionId), FinancialDecision::id,
+    public Outcome<FinancialDecision> record(PaymentActor actor, String key, UUID decisionId, String reason) {
+        return once(actor, key, "refund-decision", decisionId, () -> manage.recordRefundDecision(actor, decisionId, reason), FinancialDecision::id,
                 id -> read.decision(actor, id), found -> found.id().equals(decisionId));
+    }
+
+    // DP-01: the refund that the decision created, for the additive field of the answer.
+    public java.util.Optional<UUID> refundIdOf(PaymentActor actor, UUID decisionId) {
+        return read.refunds(actor, null, false, decisionId, 1, 1).items().stream().findFirst().map(RefundAuthorization::id);
     }
 
     public Outcome<FinancialDecision> reject(PaymentActor actor, String key, UUID decisionId, String justification) {

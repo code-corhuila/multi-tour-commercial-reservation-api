@@ -17,8 +17,7 @@ public final class RestrictedAccessPolicy {
             route("/reservations/" + ID + "/cancellation"),
             // HU-COM-010: the decision on a proof presented before the inactivation (AC-20.10, AC-20.12)
             route("/payment-proofs/" + ID + "/(approve|reject)"),
-            // HU-COM-016: the refund decisions, authorizations and rejections (AC-20.13)
-            route("/financial-decisions/" + ID + "/(refund-decision|refund-authorization|rejection)"),
+            // HU-COM-016 DP-16 (2026-11-12): the refund decisions are closed to an inactive tenant; reading refunds and executing the ones already determined stay open.
             // HU-COM-018: the reschedule routes of the operator
             route("/reschedulings/" + ID + "/(proposals|no-alternative)"),
             route("/reschedulings/" + ID + "/proposals/" + ID + "/external-answer"));

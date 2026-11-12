@@ -60,16 +60,17 @@ class RefundUseCasesTest {
     @Test
     void authorizingCreatesTheRefundWithItsDueInstantAndOneEvent() {
         FinancialDecision open = fakes.open(DecisionKind.CUSTOMER_CANCELLATION, 80_000);
-        manage.recordRefundDecision(admin, open.id());
+        manage.recordRefundDecision(admin, open.id(), "The customer cancelled in time");
 
-        RefundAuthorization refund = manage.authorize(admin, open.id(), "The customer cancelled in time");
+        RefundAuthorization refund = manage.authorize(admin, open.id(), "Later");
 
         assertThat(refund.authorizedAmount()).isEqualTo(new Cents(80_000));
         assertThat(refund.executionDueAt()).isEqualTo(RefundFakes.NOW.plus(Duration.ofDays(5)));
         assertThat(refund.authorizedBy()).isEqualTo(admin.actorId());
+        assertThat(refund.reason()).isEqualTo("The customer cancelled in time");
         assertThat(fakes.refunds).containsValue(refund);
         assertThat(fakes.events).containsExactly(refund);
-        assertThatThrownBy(() -> manage.authorize(admin, open.id(), "Again")).isInstanceOf(InvalidStatusTransitionException.class);
+        assertThat(manage.authorize(admin, open.id(), "Again")).as("DP-01: authorizing again answers the refund that exists").isEqualTo(refund);
         assertThat(fakes.events).hasSize(1);
         assertThatThrownBy(() -> manage.authorize(RefundFakes.actor(Role.OPERATIONAL_COLLABORATOR), open.id(), "Reason"))
                 .isInstanceOf(co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentAccessDeniedException.class);

@@ -9,11 +9,13 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 // HU-COM-016 plan D-04, D-07, D-09: the aggregates decide, this class orders what surrounds them in one transaction (the decision or the refund and its
@@ -24,12 +26,22 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
     private final RefundAuthorizationRepository refunds;
     private final BusinessCalendar calendar;
     private final RefundAuthorizedOutbox outbox;
+    private static final String DEFAULT_REASON = "Refund of 100 % decided by the Tenant Administrator";
+
     private final IdGenerator ids;
     private final PaymentTransaction transaction;
     private final Clock clock;
+    private final SuspensionReader suspensions;
 
     public ManageRefundDecisionsUseCase(FinancialDecisionRepository decisions, RefundAuthorizationRepository refunds, BusinessCalendar calendar,
             RefundAuthorizedOutbox outbox, IdGenerator ids, PaymentTransaction transaction, Clock clock) {
+        this(decisions, refunds, calendar, outbox, ids, transaction, clock, tenantId -> Optional.empty());
+    }
+
+    // HU-COM-016 DP-16: the suspension reader tells whether the tenant is inactive (HU-COM-020).
+    public ManageRefundDecisionsUseCase(FinancialDecisionRepository decisions, RefundAuthorizationRepository refunds, BusinessCalendar calendar,
+            RefundAuthorizedOutbox outbox, IdGenerator ids, PaymentTransaction transaction, Clock clock, SuspensionReader suspensions) {
+        this.suspensions = suspensions;
         this.decisions = decisions;
         this.refunds = refunds;
         this.calendar = calendar;
@@ -40,13 +52,19 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
     }
 
     @Override
-    public FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId) {
+    public FinancialDecision recordRefundDecision(PaymentActor actor, UUID financialDecisionId, String reason) {
         RefundAuthorizationRules.requireAdministrator(actor);
+        requireActiveTenant(actor.tenantId());
         FinancialDecision decision = load(actor.tenantId(), financialDecisionId);
         Instant now = Instant.now(clock);
         return transaction.inTransaction(() -> {
             FinancialDecision decided = decision.recordRefundFull(actor.actorId(), now);
             decisions.save(decided);
+            // HU-COM-016 DP-01 (Project Lead, 2026-11-12): the decision of the 100 % refund is also its authorization, in this same transaction; DP-02: the five days count from the determination.
+            RefundAuthorization refund = RefundAuthorization.authorize(ids.newId(), decided, reason == null || reason.isBlank() ? DEFAULT_REASON : reason, actor.actorId(), now,
+                    calendar.addBusinessDays(decided.recognizedAt(), RefundAuthorizationRules.BUSINESS_DAYS));
+            refunds.save(refund);
+            outbox.append(refund);
             return decided;
         });
     }
@@ -54,9 +72,11 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
     @Override
     public RefundAuthorization authorize(PaymentActor actor, UUID financialDecisionId, String reason) {
         RefundAuthorizationRules.requireAdministrator(actor);
+        requireActiveTenant(actor.tenantId());
         FinancialDecision decision = load(actor.tenantId(), financialDecisionId);
-        if (refunds.findByDecision(actor.tenantId(), financialDecisionId).isPresent())
-            throw new InvalidStatusTransitionException("the decision already has its refund authorized");
+        // DP-01: idempotent by state. A decision that already has its refund (created by the decision itself) answers that refund; this route serves old clients and rows decided before.
+        var existing = refunds.findByDecision(actor.tenantId(), financialDecisionId);
+        if (existing.isPresent()) return existing.get();
         Instant now = Instant.now(clock);
         return transaction.inTransaction(() -> {
             // HU-COM-016 DP-02: the five business days count from the determination (recognizedAt), not from this authorization; a resumed decision keeps its recognition instant (question for the Project Lead).
@@ -71,6 +91,7 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
     @Override
     public FinancialDecision reject(PaymentActor actor, UUID financialDecisionId, String justification) {
         RefundAuthorizationRules.requireAdministrator(actor);
+        requireActiveTenant(actor.tenantId());
         FinancialDecision decision = load(actor.tenantId(), financialDecisionId);
         Instant now = Instant.now(clock);
         return transaction.inTransaction(() -> {
@@ -78,6 +99,11 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
             decisions.save(rejected);
             return rejected;
         });
+    }
+
+    // HU-COM-016 DP-16 (Project Lead, 2026-11-12): with the tenant inactive the decisions of 24 hours are closed; reading and executing refunds already determined stay open.
+    private void requireActiveTenant(UUID tenantId) {
+        if (suspensions.openSince(tenantId).isPresent()) throw new BusinessRuleViolation("the tenant is inactive: refund decisions are closed until it is active again");
     }
 
     private FinancialDecision load(UUID tenantId, UUID id) {

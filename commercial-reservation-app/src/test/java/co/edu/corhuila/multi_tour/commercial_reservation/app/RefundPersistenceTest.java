@@ -22,10 +22,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKi
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ExecutionState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.OutflowMethod;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundOrigin;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -109,7 +107,7 @@ class RefundPersistenceTest {
         assertThat(event.get("actor_id")).isEqualTo(fixture.actor);
         assertThat((String) event.get("payload")).contains("refundAuthorizationId", "reservationId", "amountCents", "origin", "authorizationMode", "authorizedBy")
                 .doesNotContain("Private note");
-        assertThatThrownBy(() -> manage.authorize(admin, decision.id(), "Again")).isInstanceOf(InvalidStatusTransitionException.class);
+        assertThat(manage.authorize(admin, decision.id(), "Again")).as("DP-01: authorizing again answers the refund the decision already created").isEqualTo(refund);
         assertThat(events()).hasSize(1);
     }
 
@@ -162,9 +160,9 @@ class RefundPersistenceTest {
 
         assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.financial_decision WHERE reservation_id = ?", Integer.class,
                 reservationId)).isEqualTo(1);
-        RefundAuthorization increment = refunds.findByDecision(fixture.tenant, decision.id()).orElseThrow();
-        assertThat(increment.authorizedAmount()).isEqualTo(new Cents(2_500));
-        assertThat(increment.origin()).isEqualTo(RefundOrigin.CUSTOMER_CANCELLATION);
-        assertThat(events()).hasSize(1);
+        assertThat(refunds.findByDecision(fixture.tenant, decision.id()).orElseThrow().authorizedAmount()).as("DP-01: the decision already created its own refund").isEqualTo(new Cents(80_000));
+        assertThat(fixture.jdbc.queryForList("SELECT authorized_amount_cents FROM commercial_reservation.refund_authorization WHERE financial_decision_id = ? "
+                + "AND authorization_mode = 'AUTOMATIC_DETERMINATION'", Long.class, decision.id())).containsExactly(2_500L);
+        assertThat(events()).hasSize(2);
     }
 }

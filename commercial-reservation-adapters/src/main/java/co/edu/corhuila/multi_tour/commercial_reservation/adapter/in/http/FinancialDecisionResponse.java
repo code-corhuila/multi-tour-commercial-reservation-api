@@ -10,13 +10,18 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record FinancialDecisionResponse(UUID financialDecisionId, UUID reservationId, String kind, long baseAmountCents, Long penaltyCents, UUID creditBalanceId,
         String recognizedAt, String decisionDueAt, boolean frozen, String outcome, String decidedAt, UUID decidedBy, Boolean decidedBySystem,
-        String justification) {
+        String justification, UUID refundAuthorizationId) {
 
     static FinancialDecisionResponse of(FinancialDecision d) {
+        return of(d, null);
+    }
+
+    // DP-01: the refund that the decision created (additive field).
+    static FinancialDecisionResponse of(FinancialDecision d, UUID refundAuthorizationId) {
         Instant due = d.isFrozen() ? d.frozenAt().plus(Duration.ofMinutes(d.remainingAtFreezeMinutes())) : d.dueAt();
         return new FinancialDecisionResponse(d.id(), d.reservationId(), d.kind().name(), d.baseAmount().amount(),
                 d.penalty() == null ? null : d.penalty().amount(), d.creditBalanceId(), d.recognizedAt().toString(), due.toString(), d.isFrozen(),
                 d.outcome() == null ? null : d.outcome().name(), d.decidedAt() == null ? null : d.decidedAt().toString(), d.decidedBy(),
-                d.outcome() == null ? null : d.decidedBySystem(), d.rejectionJustification());
+                d.outcome() == null ? null : d.decidedBySystem(), d.rejectionJustification(), refundAuthorizationId);
     }
 }
