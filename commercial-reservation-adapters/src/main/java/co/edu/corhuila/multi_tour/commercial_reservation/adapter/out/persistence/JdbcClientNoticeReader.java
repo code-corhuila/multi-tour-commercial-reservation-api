@@ -23,13 +23,15 @@ public final class JdbcClientNoticeReader implements ClientNoticeReader {
     public Optional<StoredNotice> find(UUID tenantId, UUID eventId) {
         return jdbc.query("SELECT n.outbox_event_id, n.tenant_id, n.reservation_id, (n.payload ->> 'customerId')::uuid AS customer_id, "
                 + "n.payload ->> 'notificationType' AS notification_type, s.commercial_name, sc.hora_inicio, "
-                + "(t.payload ->> 'amountCents')::bigint AS amount_cents, COALESCE((t.payload ->> 'pendingBalanceCents')::bigint, r.pending_balance_cents) "
+                + "COALESCE((t.payload ->> 'amountCents')::bigint, ra.authorized_amount_cents) AS amount_cents, COALESCE((t.payload ->> 'pendingBalanceCents')::bigint, r.pending_balance_cents) "
                 + "AS pending_balance_cents, r.cancellation_cause FROM commercial_reservation.outbox_event n "
                 + "JOIN commercial_reservation.reservation r ON r.tenant_id = n.tenant_id AND r.reservation_id = n.reservation_id "
                 + "LEFT JOIN commercial_reservation.catalog_service s ON s.tenant_id = r.tenant_id AND s.service_id = r.service_id "
                 + "LEFT JOIN commercial_reservation.salida_capacity sc ON sc.tenant_id = r.tenant_id AND sc.salida_id = r.salida_id "
                 + "LEFT JOIN commercial_reservation.outbox_event t ON t.tenant_id = n.tenant_id "
                 + "AND t.outbox_event_id = (n.payload ->> 'triggeringEventId')::uuid "
+                + "LEFT JOIN commercial_reservation.refund_authorization ra ON ra.tenant_id = n.tenant_id AND n.payload ->> 'triggeringEventType' = 'RefundExecuted' "
+                + "AND ra.refund_authorization_id = (n.payload ->> 'triggeringEventId')::uuid "
                 + "WHERE n.tenant_id = ? AND n.outbox_event_id = ? AND n.event_type = 'ClientNotified'", (row, index) -> new StoredNotice(
                         row.getObject("outbox_event_id", UUID.class), row.getObject("tenant_id", UUID.class), row.getObject("reservation_id", UUID.class),
                         row.getObject("customer_id", UUID.class), NoticeType.valueOf(row.getString("notification_type")),
