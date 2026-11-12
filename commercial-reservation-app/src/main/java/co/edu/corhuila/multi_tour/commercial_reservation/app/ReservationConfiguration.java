@@ -20,6 +20,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcOpenProposal;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OpenProposalReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolveNextAction;
@@ -45,6 +46,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Quo
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservableDeparture;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservationPricing;
 import java.time.Clock;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
@@ -98,8 +100,8 @@ class ReservationConfiguration {
     }
 
     @Bean
-    OpenProposalReader openProposalReader() {
-        return (tenantId, reservationId) -> false; // the proposal is HU-COM-018's: none can be open before it exists
+    OpenProposalReader openProposalReader(JdbcTemplate jdbc) {
+        return new JdbcOpenProposal(jdbc); // the proposal is HU-COM-018's: a PENDING one of an OPEN episode
     }
 
     @Bean

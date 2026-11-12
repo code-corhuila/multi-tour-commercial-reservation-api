@@ -31,6 +31,10 @@ import org.springframework.context.annotation.Primary;
 @TestConfiguration
 class ReservationHttpFixture {
     @Bean @Primary MemoryReservations memoryReservations() { return new MemoryReservations(); }
+    // The service reads the open proposal from the database (JdbcOpenProposal); the HTTP tests have none, so no proposal is open here.
+    @Bean @Primary co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OpenProposalReader noOpenProposalInMemory() {
+        return (tenantId, reservationId) -> false;
+    }
 
     static final class MemoryReservations implements ReservationRepository, ReservationQueries, DepartureReader,
             EnabledPaymentOptions, TransportRateReader, OwnReservationQueries {
