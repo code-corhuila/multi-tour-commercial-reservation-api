@@ -158,7 +158,7 @@ public final class Reservation {
         if (confirms) reservationStatus = ReservationStatus.CONFIRMED;
         paymentStatus = FinancialSituation.of(finalValue, validated, expectedPaymentType, minimumDeposit, reservationStatus);
         events.add(new PaymentValidated(tenantId, reservationId, attemptId, applied, paymentStatus, pendingBalance, validator, now));
-        if (confirms) events.add(new ReservationConfirmed(tenantId, reservationId, paymentStatus, people, now));
+        if (confirms) events.add(new ReservationConfirmed(tenantId, reservationId, paymentStatus, people, finalValue, now));
     }
 
     private void requireAmount(Cents amount, Cents minimumDeposit) {
