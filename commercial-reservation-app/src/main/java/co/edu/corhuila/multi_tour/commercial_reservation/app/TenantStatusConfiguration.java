@@ -25,6 +25,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ProcessedEvents;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantDirectory;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantEventTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantInactivityEffects;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
@@ -55,6 +56,11 @@ class TenantStatusConfiguration {
     @Bean
     TenantEventTransaction tenantEventTransaction(PlatformTransactionManager manager) {
         return new JdbcTenantEventTransaction(new TransactionTemplate(manager));
+    }
+
+    @Bean
+    SuspensionReader suspensionReader(JdbcTemplate jdbc) {
+        return new JdbcTenantSuspensions(jdbc);
     }
 
     @Bean
