@@ -16,11 +16,15 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 // HU-COM-010 over HTTP, the decisions (api spec T-03, T-04, T-06; AC-10.1 to AC-10.3, AC-10.8, AC-10.10, AC-10.13) and the step 2 of the
 // saga register-payment that records the validated payment (DP-11, answered 2026-10-30; PROPOSED internal route).
+@ExtendWith(OutputCaptureExtension.class)
 class PaymentProofDecisionHttpTest extends ReservationHttpBase {
 
     private final UUID proof = new UUID(21, 1), reservationId = new UUID(21, 2);
@@ -155,5 +159,59 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
         CatalogHttpTest.assertField(exchange(step2(tenant, Map.of("approvedBy", new UUID(21, 7).toString()), service), 400), "verifiedAmountCents");
         exchange(step2(otherTenant, body, service), 404);
         assertThat(payments.events).isEmpty();
+    }
+
+    private static final List<String> PERSONAL = List.of("Persona Ficticia", "CC12345", "persona@example.invalid", "3000000000");
+
+    private static <T> T withApplicationTrace(java.util.function.Supplier<T> run) {
+        ch.qos.logback.classic.Logger own = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("co.edu.corhuila");
+        ch.qos.logback.classic.Level before = own.getLevel();
+        own.setLevel(ch.qos.logback.classic.Level.TRACE);
+        try {
+            return run.get();
+        } finally {
+            own.setLevel(before);
+        }
+    }
+
+    // AC-10.18 (RN-15, RNF-03): an approval that confirms writes its two events in the outbox with no personal field and no log line of
+    // the route, the repeat or the refusal carries a name, a document, an e-mail, a phone or the free text of the reason.
+    @Test void theEventsAndTheLogsCarryNoPersonalData(CapturedOutput output) throws Exception {
+        String reason = "Motivo-reservado-del-monto-4417";
+        var body = new LinkedHashMap<String, Object>();
+        body.put("verifiedAmountCents", 95_000L); body.put("reason", reason);
+
+        withApplicationTrace(() -> {
+            try {
+                exchange(decide("approve", body, "decision-key-018", token(ADMIN)), 200);
+                exchange(decide("approve", body, "decision-key-018", token(ADMIN)), 200);
+                exchange(decide("approve", body, "decision-key-019", token(ADMIN)), 422);
+                return null;
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertThat(names(payments.events)).containsExactly("PaymentValidated", "ReservationConfirmed");
+        assertThat(payments.events.toString()).doesNotContain(PERSONAL.toArray(String[]::new)).doesNotContain(reason);
+        assertThat(output.getAll()).doesNotContain(PERSONAL.toArray(String[]::new)).doesNotContain(reason);
+    }
+
+    @Test void theEventAndTheLogsOfARejectionCarryNeitherPersonalDataNorTheFreeTextOfTheReason(CapturedOutput output) throws Exception {
+        String reason = "Motivo-reservado-del-rechazo-9023";
+
+        withApplicationTrace(() -> {
+            try {
+                exchange(decide("reject", Map.of("reason", reason), "decision-key-020", token(ADMIN)), 200);
+                exchange(decide("reject", Map.of("reason", reason), "decision-key-020", token(ADMIN)), 200);
+                return null;
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertThat(names(payments.events)).containsExactly("PaymentRejected");
+        assertThat(payments.events.toString()).doesNotContain(PERSONAL.toArray(String[]::new)).doesNotContain(reason);
+        assertThat(output.getAll()).doesNotContain(PERSONAL.toArray(String[]::new)).doesNotContain(reason);
     }
 }
