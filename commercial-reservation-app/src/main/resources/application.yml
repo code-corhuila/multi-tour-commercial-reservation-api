@@ -33,3 +33,10 @@ server:
   tomcat:
     connection-timeout: 5s
     keep-alive-timeout: 60s
+
+# P1 of the cash internal routes: where "is the cash open?" is read (the cash api, through the gateway or its service name).
+# Empty means no cash api is configured: no cash payment is accepted (fail closed). No secret here: the token is the person's.
+cash:
+  reporting:
+    base-url: ${CASH_REPORTING_BASE_URL:}
+    timeout-millis: 2000

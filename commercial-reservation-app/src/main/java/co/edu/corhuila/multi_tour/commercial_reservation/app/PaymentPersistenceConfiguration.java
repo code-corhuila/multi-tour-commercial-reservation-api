@@ -1,6 +1,13 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CashReportingSessionStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CurrentRequestToken;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashIncome;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashSession;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashIncomeRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashSessionStatus;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDuePaymentQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialDeadlineRecorder;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialWaitPolicy;
@@ -136,10 +143,22 @@ class PaymentPersistenceConfiguration {
         return new JdbcReservationCancellation(jdbc, customers);
     }
 
-    // The cash domain is not wired yet: this stand-in refuses every cash payment with 422 (declared debt DD-2) and never invents an income.
+    // "Is the cash open?" is read from the cash api with the token of the person who pays (P1, ADR-004 D4 and D5). With no base url
+    // configured the answer is always "not verified", so no cash payment is accepted (fail closed).
     @Bean
-    UnverifiedCashSession unverifiedCashSession() {
-        return new UnverifiedCashSession();
+    CashSessionStatus cashSessionStatus(@Value("${cash.reporting.base-url:}") String baseUrl,
+            @Value("${cash.reporting.timeout-millis:2000}") long timeoutMillis) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return new UnverifiedCashSession();
+        }
+        return new CashReportingSessionStatus(baseUrl, CurrentRequestToken::bearer, Duration.ofMillis(timeoutMillis));
+    }
+
+    // The income and its reversal are written in the cash only through the saga register-payment (ADR-004 D4, HU-WFL-002): until
+    // the saga starts the step or the Project Lead decides otherwise, they stay refused with an explicit message (declared debt DD-2).
+    @Bean
+    CashIncomeRecorder cashIncomeRecorder() {
+        return new UnverifiedCashIncome();
     }
 
     // HU-COM-017: the credit balance is real (rows of the db, available value derived); the excess of a validated payment is recorded as one credit per attempt.
