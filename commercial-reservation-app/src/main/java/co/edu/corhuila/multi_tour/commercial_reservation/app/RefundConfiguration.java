@@ -1,7 +1,8 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentRefundDetermination;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentRefundWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentRefundDetermination;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentRefundWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RefundHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RefundInternalController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RefundReadController;
@@ -96,8 +97,8 @@ class RefundConfiguration {
     }
 
     @Bean
-    IdempotentRefundWrites idempotentRefundWrites(ManageRefundDecisions manage, ReadRefunds read, IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentRefundWrites(manage, read, keys, new TransactionTemplate(manager));
+    IdempotentRefundWrites idempotentRefundWrites(ManageRefundDecisions manage, ReadRefunds read, IdempotentWrites writes) {
+        return new IdempotentRefundWrites(manage, read, writes);
     }
 
     @Bean
@@ -127,9 +128,8 @@ class RefundConfiguration {
     }
 
     @Bean
-    IdempotentRefundDetermination idempotentRefundDetermination(DetermineRefund determine, ExecuteRefund reads, IdempotencyKeys keys,
-            PlatformTransactionManager manager) {
-        return new IdempotentRefundDetermination(determine, reads, keys, new TransactionTemplate(manager));
+    IdempotentRefundDetermination idempotentRefundDetermination(DetermineRefund determine, ExecuteRefund reads, IdempotentWrites writes) {
+        return new IdempotentRefundDetermination(determine, reads, writes);
     }
 
     @Bean

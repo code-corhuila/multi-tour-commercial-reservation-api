@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentRefundDetermination;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExecuteRefund;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RefundAutomation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
