@@ -45,12 +45,12 @@ class PaymentHttpFixture {
         final List<String> income = new ArrayList<>();
         final List<UUID> cancelled = new ArrayList<>();
         Cents minimumDeposit = new Cents(90_000);
-        boolean sessionOpen = true, availability = true, cancellationAvailable = true;
+        boolean sessionOpen = true, availability = true, cancellationAvailable = true, cashDown;
         PaymentDeadline deadline;
 
         void clear() {
             proofs.clear(); events.clear(); parameters.clear(); income.clear(); cancelled.clear();
-            minimumDeposit = new Cents(90_000); sessionOpen = true; availability = true; cancellationAvailable = true; deadline = null;
+            cashDown = false; minimumDeposit = new Cents(90_000); sessionOpen = true; availability = true; cancellationAvailable = true; deadline = null;
         }
         public Optional<PaymentDeadline> openDeadline(UUID tenant, UUID reservation) { return Optional.ofNullable(deadline); }
         public Optional<Cents> minimumDepositFor(UUID tenant, Reservation reservation) { return Optional.ofNullable(minimumDeposit); }
@@ -61,7 +61,8 @@ class PaymentHttpFixture {
         public void append(PaymentEvent event) { events.add(event); }
         public <T> T inTransaction(Supplier<T> work) { return work.get(); }
         public boolean isOpen(UUID tenant) { return sessionOpen; }
-        public UUID record(UUID tenant, UUID reservation, Cents amount, UUID registeredBy) {
+        public UUID record(UUID tenant, UUID reservation, String intentKey, Cents amount, UUID registeredBy) {
+            if (cashDown) throw new co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CashUnavailableException("the cash does not answer");
             UUID movement = UUID.randomUUID();
             income.add(movement + ":" + amount.amount());
             return movement;

@@ -12,8 +12,8 @@ public final class UnverifiedCashIncome implements CashIncomeRecorder {
     private final UnverifiedCashSession refusal = new UnverifiedCashSession();
 
     @Override
-    public UUID record(UUID tenantId, UUID reservationId, Cents amount, UUID registeredBy) {
-        return refusal.record(tenantId, reservationId, amount, registeredBy);
+    public UUID record(UUID tenantId, UUID reservationId, String intentKey, Cents amount, UUID registeredBy) {
+        return refusal.record(tenantId, reservationId, intentKey, amount, registeredBy);
     }
 
     @Override

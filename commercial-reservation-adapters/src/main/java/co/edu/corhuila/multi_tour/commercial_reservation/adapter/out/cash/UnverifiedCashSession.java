@@ -20,7 +20,7 @@ public final class UnverifiedCashSession implements CashSessionStatus, CashIncom
     }
 
     @Override
-    public UUID record(UUID tenantId, UUID reservationId, Cents amount, UUID registeredBy) {
+    public UUID record(UUID tenantId, UUID reservationId, String intentKey, Cents amount, UUID registeredBy) {
         throw new BusinessRuleViolation("the cash income cannot be recorded until the saga register-payment writes it in the cash domain");
     }
 

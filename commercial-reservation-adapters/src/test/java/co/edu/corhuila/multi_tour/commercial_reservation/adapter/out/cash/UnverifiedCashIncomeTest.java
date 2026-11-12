@@ -17,7 +17,7 @@ class UnverifiedCashIncomeTest {
     void theIncomeStaysRefusedWithAnExplicitMessage() {
         UnverifiedCashIncome income = new UnverifiedCashIncome();
 
-        assertThatThrownBy(() -> income.record(ID, ID, null, ID)).hasMessageContaining("cannot be recorded");
+        assertThatThrownBy(() -> income.record(ID, ID, "k", null, ID)).hasMessageContaining("cannot be recorded");
         assertThatThrownBy(() -> income.reverse(ID, ID)).hasMessageContaining("cannot be reversed");
     }
 

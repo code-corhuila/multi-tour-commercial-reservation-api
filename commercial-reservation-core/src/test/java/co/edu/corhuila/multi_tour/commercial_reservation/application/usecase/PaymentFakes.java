@@ -34,6 +34,7 @@ final class PaymentFakes implements ReservationRepository, PaymentDeadlineReader
     final DepartureFakes departures;
     Cents minimumDeposit = new Cents(100_000);
     int holdCalls;
+    RuntimeException saveFailure;
     int releaseCalls;
     private int depth;
 
@@ -58,6 +59,7 @@ final class PaymentFakes implements ReservationRepository, PaymentDeadlineReader
     @Override
     public void save(Reservation reservation) {
         requireTransaction();
+        if (saveFailure != null) throw saveFailure;
         reservations.put(reservation.reservationId(), reservation);
         saved.add(reservation);
     }
