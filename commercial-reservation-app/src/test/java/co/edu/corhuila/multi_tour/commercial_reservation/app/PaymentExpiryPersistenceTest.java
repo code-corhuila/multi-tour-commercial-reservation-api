@@ -112,6 +112,30 @@ class PaymentExpiryPersistenceTest {
         assertThat(queries.page(fixture.tenant, NOW.plusSeconds(10_000), 1, 20).total()).isEqualTo(2);
     }
 
+    // DD-10: the list pages with LIMIT/OFFSET and what the job expires leaves it, so the job asks page 1 again until the list is empty (the shape of HU-WRK-001, which
+    // reads the first page only). Five due reservations and a page of two: every one is offered and expired exactly once and none is skipped.
+    @Test
+    void askingTheFirstPageAgainWhileTheJobExpiresWalksEveryDueReservationOnce() {
+        java.util.Set<UUID> expected = new java.util.HashSet<>();
+        for (int index = 0; index < 5; index++) expected.add(stored(NOW.plusSeconds(60 + index)).reservationId());
+        var queries = new JdbcDuePaymentQueries(fixture.jdbc);
+        var use = expiry(NOW.plusSeconds(10_000));
+        java.util.List<UUID> visited = new java.util.ArrayList<>();
+
+        for (int round = 0; round < 10; round++) {
+            var page = queries.page(fixture.tenant, NOW.plusSeconds(10_000), 1, 2);
+            if (page.items().isEmpty()) break;
+            assertThat(page.items()).hasSizeLessThanOrEqualTo(2);
+            for (var row : page.items()) {
+                assertThat(use.expire(fixture.tenant, row.reservationId()).expired()).isTrue();
+                visited.add(row.reservationId());
+            }
+        }
+
+        assertThat(visited).containsExactlyInAnyOrderElementsOf(expected).doesNotHaveDuplicates();
+        assertThat(queries.page(fixture.tenant, NOW.plusSeconds(10_000), 1, 2).total()).isZero();
+    }
+
     // A second REAL tenant, with its own customer, tour, rules, reservation and deadline rows: the expiry of one never reaches the other.
     @Test
     void theExpiryOfOneTenantNeverTouchesTheReservationOfAnotherRealTenant() {
