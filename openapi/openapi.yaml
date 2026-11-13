@@ -6378,29 +6378,32 @@ components:
       description: |
         Reservation with the values and context fixed at creation; no companions and no sensitive data (blood type, emergency contact, restrictions and consent are never returned).
         `validatedValueCents` and `paymentDeadline` are absent until held (HU-COM-010, HU-COM-009); `paymentDeadline` is also omitted, never `null`, while the deadline is frozen.
-      allOf:
-        - $ref: '#/components/schemas/ReservationQuote'
-        - type: object
-          required: [reservationId, customerId, serviceId, salidaId, people, reservationStatus, paymentStatus, pendingBalanceCents, seatHeld, createdAt]
-          properties:
-            reservationId: {$ref: './_shared.yaml#/components/schemas/UUID'}
-            customerId: {$ref: './_shared.yaml#/components/schemas/UUID'}
-            serviceId: {$ref: './_shared.yaml#/components/schemas/UUID'}
-            salidaId: {$ref: './_shared.yaml#/components/schemas/UUID'}
-            people: {type: integer, minimum: 1, x-proposed: true}
-            reservationStatus: {$ref: '#/components/schemas/ReservationStatus'}
-            paymentStatus: {$ref: '#/components/schemas/ReservationPaymentStatus'}
-            paymentType: {$ref: '#/components/schemas/ReservationPaymentType'}
-            paymentMethod: {$ref: '#/components/schemas/ReservationPaymentMethod'}
-            pendingBalanceCents: {type: integer, format: int64, minimum: 0, description: Final value minus validated values; equals the final value at birth, x-proposed: true}
-            validatedValueCents: {type: integer, format: int64, minimum: 0, x-proposed: true}
-            paymentDeadline: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
-            seatHeld: {type: boolean, description: "False at creation: the seat is held with the first payment (RN-RES-007)", x-proposed: true}
-            conditions: {type: string, nullable: true, description: "Modification and cancellation conditions; null until the catalog holds them (DP-06). Shape OPEN", x-proposed: true}
-            proofStatus: {allOf: [{$ref: '#/components/schemas/PaymentValidationStatus'}], description: "State of the latest attempt; absent with no attempt or for cash (HU-COM-014, PROPOSED)"}
-            continueAction: {allOf: [{$ref: '#/components/schemas/ReservationNextAction'}], description: "Next action the Final Customer may take (HU-COM-014, PROPOSED)"}
-            cancellationCause: {type: string, description: "Present when cancelled and a cause is stored; the code, with no label (HU-COM-014 DP-14-05, OPEN)", x-proposed: true}
-            createdAt: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
+      type: object
+      required: [tourLine, projectedValueCents, discounts, finalValueCents, reservationId, customerId, serviceId, salidaId, people, reservationStatus, paymentStatus, pendingBalanceCents, seatHeld, createdAt]
+      properties:
+        tourLine: {$ref: '#/components/schemas/ReservationValueLine'}
+        transportLine: {$ref: '#/components/schemas/ReservationValueLine'}
+        projectedValueCents: {type: integer, format: int64, minimum: 0, description: "Tour line plus transport line, before discounts", x-proposed: true}
+        discounts: {type: array, items: {$ref: '#/components/schemas/ReservationDiscountLine'}}
+        finalValueCents: {type: integer, format: int64, minimum: 0, x-proposed: true}
+        reservationId: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        customerId: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        serviceId: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        salidaId: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        people: {type: integer, minimum: 1, x-proposed: true}
+        reservationStatus: {$ref: '#/components/schemas/ReservationStatus'}
+        paymentStatus: {$ref: '#/components/schemas/ReservationPaymentStatus'}
+        paymentType: {$ref: '#/components/schemas/ReservationPaymentType'}
+        paymentMethod: {$ref: '#/components/schemas/ReservationPaymentMethod'}
+        pendingBalanceCents: {type: integer, format: int64, minimum: 0, description: Final value minus validated values; equals the final value at birth, x-proposed: true}
+        validatedValueCents: {type: integer, format: int64, minimum: 0, x-proposed: true}
+        paymentDeadline: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
+        seatHeld: {type: boolean, description: "False at creation: the seat is held with the first payment (RN-RES-007)", x-proposed: true}
+        conditions: {type: string, nullable: true, description: "Modification and cancellation conditions; null until the catalog holds them (DP-06). Shape OPEN", x-proposed: true}
+        proofStatus: {allOf: [{$ref: '#/components/schemas/PaymentValidationStatus'}], description: "State of the latest attempt; absent with no attempt or for cash (HU-COM-014, PROPOSED)"}
+        continueAction: {allOf: [{$ref: '#/components/schemas/ReservationNextAction'}], description: "Next action the Final Customer may take (HU-COM-014, PROPOSED)"}
+        cancellationCause: {type: string, description: "Present when cancelled and a cause is stored; the code, with no label (HU-COM-014 DP-14-05, OPEN)", x-proposed: true}
+        createdAt: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
 
     ReservationSummary:
       type: object
