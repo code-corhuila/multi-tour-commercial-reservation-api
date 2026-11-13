@@ -1,6 +1,5 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ApproveProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DecidedProof;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RejectProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.DecidePaymentProof;
@@ -42,16 +41,6 @@ public class IdempotentDecidePaymentProofUseCase implements DecidePaymentProofWi
         this.reservations = reservations;
         this.keys = keys;
         this.transaction = transaction;
-    }
-
-    @Override
-    public DecidedProof approve(ApproveProofCommand command, String key) {
-        PaymentProofAuthorization.requireDecide(command.actor());
-        String reason = normalized(command.reason());
-        return run(command.actor().tenantId(), command.attemptId(), key, () -> decisions.approve(command),
-                stored -> stored.validationStatus() == ValidationStatus.APPROVED && command.verifiedAmountCents() != null
-                        && stored.verifiedAmount() != null && stored.verifiedAmount().amount() == command.verifiedAmountCents()
-                        && Objects.equals(stored.decisionReason(), reason));
     }
 
     @Override

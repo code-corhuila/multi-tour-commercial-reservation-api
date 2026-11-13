@@ -1,6 +1,5 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ApproveProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DecidedProof;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentDeadline;
@@ -78,24 +77,15 @@ public class DecidePaymentProofUseCase implements DecidePaymentProof {
         this.clock = clock;
     }
 
-    @Override
-    public DecidedProof approve(ApproveProofCommand command) {
-        PaymentProofAuthorization.requireDecide(command.actor());
-        return recordApproval(command.actor().tenantId(), command.actor().actorId(), command.attemptId(), command.verifiedAmountCents(), command.reason(), true);
-    }
-
-    // The work of an approval, whoever opens the door: the human route checks the permission first, the saga step 2 is trusted.
+    // The work of an approval: only the step 2 of the saga register-payment reaches it (DP-11), trusted by the SERVICE role of its token. A proof presented after
+    // the inactivation of the tenant is refused here as it is on a rejection (AC-20.12).
     DecidedProof recordApproval(UUID tenantId, UUID reviewer, UUID attemptId, Long verifiedAmountCents, String reason) {
-        return recordApproval(tenantId, reviewer, attemptId, verifiedAmountCents, reason, false);
-    }
-
-    private DecidedProof recordApproval(UUID tenantId, UUID reviewer, UUID attemptId, Long verifiedAmountCents, String reason, boolean byPerson) {
         if (verifiedAmountCents == null) throw new MissingPaymentDataException(List.of("verifiedAmountCents"));
         Cents verified = Cents.of("verifiedAmountCents", verifiedAmountCents);
         return transaction.inTransaction(() -> {
             Reservation reservation = lock(tenantId, attemptId);
             Instant now = Instant.now(clock);
-            if (byPerson) requirePresentedBeforeTheInactivation(reservation, attemptId);
+            requirePresentedBeforeTheInactivation(reservation, attemptId);
             Optional<PaymentDeadline> deadline = deadlines.openDeadline(tenantId, reservation.reservationId());
             boolean expired = expired(deadline, reservation, now);
             Cents minimum = minimumFor(reservation);
