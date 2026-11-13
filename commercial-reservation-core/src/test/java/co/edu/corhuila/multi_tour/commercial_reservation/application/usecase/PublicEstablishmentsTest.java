@@ -7,6 +7,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Publi
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PublicOfferNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AssociatedEstablishment;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentContact;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentType;
 import java.time.Instant;
 import java.util.Optional;
