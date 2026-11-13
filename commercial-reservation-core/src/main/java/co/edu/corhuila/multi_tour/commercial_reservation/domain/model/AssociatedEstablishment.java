@@ -10,25 +10,29 @@ public final class AssociatedEstablishment {
     private final EstablishmentType establishmentType;
     private final String commercialName, commercialInformation, imageReference;
     private AssociationStatus associationStatus;
+    private final EstablishmentContact contact;
     private final Instant createdAt;
     private Instant updatedAt;
     private final List<EstablishmentAssociationEvent> pendingEvents = new ArrayList<>();
 
     private AssociatedEstablishment(UUID id, UUID tenant, EstablishmentType type, String name,
-            String information, String image, AssociationStatus status, Instant created, Instant updated) {
+            String information, String image, AssociationStatus status, Instant created, Instant updated,
+            EstablishmentContact contact) {
         associationId = required(id, "associationId"); tenantId = required(tenant, "tenantId");
         establishmentType = required(type, "establishmentType"); commercialName = name;
         commercialInformation = information; imageReference = image;
         associationStatus = required(status, "associationStatus");
+        this.contact = contact == null ? EstablishmentContact.NONE : contact;
         createdAt = required(created, "createdAt"); updatedAt = required(updated, "updatedAt");
     }
 
     public static AssociatedEstablishment register(UUID id, UUID tenant, EstablishmentType type,
-            String name, String information, String image, UUID actor, Instant now) {
+            String name, String information, String image, EstablishmentContact contact, UUID actor, Instant now) {
         validate(type, name, information, image);
+        required(contact, "contact").requireForRegistration();
         required(actor, "actorId"); required(now, "occurredAt");
         var item = new AssociatedEstablishment(id, tenant, type, name, information, image,
-                AssociationStatus.ACTIVE, now, now);
+                AssociationStatus.ACTIVE, now, now, contact);
         item.pendingEvents.add(new EstablishmentAssociationPublished(tenant, id, actor, now));
         return item;
     }
@@ -36,7 +40,13 @@ public final class AssociatedEstablishment {
     // Stored historical information remains readable; reactivation checks its eligibility again.
     public static AssociatedEstablishment restore(UUID id, UUID tenant, EstablishmentType type,
             String name, String information, String image, AssociationStatus status, Instant created, Instant updated) {
-        return new AssociatedEstablishment(id, tenant, type, name, information, image, status, created, updated);
+        return restore(id, tenant, type, name, information, image, status, created, updated, EstablishmentContact.NONE);
+    }
+
+    public static AssociatedEstablishment restore(UUID id, UUID tenant, EstablishmentType type,
+            String name, String information, String image, AssociationStatus status, Instant created, Instant updated,
+            EstablishmentContact contact) {
+        return new AssociatedEstablishment(id, tenant, type, name, information, image, status, created, updated, contact);
     }
 
     public void inactivate(UUID actor, Instant now) { transition(AssociationStatus.INACTIVE, actor, now); }
@@ -82,6 +92,7 @@ public final class AssociatedEstablishment {
     public String commercialName() { return commercialName; }
     public String commercialInformation() { return commercialInformation; }
     public String imageReference() { return imageReference; }
+    public EstablishmentContact contact() { return contact; }
     public AssociationStatus associationStatus() { return associationStatus; }
     public Instant createdAt() { return createdAt; }
     public Instant updatedAt() { return updatedAt; }

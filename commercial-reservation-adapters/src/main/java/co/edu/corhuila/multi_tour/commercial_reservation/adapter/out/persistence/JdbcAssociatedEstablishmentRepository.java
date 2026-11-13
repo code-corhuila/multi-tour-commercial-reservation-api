@@ -6,6 +6,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.As
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AssociatedEstablishment;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AssociationStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentAssociationEvent;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentContact;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentAssociationInactivated;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentAssociationPublished;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentAssociationReactivated;
@@ -37,19 +38,22 @@ public final class JdbcAssociatedEstablishmentRepository implements AssociatedEs
         transactions.executeWithoutResult(status -> {
             int changed = jdbc.update("UPDATE commercial_reservation.associated_establishment SET "
                     + "establishment_type = ?, commercial_name = ?, commercial_information = ?, "
-                    + "association_status = ?, updated_at = ? WHERE tenant_id = ? AND association_id = ?",
+                    + "association_status = ?, updated_at = ?, contact_email = ?, contact_phone = ?, contact_address = ? "
+                    + "WHERE tenant_id = ? AND association_id = ?",
                     item.establishmentType().name(), item.commercialName(), item.commercialInformation(),
-                    item.associationStatus().name(), timestamp(item.updatedAt()), item.tenantId(), item.associationId());
+                    item.associationStatus().name(), timestamp(item.updatedAt()), item.contact().email(), item.contact().phone(),
+                    item.contact().address(), item.tenantId(), item.associationId());
             if (changed == 0) {
                 boolean anotherTenantOwnsId = !jdbc.query("SELECT 1 FROM commercial_reservation.associated_establishment "
                         + "WHERE association_id = ?", (row, index) -> row.getInt(1), item.associationId()).isEmpty();
                 if (anotherTenantOwnsId) throw new IllegalStateException("association belongs to another tenant");
                 jdbc.update("INSERT INTO commercial_reservation.associated_establishment "
                         + "(association_id, tenant_id, establishment_type, commercial_name, commercial_information, "
-                        + "association_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "association_status, created_at, updated_at, contact_email, contact_phone, contact_address) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         item.associationId(), item.tenantId(), item.establishmentType().name(), item.commercialName(),
                         item.commercialInformation(), item.associationStatus().name(), timestamp(item.createdAt()),
-                        timestamp(item.updatedAt()));
+                        timestamp(item.updatedAt()), item.contact().email(), item.contact().phone(), item.contact().address());
             }
             for (var event : item.pullEvents()) insertEvent(event);
         });
@@ -58,7 +62,8 @@ public final class JdbcAssociatedEstablishmentRepository implements AssociatedEs
     @Override
     public Optional<AssociatedEstablishment> findByTenantAndId(UUID tenantId, UUID associationId) {
         return jdbc.query("SELECT a.association_id, a.tenant_id, a.establishment_type, a.commercial_name, "
-                        + "a.commercial_information, a.association_status, a.created_at, a.updated_at, i.image_id "
+                        + "a.commercial_information, a.association_status, a.created_at, a.updated_at, i.image_id, "
+                        + "a.contact_email, a.contact_phone, a.contact_address "
                         + "FROM commercial_reservation.associated_establishment a LEFT JOIN "
                         + "commercial_reservation.associated_establishment_image i ON i.tenant_id = a.tenant_id "
                         + "AND i.association_id = a.association_id WHERE a.tenant_id = ? AND a.association_id = ?",
@@ -81,7 +86,8 @@ public final class JdbcAssociatedEstablishmentRepository implements AssociatedEs
         arguments.add((page - 1L) * limit);
         List<AssociatedEstablishment> items = jdbc.query("SELECT a.association_id, a.tenant_id, "
                 + "a.establishment_type, a.commercial_name, a.commercial_information, a.association_status, "
-                + "a.created_at, a.updated_at, i.image_id FROM commercial_reservation.associated_establishment a "
+                + "a.created_at, a.updated_at, i.image_id, a.contact_email, a.contact_phone, a.contact_address "
+                + "FROM commercial_reservation.associated_establishment a "
                 + "LEFT JOIN commercial_reservation.associated_establishment_image i "
                 + "ON i.tenant_id = a.tenant_id AND i.association_id = a.association_id WHERE " + qualify(where)
                 + " ORDER BY a.created_at DESC, a.association_id DESC LIMIT ? OFFSET ?",
@@ -123,7 +129,8 @@ public final class JdbcAssociatedEstablishmentRepository implements AssociatedEs
                 row.getString("commercial_name"), row.getString("commercial_information"),
                 row.getObject("image_id", UUID.class) == null ? null : row.getObject("image_id", UUID.class).toString(),
                 AssociationStatus.valueOf(row.getString("association_status")), instant(row, "created_at"),
-                instant(row, "updated_at"));
+                instant(row, "updated_at"), new EstablishmentContact(row.getString("contact_email"),
+                        row.getString("contact_phone"), row.getString("contact_address")));
     }
 
     private static Instant instant(ResultSet row, String column) throws SQLException {

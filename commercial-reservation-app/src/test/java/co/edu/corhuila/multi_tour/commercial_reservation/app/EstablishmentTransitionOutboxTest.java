@@ -154,7 +154,7 @@ class EstablishmentTransitionOutboxTest {
 
     private UUID registered(EstablishmentActor actor) {
         var command = new RegisterAssociatedEstablishment.Command("HOTEL", "Transition hotel", "Generated contact",
-                UUID.randomUUID().toString());
+                UUID.randomUUID().toString(), "info@hotel.example", null, null);
         return images.register(PNG, "image/png", () -> register.register(actor, "key-" + UUID.randomUUID(), command))
                 .association().associationId();
     }

@@ -800,6 +800,24 @@ components:
           x-proposed: DP-01
         associationStatus:
           $ref: '#/components/schemas/AssociatedEstablishmentStatus'
+        contactEmail:
+          type: string
+          maxLength: 254
+          nullable: true
+          description: PROPOSED (HU-COM-002, AC-PE.15). At least one of `contactEmail` and `contactPhone` is required at registration; absent on an association registered before this field existed.
+          x-proposed: true
+        contactPhone:
+          type: string
+          maxLength: 30
+          nullable: true
+          description: PROPOSED (HU-COM-002, AC-PE.15). See `contactEmail`.
+          x-proposed: true
+        contactAddress:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: PROPOSED (HU-COM-002). Optional postal address.
+          x-proposed: true
 
     CreateAssociatedEstablishmentRequest:
       type: object
@@ -819,6 +837,21 @@ components:
         commercialInformation:
           type: string
           description: Promotional description and contact text; final content details remain PROPUESTO under D5.
+        contactEmail:
+          type: string
+          maxLength: 254
+          description: PROPOSED (HU-COM-002, AC-PE.15). At least one of `contactEmail` and `contactPhone` is required at registration.
+          x-proposed: true
+        contactPhone:
+          type: string
+          maxLength: 30
+          description: PROPOSED (HU-COM-002, AC-PE.15). See `contactEmail`.
+          x-proposed: true
+        contactAddress:
+          type: string
+          maxLength: 255
+          description: PROPOSED (HU-COM-002). Optional postal address.
+          x-proposed: true
         image:
           type: string
           format: binary

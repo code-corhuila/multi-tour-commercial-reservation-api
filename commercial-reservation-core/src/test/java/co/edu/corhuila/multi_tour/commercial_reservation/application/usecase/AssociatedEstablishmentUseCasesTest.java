@@ -90,7 +90,7 @@ class AssociatedEstablishmentUseCasesTest {
     }
 
     @Test void anInvalidRegistrationLeavesNoKeyAssociationOrEvent() {
-        var invalid = new RegisterAssociatedEstablishment.Command("HOSTEL", "Sample establishment", "Contact details", "opaque-reference");
+        var invalid = new RegisterAssociatedEstablishment.Command("HOSTEL", "Sample establishment", "Contact details", "opaque-reference", "info@hotel.example", null, null);
         assertThatThrownBy(() -> register.register(admin, "register-key", invalid)).isInstanceOfSatisfying(DomainException.class,
                 error -> assertThat(error.field()).isEqualTo("establishmentType"));
         assertThat(repository.rows).isEmpty(); assertThat(keys.entries).isEmpty(); assertThat(repository.outbox).isEmpty();
@@ -222,7 +222,7 @@ class AssociatedEstablishmentUseCasesTest {
     }
     private EstablishmentActor actor(EstablishmentActor.Role role) { return new EstablishmentActor(TENANT, ACTOR, role); }
     private RegisterAssociatedEstablishment.Command command() {
-        return new RegisterAssociatedEstablishment.Command("HOTEL", "Sample establishment", "Contact details", "opaque-reference");
+        return new RegisterAssociatedEstablishment.Command("HOTEL", "Sample establishment", "Contact details", "opaque-reference", "info@hotel.example", null, null);
     }
     private AssociatedEstablishment plant(AssociationStatus status) {
         var item = AssociatedEstablishment.restore(new UUID(0, 111), TENANT, EstablishmentType.HOTEL,
