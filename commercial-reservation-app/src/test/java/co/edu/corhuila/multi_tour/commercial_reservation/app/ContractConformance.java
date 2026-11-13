@@ -68,9 +68,7 @@ public class ContractConformance {
      * It must end empty: an entry is removed when the code or the contract is reconciled.
      */
     static final Set<String> RECONCILING = Set.of(
-            "POST /internal/outbox/{eventId}/published 200",
-            "GET /payment-parameters 200",
-            "PUT /payment-parameters 422"
+            "POST /internal/outbox/{eventId}/published 200"
     );
 
     private record Route(String method, String template, Pattern pattern, int parameters) {}
