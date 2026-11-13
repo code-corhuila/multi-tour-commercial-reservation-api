@@ -30,7 +30,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 // HU-COM-016 over HTTP, the internal routes (api spec T-05; AC-16.4 to AC-16.9, AC-16.11, AC-16.13, AC-16.17, AC-16.19): the steps of the saga, the default
 // and the overdue mark of job 2 and the determination of operations, for the service token only, with the tenant of the path. The saga and the job ask and
 // the service decides. Every value is invented.
-@Import(RefundHttpFixture.class)
+@Import({RefundHttpFixture.class, RefundInternalHttpTest.ExecuteRefundWithoutNotice.class})
 class RefundInternalHttpTest extends ReservationHttpBase {
 
     // The completion step writes the REFUND_PROCESSED notice (HU-COM-015) through a JDBC outbox that the configuration builds inline, so over memory it would open the
