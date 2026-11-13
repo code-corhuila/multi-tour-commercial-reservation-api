@@ -221,11 +221,17 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
     private static <T> T withApplicationTrace(java.util.function.Supplier<T> run) {
         ch.qos.logback.classic.Logger own = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("co.edu.corhuila");
         ch.qos.logback.classic.Level before = own.getLevel();
+        // The deployed profiles keep the framework at INFO; another HTTP test class opens it to DEBUG for its own context and the
+        // level stays in the JVM, so the framework would log the free text of the request as a line of its own.
+        ch.qos.logback.classic.Logger web = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("org.springframework.web");
+        ch.qos.logback.classic.Level webBefore = web.getLevel();
         own.setLevel(ch.qos.logback.classic.Level.TRACE);
+        web.setLevel(ch.qos.logback.classic.Level.INFO);
         try {
             return run.get();
         } finally {
             own.setLevel(before);
+            web.setLevel(webBefore);
         }
     }
 
