@@ -18,8 +18,8 @@ class ContractCoverageTest {
 
     /** Operations of the published contract that the service does not implement yet (they are marked x-proposed). */
     static final Map<String, String> NOT_IMPLEMENTED = Map.of(
-            "POST /internal/tenants/{tenantId}/reschedulings/{reschedulingId}/freeze", "x-proposed; no controller yet (the freeze of an episode is not built)",
-            "POST /internal/tenants/{tenantId}/reschedulings/{reschedulingId}/resume", "x-proposed; no controller yet (the resume of an episode is not built)",
+            "POST /internal/tenants/{tenantId}/reschedulings/{reschedulingId}/freeze", "x-proposed and deprecated in the contract: HU-COM-020 freezes inside the transaction of the tenant event (plan D-03), so this route was never built",
+            "POST /internal/tenants/{tenantId}/reschedulings/{reschedulingId}/resume", "x-proposed and deprecated in the contract: HU-COM-020 resumes inside the transaction of the tenant event (plan D-03), so this route was never built",
             "GET /internal/tenants/{tenantId}/reschedulings", "deprecated in the contract; replaced by GET /internal/reschedulings (DP-WRK5-1), which is exercised");
 
     /**
