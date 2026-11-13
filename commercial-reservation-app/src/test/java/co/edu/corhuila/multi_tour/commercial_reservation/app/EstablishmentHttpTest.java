@@ -73,6 +73,23 @@ class EstablishmentHttpTest {
         assertThat(json(exchange(get(BASE), 200, "TENANT_ADMINISTRATOR")).at("/meta/total").intValue()).isZero();
     }
 
+    // AC-02.12: the contact is stored with the association and read back, with the optional fields absent when not sent.
+    @Test void theContactIsStoredReadBackAndAbsentFieldsAreOmitted() throws Exception {
+        var body = json(exchange(upload(PNG, "image.png", "image/png"), 201, "TENANT_ADMINISTRATOR"));
+        assertThat(body.get("contactEmail").asText()).isEqualTo("info@hotel.example");
+        assertThat(body.get("contactPhone").asText()).isEqualTo("+57 8 8700000");
+        assertThat(body.get("contactAddress").asText()).isEqualTo("Calle 1 No. 2-3");
+        assertThat(json(exchange(get(path(body)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(body);
+        tenant = UUID.randomUUID().toString();
+        var phoneOnly = multipart(BASE).file(new MockMultipartFile("image", "image.png", "image/png", PNG))
+                .param("establishmentType", "HOTEL").param("commercialName", "Hotel").param("commercialInformation", "Info")
+                .param("contactPhone", "+57 8 8700000").header("Idempotency-Key", "test-phone-only-key");
+        var created = json(exchange(phoneOnly, 201, "TENANT_ADMINISTRATOR"));
+        assertThat(created.has("contactEmail")).isFalse();
+        assertThat(created.has("contactAddress")).isFalse();
+        assertThat(created.get("contactPhone").asText()).isEqualTo("+57 8 8700000");
+    }
+
     @ParameterizedTest @ValueSource(strings = {"png", "jpeg", "webp"})
     void imageSignatureOverridesTheFilenameAndContentType(String type) throws Exception {
         byte[] bytes = switch (type) {
@@ -183,7 +200,7 @@ class EstablishmentHttpTest {
         CatalogHttpTest.assertError(result, "UNAUTHORIZED", "authentication is required");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"establishmentType", "commercialName", "commercialInformation", "image", "Idempotency-Key", "invalidType", "longName"})
+    @ParameterizedTest @ValueSource(strings = {"establishmentType", "commercialName", "commercialInformation", "image", "Idempotency-Key", "invalidType", "longName", "contact", "badEmail", "longPhone"})
     void invalidRegistrationNamesTheField(String field) throws Exception {
         var request = multipart(BASE);
         if (!field.equals("image")) request.file(new MockMultipartFile("image", "image.png", "image/png", PNG));
@@ -191,8 +208,11 @@ class EstablishmentHttpTest {
         if (!field.equals("commercialName")) request.param("commercialName", field.equals("longName") ? "x".repeat(256) : "Hotel");
         if (!field.equals("commercialInformation")) request.param("commercialInformation", "Contact");
         if (!field.equals("Idempotency-Key")) request.header("Idempotency-Key", "test-establishment-key");
+        if (!field.equals("contact")) request.param("contactEmail", field.equals("badEmail") ? "not-an-email" : "info@hotel.example");
+        if (field.equals("longPhone")) request.param("contactPhone", "7".repeat(31));
         assertField(exchange(request, 400, "TENANT_ADMINISTRATOR"),
-                field.equals("invalidType") ? "establishmentType" : field.equals("longName") ? "commercialName" : field);
+                field.equals("invalidType") ? "establishmentType" : field.equals("longName") ? "commercialName"
+                        : field.equals("contact") || field.equals("badEmail") ? "contactEmail" : field.equals("longPhone") ? "contactPhone" : field);
     }
 
     @ParameterizedTest @ValueSource(strings = {"rooms", "dishes", "menus", "seats", "rates", "availability", "tenantId"})
@@ -251,7 +271,8 @@ class EstablishmentHttpTest {
     private MockMultipartHttpServletRequestBuilder upload(byte[] bytes, String filename, String type) {
         var request = multipart(BASE).file(new MockMultipartFile("image", filename, type, bytes));
         request.param("establishmentType", "HOTEL").param("commercialName", "Hotel example")
-                .param("commercialInformation", "Promotional contact information").header("Idempotency-Key", "test-establishment-key");
+                .param("commercialInformation", "Promotional contact information").param("contactEmail", "info@hotel.example")
+                .param("contactPhone", "+57 8 8700000").param("contactAddress", "Calle 1 No. 2-3").header("Idempotency-Key", "test-establishment-key");
         return request;
     }
     private String path(JsonNode item) { return BASE + "/" + item.get("associationId").asText(); }

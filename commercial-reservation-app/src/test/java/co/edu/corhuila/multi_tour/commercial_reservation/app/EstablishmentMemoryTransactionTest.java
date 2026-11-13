@@ -18,7 +18,7 @@ class EstablishmentMemoryTransactionTest {
         var actor = new EstablishmentActor(UUID.randomUUID(), UUID.randomUUID(), EstablishmentActor.Role.TENANT_ADMINISTRATOR);
         var useCase = new RegisterAssociatedEstablishmentUseCase(store, store, UUID::randomUUID,
                 Clock.fixed(TestJwtKeys.NOW, ZoneOffset.UTC));
-        var command = new RegisterAssociatedEstablishment.Command("HOTEL", "Hotel", "Contact", "opaque-image-reference");
+        var command = new RegisterAssociatedEstablishment.Command("HOTEL", "Hotel", "Contact", "opaque-image-reference", "info@hotel.example", null, null);
         assertThatThrownBy(() -> store.register(null, "image/png", () -> useCase.register(actor, "rollback-key", command)))
                 .isInstanceOf(NullPointerException.class);
         assertThat(store.listByTenant(actor.tenantId(), java.util.Optional.empty(), java.util.Optional.empty(), 1, 20).total()).isZero();

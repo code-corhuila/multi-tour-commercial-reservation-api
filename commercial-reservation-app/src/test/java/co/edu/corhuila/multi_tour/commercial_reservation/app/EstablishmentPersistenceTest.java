@@ -86,6 +86,22 @@ class EstablishmentPersistenceTest {
         assertThat(storedImage.get("sha256")).isEqualTo(sha256(PNG));
     }
 
+    // HU-COM-002 AC-02.12: the contact is written with the association and read back; an unsent field is NULL.
+    @Test
+    void theContactIsStoredAndReadBackAndAnUnsentFieldIsNull() {
+        var actor = actor(UUID.randomUUID());
+        var result = persist(actor, "establishment-key-contact", PNG, "image/png");
+        UUID associationId = result.association().associationId();
+        var row = jdbc.queryForMap("SELECT contact_email, contact_phone, contact_address "
+                + "FROM commercial_reservation.associated_establishment WHERE association_id = ?", associationId);
+        assertThat(row.get("contact_email")).isEqualTo("info@hotel.example");
+        assertThat(row.get("contact_phone")).isNull();
+        assertThat(row.get("contact_address")).isNull();
+        var read = repository.findByTenantAndId(actor.tenantId(), associationId).orElseThrow();
+        assertThat(read.contact().email()).isEqualTo("info@hotel.example");
+        assertThat(read.contact().phone()).isNull();
+    }
+
     @Test
     void anOutboxConstraintFailureRollsBackEveryRegistrationWrite() {
         var actor = actor(UUID.randomUUID());
@@ -170,7 +186,7 @@ class EstablishmentPersistenceTest {
     }
 
     private RegisterAssociatedEstablishment.Command command(String name, String imageReference) {
-        return new RegisterAssociatedEstablishment.Command("HOTEL", name, "Generated contact", imageReference);
+        return new RegisterAssociatedEstablishment.Command("HOTEL", name, "Generated contact", imageReference, "info@hotel.example", null, null);
     }
 
     private int count(String table, String column, UUID value) {
