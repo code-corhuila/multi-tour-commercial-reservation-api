@@ -3,7 +3,6 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ApproveProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DecidedProof;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role;
@@ -82,32 +81,27 @@ class IdempotentDecidePaymentProofTest {
         return new PaymentActor(TENANT, ADMIN, Role.TENANT_ADMINISTRATOR);
     }
 
-    private DecidedProof approve(UUID proof, long amount, String reason, String key) {
-        return idempotent.approve(new ApproveProofCommand(admin(), proof, amount, reason), key);
-    }
-
     private DecidedProof reject(UUID proof, String reason, String key) {
         return idempotent.reject(new RejectProofCommand(admin(), proof, reason), key);
     }
 
     @Test void theKeyIsRegisteredBeforeTheDecisionAndTheDecisionIsMade() {
-        DecidedProof decided = approve(PROOF, 100_000, null, "decision-key-001");
+        DecidedProof decided = reject(PROOF, "Illegible proof", "decision-key-001");
 
         assertThat(keys.calls).containsExactly("find", "register");
         assertThat(keys.stored).containsEntry("decision-key-001", PROOF);
         assertThat(keys.resourceType).isEqualTo("payment-proof-decision");
-        assertThat(decided.attempt().validationStatus()).isEqualTo(ValidationStatus.APPROVED);
+        assertThat(decided.attempt().validationStatus()).isEqualTo(ValidationStatus.REJECTED);
         assertThat(fakes.saved).hasSize(1);
     }
 
     @Test void theSameKeyAndTheSameBodyReplayTheStoredDecisionAndWriteNothing() {
-        DecidedProof first = approve(PROOF, 100_000, null, "decision-key-001");
+        DecidedProof first = reject(PROOF, "Illegible proof", "decision-key-001");
         int savedBefore = fakes.saved.size(), eventsBefore = fakes.events.size();
 
-        DecidedProof again = approve(PROOF, 100_000, null, "decision-key-001");
+        DecidedProof again = reject(PROOF, "Illegible proof", "decision-key-001");
 
         assertThat(again.attempt().decidedAt()).isEqualTo(first.attempt().decidedAt());
-        assertThat(again.applied()).isEqualTo(first.applied());
         assertThat(fakes.saved).hasSize(savedBefore);
         assertThat(fakes.events).hasSize(eventsBefore);
     }
@@ -118,34 +112,23 @@ class IdempotentDecidePaymentProofTest {
         assertThat(reject(PROOF, "  Illegible proof ", "decision-key-002").attempt().validationStatus()).isEqualTo(ValidationStatus.REJECTED);
     }
 
-    @Test void theSameKeyWithAnotherAmountReasonOrActionIsRefused() {
-        approve(PROOF, 90_000, "Short by ten thousand", "decision-key-003");
+    @Test void theSameKeyWithAnotherReasonIsRefused() {
+        reject(PROOF, "Illegible proof", "decision-key-003");
 
-        assertThatThrownBy(() -> approve(PROOF, 80_000, "Short by ten thousand", "decision-key-003")).isInstanceOf(BusinessRuleViolation.class);
-        assertThatThrownBy(() -> approve(PROOF, 90_000, "Another reason", "decision-key-003")).isInstanceOf(BusinessRuleViolation.class);
-        assertThatThrownBy(() -> reject(PROOF, "Short by ten thousand", "decision-key-003")).isInstanceOf(BusinessRuleViolation.class);
-    }
-
-    @Test void aRejectedProofIsNotReplayedAsAnApprovalOrWithAnotherReason() {
-        reject(PROOF, "Illegible proof", "decision-key-004");
-
-        assertThatThrownBy(() -> reject(PROOF, "Another reason", "decision-key-004")).isInstanceOf(BusinessRuleViolation.class);
-        assertThatThrownBy(() -> approve(PROOF, 100_000, null, "decision-key-004")).isInstanceOf(BusinessRuleViolation.class);
+        assertThatThrownBy(() -> reject(PROOF, "Another reason", "decision-key-003")).isInstanceOf(BusinessRuleViolation.class);
     }
 
     @Test void aKeyUsedOnAnotherProofIsRefused() {
-        approve(PROOF, 100_000, null, "decision-key-005");
+        reject(PROOF, "Illegible proof", "decision-key-005");
 
-        assertThatThrownBy(() -> approve(OTHER_PROOF, 20_000, null, "decision-key-005")).isInstanceOf(BusinessRuleViolation.class);
+        assertThatThrownBy(() -> reject(OTHER_PROOF, "Illegible proof", "decision-key-005")).isInstanceOf(BusinessRuleViolation.class);
     }
 
     @Test void thePermissionIsCheckedBeforeAnyReplay() {
-        approve(PROOF, 100_000, null, "decision-key-006");
+        reject(PROOF, "Illegible proof", "decision-key-006");
         PaymentActor collaborator = new PaymentActor(TENANT, ADMIN, Role.OPERATIONAL_COLLABORATOR);
         keys.calls.clear();
 
-        assertThatThrownBy(() -> idempotent.approve(new ApproveProofCommand(collaborator, PROOF, 100_000L, null), "decision-key-006"))
-                .isInstanceOf(PaymentAccessDeniedException.class);
         assertThatThrownBy(() -> idempotent.reject(new RejectProofCommand(collaborator, PROOF, "no"), "decision-key-006"))
                 .isInstanceOf(PaymentAccessDeniedException.class);
 
@@ -153,22 +136,22 @@ class IdempotentDecidePaymentProofTest {
     }
 
     @Test void aLostKeyRaceAnswersTheReplayOfTheWinnerAndDecidesNothing() {
-        approve(PROOF, 100_000, null, "decision-key-007"); // the winner of the race, already committed
+        reject(PROOF, "Illegible proof", "decision-key-007"); // the winner of the race, already committed
         keys.stored.remove("decision-key-007");
         keys.loseTheRace = true;
         int savedBefore = fakes.saved.size();
 
-        DecidedProof answer = approve(PROOF, 100_000, null, "decision-key-007");
+        DecidedProof answer = reject(PROOF, "Illegible proof", "decision-key-007");
 
-        assertThat(answer.attempt().validationStatus()).isEqualTo(ValidationStatus.APPROVED);
+        assertThat(answer.attempt().validationStatus()).isEqualTo(ValidationStatus.REJECTED);
         assertThat(fakes.saved).hasSize(savedBefore);
     }
 
     @Test void aLostKeyRaceWithAnotherBodyIsRefused() {
-        approve(PROOF, 100_000, null, "decision-key-008");
+        reject(PROOF, "Illegible proof", "decision-key-008");
         keys.stored.remove("decision-key-008");
         keys.loseTheRace = true;
 
-        assertThatThrownBy(() -> reject(PROOF, "Illegible proof", "decision-key-008")).isInstanceOf(BusinessRuleViolation.class);
+        assertThatThrownBy(() -> reject(PROOF, "Another reason", "decision-key-008")).isInstanceOf(BusinessRuleViolation.class);
     }
 }
