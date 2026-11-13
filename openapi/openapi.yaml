@@ -2145,7 +2145,7 @@ paths:
         token user. The parameters apply to a reservation at the payment moment (decision of docs pull
         request 758); a per-reservation snapshot taken at creation is a later improvement. No penalty field
         exists (DP-09). `400 VALIDATION_ERROR` (each field named) for a missing reason or a value out of
-        bounds.
+        bounds. `422 BUSINESS_RULE_VIOLATION` when the `Idempotency-Key` was already used with another body (built).
         **Requires:** `TENANT_ADMINISTRATOR`; any other role answers `403`.
         The `Idempotency-Key` header is required, like on every write of this contract; a request without it
         is refused with `400` (fixed in the api, pull request 153).
@@ -2178,6 +2178,8 @@ paths:
           $ref: './_shared.yaml#/components/responses/Unauthorized'
         '403':
           $ref: './_shared.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/BusinessRuleViolation'
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
@@ -5303,11 +5305,12 @@ paths:
     post:
       summary: Freeze the deadlines of an episode
       description: |
-        **PROPOSED. Not built yet: it waits for HU-COM-020 (2026-11-11).** Called by HU-COM-020 when the tenant is inactivated (DP-08). With a pending proposal the response
+        **PROPOSED, NOT BUILT, superseded (2026-11-13).** HU-COM-020 applies the freeze inside the transaction of the tenant event (`TenantInactivityEffects`, plan D-03 of HU-COM-020), so no caller uses this route. It would be called when the tenant is inactivated (DP-08). With a pending proposal the response
         deadline and the episode remainder freeze for exactly the same time; with none, the 24 hours keep running
         (AC-18.13). A repeat answers `200` and changes nothing. **Requires:** `SERVICE` role and nothing else. A
         person's token gets `403` and the tenant comes from the path (AC-18.15).
       operationId: freezeRescheduling
+      deprecated: true
       tags: [Internal]
       security:
         - bearerAuth: []
@@ -5335,10 +5338,11 @@ paths:
     post:
       summary: Resume the deadlines of an episode
       description: |
-        **PROPOSED. Not built yet: it waits for HU-COM-020 (2026-11-11).** Called by HU-COM-020 when the tenant is reactivated. The deadlines continue with what remained and
+        **PROPOSED, NOT BUILT, superseded (2026-11-13).** HU-COM-020 applies the resume inside the transaction of the tenant event (`TenantInactivityEffects`, plan D-03 of HU-COM-020), so no caller uses this route. It would be called when the tenant is reactivated. The deadlines continue with what remained and
         never pass the proposed start (AC-18.1, AC-18.13). A repeat answers `200` and changes nothing. **Requires:**
         `SERVICE` role and nothing else. A person's token gets `403` and the tenant comes from the path (AC-18.15).
       operationId: resumeRescheduling
+      deprecated: true
       tags: [Internal]
       security:
         - bearerAuth: []
@@ -5720,7 +5724,7 @@ components:
     OutboxEvent:
       type: object
       description: An event waiting to be delivered, with the envelope of ADR-004 D4. The payload never carries a name, e-mail, document, phone, amount, reason text or file reference.
-      required: [eventId, eventType, eventVersion, tenantId, aggregateId, payload, correlationId, occurredAt, status, attempts, nextAttemptAt]
+      required: [eventId, eventType, eventVersion, tenantId, aggregateId, payload, correlationId, occurredAt, status, attempts]
       properties:
         eventId: {$ref: './_shared.yaml#/components/schemas/UUID'}
         eventType: {type: string, example: ClientNotified, x-proposed: true}
@@ -5734,7 +5738,7 @@ components:
         status: {type: string, enum: [PENDING, PUBLISHED, FAILED], x-proposed: true}
         attempts: {type: integer, minimum: 0, x-proposed: true}
         lastError: {type: string, nullable: true, description: "Truncated; never a body, an address or a stack", x-proposed: true}
-        nextAttemptAt: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
+        nextAttemptAt: {type: string, format: date-time, nullable: true, description: "Null until the first failed attempt: an event that has not failed yet is due at once (the delivery index orders the null ones first)", x-proposed: true}
         reason: {type: string, enum: [RESTRICTED_ACCESS], nullable: true, description: "Present only when the event was written by the restricted Administrator of an inactive tenant (HU-COM-020 AC-20.13, DP-05); never free text", x-proposed: true}
 
     OutboxAttemptRequest:
@@ -6632,7 +6636,9 @@ components:
       type: object
       description: |
         PROPOSED (decided by default 2026-11-06). Reduced row of a payment parameter for the Final Customer: what is enabled,
-        nothing else. No author, reason, change time, hours or minimum deposit.
+        nothing else. No author, reason, change time, hours or minimum deposit. It is closed, and a full row (`PaymentParameter`) never matches it because it carries `changedBy`, so a response row is exactly one of the two.
+      additionalProperties: false
+      not: {required: [changedBy]}
       required: [paymentType, transferEnabled, cashEnabled]
       properties:
         paymentType: {$ref: '#/components/schemas/ReservationPaymentType'}
@@ -6692,7 +6698,7 @@ components:
 
     PaymentProofSummary:
       type: object
-      description: Row of the review panel. It carries everything the panel draws (reservation code, customer, type and method of payment, declared amount, state, mark), so a client reads no reservation per row. `customerName` is read from the customer record and never logged. `reviewDueAt` is 24 running hours after `presentedAt`; `reviewOverdue` is derived at read time.
+      description: Row of the review panel. It carries everything the panel draws (reservation code, customer, type and method of payment, declared amount, state, mark), so a client reads no reservation per row. `customerName` is read from the customer record and never logged. `reviewDueAt` is 24 running hours after `presentedAt`; `reviewOverdue` is derived at read time. `reservationStatus` and `paymentStatus` are those of the reservation the proof belongs to (PROPOSED), so the panel draws them without reading the reservation.
       required: [paymentId, reservationId, customerName, paymentType, declaredAmountCents, validationStatus, presentedAt, reviewDueAt, reviewOverdue, pendingBalanceCents]
       properties:
         paymentId: {$ref: './_shared.yaml#/components/schemas/UUID'}
@@ -6707,6 +6713,8 @@ components:
         reviewDueAt: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
         reviewOverdue: {type: boolean, description: "Revisión vencida: a mark, not a state", x-proposed: true}
         pendingBalanceCents: {type: integer, format: int64, minimum: 0, x-proposed: true}
+        reservationStatus: {$ref: '#/components/schemas/ReservationStatus'}
+        paymentStatus: {$ref: '#/components/schemas/ReservationPaymentStatus'}
 
     PaymentProofPage:
       type: object
