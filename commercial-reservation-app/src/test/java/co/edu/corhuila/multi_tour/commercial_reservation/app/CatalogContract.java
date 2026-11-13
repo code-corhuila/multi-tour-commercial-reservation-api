@@ -46,8 +46,14 @@ final class CatalogContract {
 
     void assertCoverage() {
         Set<String> declared = new HashSet<>();
-        API.getPaths().values().forEach(path -> path.readOperations()
-                .forEach(operation -> declared.add(operation.getOperationId())));
+        // The contract holds every operation of the service now; the coverage of all of them is ContractCoverageTest.
+        // This gate keeps the scope it always had: the health check and the catalog services.
+        API.getPaths().forEach((template, path) -> {
+            if (template.equals("/health") || template.equals("/catalog/services") || template.startsWith("/catalog/services/{serviceId}")
+                    && !template.contains("departures")) {
+                path.readOperations().forEach(operation -> declared.add(operation.getOperationId()));
+            }
+        });
         assertThat(PENDING).isEmpty();
         // EstablishmentHttpTest has its own gate for all six establishment operations.
         declared.removeIf(operation -> operation.contains("AssociatedEstablishment"));
