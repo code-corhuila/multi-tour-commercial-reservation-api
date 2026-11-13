@@ -68,12 +68,6 @@ public class ContractConformance {
      * It must end empty: an entry is removed when the code or the contract is reconciled.
      */
     static final Set<String> RECONCILING = Set.of(
-            "POST /reservations 201",
-            "POST /reservations 200",
-            "GET /reservations 200",
-            "GET /reservations/{reservationId} 200",
-            "POST /reservations/{reservationId}/payments 503",
-            "POST /customers 422",
             "PUT /payment-parameters 200",
             "PUT /payment-parameters 422",
             "GET /payment-parameters 200",
