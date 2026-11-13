@@ -109,8 +109,10 @@ class CancellationPolicyJdbcHttpTest {
         String id = CatalogHttpTest.json(exchange(post(BASE + "/reservations").header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON)
                 .content(TestJwtKeys.JSON.writeValueAsBytes(body)), token("TENANT_ADMINISTRATOR"), 201)).get("reservationId").asText();
         String proof = transfer(id, validated, key + "-p1");
-        exchange(post(BASE + "/payment-proofs/" + proof + "/approve").header("Idempotency-Key", key + "-a1").contentType(MediaType.APPLICATION_JSON)
-                .content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", validated))), token("TENANT_ADMINISTRATOR"), 200);
+        // The only way to approve (DP-11): step 2 of the saga records the validated payment for the person who decided, under the service token.
+        exchange(post(BASE + "/internal/tenants/" + tenant + "/payment-proofs/" + proof + "/validated-payment").contentType(MediaType.APPLICATION_JSON)
+                .content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("approvedBy", TestJwtKeys.ACCOUNT, "verifiedAmountCents", validated))),
+                CustomerHttpTest.token(null, "SERVICE", List.of()), 200);
         if (inValidation > 0) transfer(id, inValidation, key + "-p2");
         return UUID.fromString(id);
     }
