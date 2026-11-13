@@ -40,6 +40,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Ca
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManageCatalogSettingsUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CollaboratorEditingPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ServiceDepartures;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCatalogServiceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.InactivateCatalogServiceUseCase;
@@ -167,8 +168,8 @@ class CommercialReservationConfiguration {
 
     @Bean
     UpdateCommercialTermsUseCase updateCommercialTerms(CatalogServiceRepository repository, Clock clock,
-            SalidaCapacityReader capacity) {
-        return new UpdateCommercialTermsUseCase(repository, clock, capacity);
+            SalidaCapacityReader capacity, ServiceDepartures departures) {
+        return new UpdateCommercialTermsUseCase(repository, clock, capacity, departures);
     }
 
     @Bean
