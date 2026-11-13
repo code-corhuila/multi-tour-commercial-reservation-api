@@ -4,12 +4,14 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Ide
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CancellationController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CancellationHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCancellation;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.NoCancellationPenaltyPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CancellationPolicyController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCancellationPolicies;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCancellationRecords;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReprogrammingMark;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CancelReservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCancellationRecord;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCancellationPolicies;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.QuoteCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancellationPolicyReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancellationRecords;
@@ -22,6 +24,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CancelReservationUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCancellationRecordUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCancellationPolicyChange;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManageCancellationPoliciesUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.QuoteCancellationUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import java.time.Clock;
@@ -35,8 +39,7 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 // HU-COM-013: the quote, the cancellation at the customer's request and its record. Only this class knows which adapter backs each port:
-// the record, the rescheduling mark (the open episode of HU-COM-018) and the financial decision (HU-COM-016) are real; the penalty policy is still
-// a documented stand-in (declared debt DD-3). The ports of the reservation stack are injected lazily, as in PaymentConfiguration.
+// the record, the rescheduling mark (the open episode of HU-COM-018) and the financial decision (HU-COM-016) are real; the penalty policy is real too (cancellation_penalty_policy, HU-COM-013 DP-02). The ports of the reservation stack are injected lazily, as in PaymentConfiguration.
 @Configuration
 class CancellationConfiguration {
 
@@ -45,9 +48,25 @@ class CancellationConfiguration {
         return new JdbcCancellationRecords(jdbc);
     }
 
+    // HU-COM-013 DP-02 (DD-3 paid): one bean is both the CancellationPolicyReader of the cancellation and the repository of the policy routes.
     @Bean
-    CancellationPolicyReader cancellationPolicyReader() {
-        return new NoCancellationPenaltyPolicy();
+    JdbcCancellationPolicies cancellationPolicies(JdbcTemplate jdbc) {
+        return new JdbcCancellationPolicies(jdbc);
+    }
+
+    @Bean
+    ManageCancellationPolicies manageCancellationPolicies(JdbcCancellationPolicies policies, @Lazy PaymentTransaction transaction, Clock clock) {
+        return new ManageCancellationPoliciesUseCase(policies, transaction, clock);
+    }
+
+    @Bean
+    IdempotentCancellationPolicyChange idempotentCancellationPolicyChange(ManageCancellationPolicies policies, IdempotentWrites writes) {
+        return new IdempotentCancellationPolicyChange(policies, writes);
+    }
+
+    @Bean
+    CancellationPolicyController cancellationPolicyController(ManageCancellationPolicies policies, IdempotentCancellationPolicyChange changes) {
+        return new CancellationPolicyController(policies, changes);
     }
 
     @Bean
@@ -89,7 +108,8 @@ class CancellationConfiguration {
         return new WebMvcConfigurer() {
             @Override public void addInterceptors(InterceptorRegistry registry) {
                 registry.addInterceptor(new CancellationHttpAccess()).addPathPatterns(
-                        "/api/v1/commercial-reservation/reservations/*/cancellation", "/api/v1/commercial-reservation/reservations/*/cancellation-quote");
+                        "/api/v1/commercial-reservation/reservations/*/cancellation", "/api/v1/commercial-reservation/reservations/*/cancellation-quote",
+                        "/api/v1/commercial-reservation/cancellation-policies");
             }
         };
     }
