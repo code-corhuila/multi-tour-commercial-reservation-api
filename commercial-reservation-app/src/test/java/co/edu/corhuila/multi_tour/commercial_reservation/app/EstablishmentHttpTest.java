@@ -226,14 +226,14 @@ class EstablishmentHttpTest {
         var inactive = json(exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR"));
         assertThat(inactive.get("associationStatus").asText()).isEqualTo("INACTIVE");
         assertThat(json(exchange(get(path(item)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(inactive);
-        assertThat(json(exchange(post(path(item) + "/inactivate"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(inactive);
+        assertThat(json(exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed again\"}"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(inactive);
         assertThat(json(exchange(get(BASE).param("associationStatus", "ACTIVE"), 200,
                 "TENANT_ADMINISTRATOR")).get("data")).isEmpty();
         assertThat(json(exchange(get(BASE).param("associationStatus", "INACTIVE").param("establishmentType", "HOTEL"),
                 200, "TENANT_ADMINISTRATOR")).at("/meta/total").intValue()).isEqualTo(1);
         var active = json(exchange(post(path(item) + "/reactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR"));
         assertThat(active).isEqualTo(item);
-        assertThat(json(exchange(post(path(item) + "/reactivate"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(active);
+        assertThat(json(exchange(post(path(item) + "/reactivate").contentType("application/json").content("{\"reason\":\"Works finished\"}"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(active);
     }
 
     // AC-02.13: a transition without a reason names the field and changes nothing; AC-02.14: with one it is traced.
