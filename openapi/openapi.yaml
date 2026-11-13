@@ -5720,7 +5720,7 @@ components:
     OutboxEvent:
       type: object
       description: An event waiting to be delivered, with the envelope of ADR-004 D4. The payload never carries a name, e-mail, document, phone, amount, reason text or file reference.
-      required: [eventId, eventType, eventVersion, tenantId, aggregateId, payload, correlationId, occurredAt, status, attempts, nextAttemptAt]
+      required: [eventId, eventType, eventVersion, tenantId, aggregateId, payload, correlationId, occurredAt, status, attempts]
       properties:
         eventId: {$ref: './_shared.yaml#/components/schemas/UUID'}
         eventType: {type: string, example: ClientNotified, x-proposed: true}
@@ -5734,7 +5734,7 @@ components:
         status: {type: string, enum: [PENDING, PUBLISHED, FAILED], x-proposed: true}
         attempts: {type: integer, minimum: 0, x-proposed: true}
         lastError: {type: string, nullable: true, description: "Truncated; never a body, an address or a stack", x-proposed: true}
-        nextAttemptAt: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
+        nextAttemptAt: {type: string, format: date-time, nullable: true, description: "Null until the first failed attempt: an event that has not failed yet is due at once (the delivery index orders the null ones first)", x-proposed: true}
         reason: {type: string, enum: [RESTRICTED_ACCESS], nullable: true, description: "Present only when the event was written by the restricted Administrator of an inactive tenant (HU-COM-020 AC-20.13, DP-05); never free text", x-proposed: true}
 
     OutboxAttemptRequest:
