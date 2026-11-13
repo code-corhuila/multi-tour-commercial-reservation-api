@@ -159,20 +159,20 @@ class EstablishmentAnnexCChecklistTest {
     // Transitions: inactivate/reactivate are the analogue of cancel/confirm, and both are idempotent
     @Test void box19_transitions_inactivateAnActiveAssociationAnswers200() throws Exception {
         var item = CatalogHttpTest.json(exchange(upload(), 201));
-        var inactive = CatalogHttpTest.json(exchange(post(path(item) + "/inactivate"), 200));
+        var inactive = CatalogHttpTest.json(exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200));
         assertThat(inactive.get("associationStatus").asText()).isEqualTo("INACTIVE");
     }
 
     @Test void box20_transitions_inactivateTwiceAnswers200() throws Exception {
         var item = CatalogHttpTest.json(exchange(upload(), 201));
-        var first = CatalogHttpTest.json(exchange(post(path(item) + "/inactivate"), 200));
-        assertThat(CatalogHttpTest.json(exchange(post(path(item) + "/inactivate"), 200))).isEqualTo(first);
+        var first = CatalogHttpTest.json(exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200));
+        assertThat(CatalogHttpTest.json(exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200))).isEqualTo(first);
     }
 
     @Test void box21_transitions_reactivateAnInactiveAssociationAnswers200() throws Exception {
         var item = CatalogHttpTest.json(exchange(upload(), 201));
-        exchange(post(path(item) + "/inactivate"), 200);
-        assertThat(CatalogHttpTest.json(exchange(post(path(item) + "/reactivate"), 200))).isEqualTo(item);
+        exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200);
+        assertThat(CatalogHttpTest.json(exchange(post(path(item) + "/reactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200))).isEqualTo(item);
     }
 
     @Test void box22_transitions_deleteRouteDoesNotExist() throws Exception {

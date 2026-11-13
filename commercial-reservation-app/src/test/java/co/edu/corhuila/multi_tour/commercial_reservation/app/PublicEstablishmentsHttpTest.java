@@ -48,6 +48,7 @@ class PublicEstablishmentsHttpTest {
         retired = plant(own.toString(), "HOTEL", "Hotel Retirado", "ya no");
         foreignHotel = plant(foreign.toString(), "HOTEL", "Hotel Ajeno", "otro");
         mvc.perform(post("/api/v1/commercial-reservation/associated-establishments/" + retired + "/inactivate")
+                .contentType("application/json").content("{\"reason\":\"Closed for works\"}")
                 .header("Authorization", "Bearer " + CatalogHttpTest.token(own.toString(), "TENANT_ADMINISTRATOR"))).andReturn();
     }
 

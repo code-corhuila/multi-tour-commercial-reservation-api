@@ -80,16 +80,16 @@ class AssociatedEstablishmentTest {
     @Test void repeatedTransitionsChangeNeitherTimeNorEvents() {
         var item = registered();
         item.pullEvents();
-        item.inactivate(ACTOR, NOW.plusSeconds(1));
+        item.inactivate(ACTOR, "Closed for works", NOW.plusSeconds(1));
         assertThat(item.pullEvents()).containsExactly(
                 new EstablishmentAssociationInactivated(TENANT, ID, ACTOR, NOW.plusSeconds(1)));
-        item.inactivate(new UUID(0, 4), NOW.plusSeconds(2));
+        item.inactivate(new UUID(0, 4), "Closed for works", NOW.plusSeconds(2));
         assertThat(item.updatedAt()).isEqualTo(NOW.plusSeconds(1));
         assertThat(item.pullEvents()).isEmpty();
-        item.reactivate(ACTOR, NOW.plusSeconds(3));
+        item.reactivate(ACTOR, "Closed for works", NOW.plusSeconds(3));
         assertThat(item.pullEvents()).containsExactly(
                 new EstablishmentAssociationReactivated(TENANT, ID, ACTOR, NOW.plusSeconds(3)));
-        item.reactivate(new UUID(0, 4), NOW.plusSeconds(4));
+        item.reactivate(new UUID(0, 4), "Closed for works", NOW.plusSeconds(4));
         assertThat(item.updatedAt()).isEqualTo(NOW.plusSeconds(3));
         assertThat(item.pullEvents()).isEmpty();
         assertThat(item.createdAt()).isEqualTo(NOW);
@@ -97,11 +97,11 @@ class AssociatedEstablishmentTest {
 
     @Test void invalidTransitionMetadataLeavesTheStateAndEventsUntouched() {
         var item = registered(); item.pullEvents();
-        assertThatThrownBy(() -> item.inactivate(null, NOW)).isInstanceOf(DomainException.class);
+        assertThatThrownBy(() -> item.inactivate(null, "Closed for works", NOW)).isInstanceOf(DomainException.class);
         assertThat(item.associationStatus()).isEqualTo(AssociationStatus.ACTIVE);
         assertThat(item.pullEvents()).isEmpty();
-        item.inactivate(ACTOR, NOW); item.pullEvents();
-        assertThatThrownBy(() -> item.reactivate(ACTOR, null)).isInstanceOf(DomainException.class);
+        item.inactivate(ACTOR, "Closed for works", NOW); item.pullEvents();
+        assertThatThrownBy(() -> item.reactivate(ACTOR, "Closed for works", null)).isInstanceOf(DomainException.class);
         assertThat(item.associationStatus()).isEqualTo(AssociationStatus.INACTIVE);
         assertThat(item.pullEvents()).isEmpty();
     }

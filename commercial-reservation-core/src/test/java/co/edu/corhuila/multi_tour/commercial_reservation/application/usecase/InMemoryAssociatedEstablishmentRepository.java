@@ -1,14 +1,17 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.EstablishmentChangePage;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.EstablishmentPage;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EstablishmentChangeLog;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AssociatedEstablishmentRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.*;
 import java.util.*;
 
 // Detached copies keep unsaved changes from leaking into later reads, like a transactional store.
-class InMemoryAssociatedEstablishmentRepository implements AssociatedEstablishmentRepository {
+class InMemoryAssociatedEstablishmentRepository implements AssociatedEstablishmentRepository, EstablishmentChangeLog {
     final Map<UUID, AssociatedEstablishment> rows = new LinkedHashMap<>();
     final List<EstablishmentAssociationEvent> outbox = new ArrayList<>();
+    final List<EstablishmentChange> changes = new ArrayList<>();
     boolean failNextSave;
     int saves;
 
@@ -16,6 +19,7 @@ class InMemoryAssociatedEstablishmentRepository implements AssociatedEstablishme
         if (failNextSave) { failNextSave = false; throw new IllegalStateException("save rejected"); }
         rows.put(item.associationId(), copy(item));
         outbox.addAll(item.pullEvents());
+        changes.addAll(item.pullChanges());
         saves++;
     }
 
@@ -33,6 +37,13 @@ class InMemoryAssociatedEstablishmentRepository implements AssociatedEstablishme
                         .thenComparing(item -> item.associationId().toString()).reversed()).toList();
         return new EstablishmentPage(matching.stream().skip((page - 1L) * limit).limit(limit)
                 .map(InMemoryAssociatedEstablishmentRepository::copy).toList(), matching.size());
+    }
+
+    @Override public EstablishmentChangePage listByTenant(UUID tenant, Optional<EstablishmentType> type, int page, int limit) {
+        var matching = changes.stream().filter(change -> change.tenantId().equals(tenant))
+                .filter(change -> type.isEmpty() || rows.get(change.associationId()).establishmentType() == type.get())
+                .sorted(Comparator.comparing(EstablishmentChange::occurredAt).thenComparing(change -> changes.indexOf(change)).reversed()).toList();
+        return new EstablishmentChangePage(matching.stream().skip((page - 1L) * limit).limit(limit).toList(), matching.size());
     }
 
     void plant(AssociatedEstablishment item) { rows.put(item.associationId(), copy(item)); }

@@ -26,12 +26,12 @@ class EstablishmentConfiguration {
         JdbcTemplate jdbc = templates.getIfAvailable();
         if (jdbc == null) {
             var memory = new InMemoryEstablishments();
-            return new EstablishmentStores(memory, memory, memory);
+            return new EstablishmentStores(memory, memory, memory, memory);
         }
         var transactions = new TransactionTemplate(managers.getObject());
         var repository = new JdbcAssociatedEstablishmentRepository(jdbc, transactions);
         var keys = new JdbcAssociatedEstablishmentKeys(jdbc, new JdbcIdempotencyKeys(jdbc), repository, transactions);
-        return new EstablishmentStores(repository, keys, new JdbcEstablishmentImages(jdbc, transactions));
+        return new EstablishmentStores(repository, keys, new JdbcEstablishmentImages(jdbc, transactions), repository);
     }
     @Bean AssociatedEstablishmentRepository establishmentRepository(EstablishmentStores stores) {
         return stores.repository();
@@ -58,11 +58,13 @@ class EstablishmentConfiguration {
     @Bean ReactivateAssociatedEstablishment reactivateEstablishment(AssociatedEstablishmentRepository repository, Clock clock) {
         return new ReactivateAssociatedEstablishmentUseCase(repository, clock);
     }
+    @Bean EstablishmentChangeLog establishmentChangeLog(EstablishmentStores stores) { return stores.changes(); }
+    @Bean ListEstablishmentChanges listEstablishmentChanges(EstablishmentChangeLog log) { return new ListEstablishmentChangesUseCase(log); }
     @Bean EstablishmentController establishmentController(RegisterAssociatedEstablishment register,
             GetAssociatedEstablishment get, ListAssociatedEstablishments list, InactivateAssociatedEstablishment inactivate,
-            ReactivateAssociatedEstablishment reactivate, AssociatedEstablishmentRepository repository,
+            ReactivateAssociatedEstablishment reactivate, ListEstablishmentChanges changes, AssociatedEstablishmentRepository repository,
             EstablishmentImages images, ResolvePublicTenant tenants) {
-        return new EstablishmentController(register, get, list, inactivate, reactivate, repository, images, tenants);
+        return new EstablishmentController(register, get, list, inactivate, reactivate, changes, repository, images, tenants);
     }
     @Bean ResolvePublicTenant resolvePublicTenant(TenantDirectory directory) { return new ResolvePublicTenantUseCase(directory); }
     @Bean WebMvcConfigurer establishmentAccess() {
@@ -74,5 +76,5 @@ class EstablishmentConfiguration {
     }
 
     record EstablishmentStores(AssociatedEstablishmentRepository repository, AssociatedEstablishmentKeys keys,
-            EstablishmentImages images) { }
+            EstablishmentImages images, EstablishmentChangeLog changes) { }
 }

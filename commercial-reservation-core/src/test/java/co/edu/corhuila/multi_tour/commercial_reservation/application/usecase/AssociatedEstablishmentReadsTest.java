@@ -15,7 +15,7 @@ class AssociatedEstablishmentReadsTest {
     @Test void inactivatedAssociationLeavesPromotionalConsultationsAndKeepsItsHistory() {
         var item = item(3, EstablishmentType.HOTEL, now); repository.save(item);
         assertThat(promotional().total()).isEqualTo(1);
-        item.inactivate(actor, now.plusSeconds(1)); repository.save(item);
+        item.inactivate(actor, "Closed for works", now.plusSeconds(1)); repository.save(item);
         assertThat(promotional().items()).isEmpty();
         var inactive = repository.findByTenantAndId(tenant, item.associationId()).orElseThrow();
         assertThat(inactive.associationStatus()).isEqualTo(AssociationStatus.INACTIVE);
@@ -28,9 +28,9 @@ class AssociatedEstablishmentReadsTest {
 
     @Test void reactivationReturnsItAndTheAuditRecordsWhoAndWhen() {
         var item = item(3, EstablishmentType.HOTEL, now); repository.save(item);
-        item.inactivate(actor, now.plusSeconds(1)); repository.save(item);
+        item.inactivate(actor, "Closed for works", now.plusSeconds(1)); repository.save(item);
         UUID reactivator = new UUID(0, 4);
-        item.reactivate(reactivator, now.plusSeconds(2)); repository.save(item);
+        item.reactivate(reactivator, "Closed for works", now.plusSeconds(2)); repository.save(item);
         assertThat(promotional().items()).extracting(AssociatedEstablishment::associationId).containsExactly(item.associationId());
         assertThat(repository.outbox.get(2)).isEqualTo(
                 new EstablishmentAssociationReactivated(tenant, item.associationId(), reactivator, now.plusSeconds(2)));
@@ -45,7 +45,7 @@ class AssociatedEstablishmentReadsTest {
         assertThat(first.items()).extracting(AssociatedEstablishment::associationId).containsExactly(newest.associationId());
         assertThat(repository.listByTenant(tenant, Optional.empty(), Optional.of(EstablishmentType.HOTEL), 2, 1).items())
                 .extracting(AssociatedEstablishment::associationId).containsExactly(oldest.associationId());
-        oldest.inactivate(actor, now.plusSeconds(3)); repository.save(oldest);
+        oldest.inactivate(actor, "Closed for works", now.plusSeconds(3)); repository.save(oldest);
         assertThat(repository.listByTenant(tenant, Optional.of(AssociationStatus.INACTIVE), Optional.empty(), 1, 20).total()).isEqualTo(1);
     }
 
