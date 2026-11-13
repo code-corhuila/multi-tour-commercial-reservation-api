@@ -18,6 +18,11 @@ public final class CancellationAuthorization {
         require(actor, Role.TENANT_ADMINISTRATOR, Role.OPERATIONAL_COLLABORATOR, Role.MANAGER, Role.ACCOUNTANT, Role.ANALYST, Role.PLATFORM_SUPPORT);
     }
 
+    // HU-COM-013 DP-02d: the penalty policy is the Administrator's alone, decided on the server.
+    public static void requireChangePolicy(PaymentActor actor) {
+        require(actor, Role.TENANT_ADMINISTRATOR);
+    }
+
     private static void require(PaymentActor actor, Role... allowed) {
         if (actor == null || actor.tenantId() == null || actor.actorId() == null || !Set.of(allowed).contains(actor.role())) {
             throw new PaymentAccessDeniedException();

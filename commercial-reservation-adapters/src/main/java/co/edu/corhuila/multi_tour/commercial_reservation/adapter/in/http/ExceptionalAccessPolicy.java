@@ -20,7 +20,7 @@ public final class ExceptionalAccessPolicy {
         area("CUSTOMERS", "customers(/[^/]+)?");
         area("CATALOG", "catalog/.*", "discount-rules(/.*)?", "associated-establishments(/.*)?", "additional-discount-reasons(/.*)?", "departures/.*");
         area("RESERVATIONS", "reservations(/.*)?", "payment-proofs(/.*)?", "pending-payments", "payment-parameters", "financial-decisions(/.*)?",
-                "refund-authorizations(/.*)?", "credit-balances(/.*)?", "credit-balance-summary", "discount-quotes(/.*)?");
+                "refund-authorizations(/.*)?", "credit-balances(/.*)?", "credit-balance-summary", "discount-quotes(/.*)?", "cancellation-policies");
     }
 
     private ExceptionalAccessPolicy() {
