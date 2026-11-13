@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcClientNoticeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcOutboxDeliveryStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentEventOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentParameterRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentParametersChangeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
@@ -12,6 +14,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Outbo
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.OutboxStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RelayOutboxDeliveryUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParameter;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParameterValues;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParametersChange;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import java.time.Clock;
 import java.time.Instant;
@@ -167,5 +173,80 @@ class OutboxDeliveryPersistenceTest {
 
         assertThat(after.lastError()).hasSizeLessThanOrEqualTo(500).doesNotContain("@").doesNotContain("ana.perez");
         assertThat(ZoneOffset.UTC).isNotNull();
+    }
+
+    // The delivery names the one aggregate each event carries, whichever of the seven reference columns of the table holds it (the CHECK of migration 044 admits exactly one).
+    private UUID deliveredAggregateOf(UUID eventId) {
+        return new JdbcOutboxDeliveryStore(fixture.jdbc).find(eventId).orElseThrow().aggregateId();
+    }
+
+    private UUID insertEvent(String type, String column, UUID aggregate, String extraColumns, String extraValues, String payload) {
+        UUID eventId = UUID.randomUUID();
+        fixture.jdbc.update("INSERT INTO commercial_reservation.outbox_event (outbox_event_id, tenant_id, event_type, " + column + ", actor_id, occurred_at, payload"
+                + extraColumns + ") VALUES (?, ?, ?, ?, ?, now(), ?::jsonb" + extraValues + ")", eventId, fixture.tenant, type, aggregate, fixture.actor, payload);
+        return eventId;
+    }
+
+    @Test
+    void thePaymentParametersChangedEventIsDeliveredWithThePaymentConditionAsAggregate() {
+        new JdbcPaymentParameterRepository(fixture.jdbc).save(fixture.tenant, new PaymentParameter(new PaymentParameterValues(PaymentType.DEPOSIT, fixture.service, 24, 48, 3_000, 72,
+                true, false), fixture.actor, "Reason", ReservationPersistenceFixture.NOW));
+        new JdbcPaymentParametersChangeOutbox(fixture.jdbc).append(new PaymentParametersChange(fixture.tenant, fixture.actor, PaymentType.DEPOSIT, fixture.service,
+                ReservationPersistenceFixture.NOW));
+        UUID condition = fixture.jdbc.queryForObject("SELECT payment_condition_id FROM commercial_reservation.payment_condition WHERE tenant_id = ? AND service_id = ?", UUID.class,
+                fixture.tenant, fixture.service);
+        UUID event = fixture.jdbc.queryForObject("SELECT outbox_event_id FROM commercial_reservation.outbox_event WHERE payment_condition_id = ?", UUID.class, condition);
+
+        assertThat(deliveredAggregateOf(event)).isEqualTo(condition);
+        assertThat(pendingEvents()).filteredOn(found -> found.eventId().equals(event)).singleElement().extracting(OutboxEventView::aggregateId).isEqualTo(condition);
+    }
+
+    @Test
+    void theCatalogServiceEventIsDeliveredWithTheServiceAsAggregate() {
+        UUID event = insertEvent("CatalogServiceInactivated", "service_id", fixture.service, ", previous_catalog_status, new_catalog_status", ", 'ACTIVE', 'INACTIVE'", null);
+
+        assertThat(deliveredAggregateOf(event)).isEqualTo(fixture.service);
+    }
+
+    @Test
+    void theEstablishmentEventIsDeliveredWithTheAssociationAsAggregate() {
+        UUID association = UUID.randomUUID();
+        fixture.jdbc.update("INSERT INTO commercial_reservation.associated_establishment (association_id, tenant_id, establishment_type, commercial_name, commercial_information, "
+                + "association_status, created_at, updated_at) VALUES (?, ?, 'HOTEL', 'Hotel Ficticio', 'Informacion ficticia', 'ACTIVE', now(), now())", association, fixture.tenant);
+        UUID event = insertEvent("EstablishmentAssociationInactivated", "association_id", association, ", new_catalog_status", ", 'INACTIVE'", null);
+
+        assertThat(deliveredAggregateOf(event)).isEqualTo(association);
+    }
+
+    @Test
+    void theDiscountRuleEventIsDeliveredWithTheRuleAsAggregate() {
+        UUID event = insertEvent("DiscountRuleChanged", "discount_rule_id", fixture.percentageRule, ", new_discount_rule_state", ", '{\"status\": \"ACTIVE\"}'::jsonb", null);
+
+        assertThat(deliveredAggregateOf(event)).isEqualTo(fixture.percentageRule);
+    }
+
+    @Test
+    void theCustomerEventIsDeliveredWithTheCustomerAsAggregate() {
+        UUID event = insertEvent("CustomerRegistered", "customer_id", fixture.customer, "", "", "{\"tenantId\": \"" + fixture.tenant + "\", \"customerId\": \"" + fixture.customer
+                + "\", \"actorId\": \"" + fixture.actor + "\", \"occurredAt\": \"2026-11-12T10:00:00Z\"}");
+
+        assertThat(deliveredAggregateOf(event)).isEqualTo(fixture.customer);
+    }
+
+    @Test
+    void theReservationEventIsDeliveredWithTheReservationAsAggregate() {
+        UUID reservation = approvedReservation();
+
+        assertThat(deliveredAggregateOf(noticeOf(reservation))).isEqualTo(reservation);
+    }
+
+    @Test
+    void thePlatformExceptionalAccessEventIsDeliveredWithTheAuthorizationAsAggregate() {
+        UUID authorization = UUID.randomUUID();
+        UUID event = insertEvent("PlatformExceptionalAccessUsed", "authorization_id", authorization, "", "", "{\"authorizationId\": \"" + authorization + "\", "
+                + "\"platformAdministratorId\": \"" + fixture.actor + "\", \"tenantId\": \"" + fixture.tenant + "\", \"method\": \"GET\", \"route\": \"/x\", \"area\": \"a\", "
+                + "\"usedAt\": \"2026-11-12T10:00:00Z\", \"correlationId\": \"c\"}");
+
+        assertThat(deliveredAggregateOf(event)).isEqualTo(authorization);
     }
 }
