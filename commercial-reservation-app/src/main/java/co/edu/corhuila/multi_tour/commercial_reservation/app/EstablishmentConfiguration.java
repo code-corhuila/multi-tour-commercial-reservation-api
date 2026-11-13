@@ -58,8 +58,8 @@ class EstablishmentConfiguration {
     @Bean ReactivateAssociatedEstablishment reactivateEstablishment(AssociatedEstablishmentRepository repository, Clock clock) {
         return new ReactivateAssociatedEstablishmentUseCase(repository, clock);
     }
-    @Bean EstablishmentChangeLog establishmentChangeLog(EstablishmentStores stores) { return stores.changes(); }
-    @Bean ListEstablishmentChanges listEstablishmentChanges(EstablishmentChangeLog log) { return new ListEstablishmentChangesUseCase(log); }
+    // The JDBC adapter is the repository and the change log at once: the use case takes the log from the stores, not from a bean looked up by type.
+    @Bean ListEstablishmentChanges listEstablishmentChanges(EstablishmentStores stores) { return new ListEstablishmentChangesUseCase(stores.changes()); }
     @Bean EstablishmentController establishmentController(RegisterAssociatedEstablishment register,
             GetAssociatedEstablishment get, ListAssociatedEstablishments list, InactivateAssociatedEstablishment inactivate,
             ReactivateAssociatedEstablishment reactivate, ListEstablishmentChanges changes, AssociatedEstablishmentRepository repository,
