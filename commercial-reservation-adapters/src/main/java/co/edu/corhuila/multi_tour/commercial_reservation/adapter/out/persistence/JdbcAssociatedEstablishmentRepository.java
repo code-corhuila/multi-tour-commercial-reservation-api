@@ -1,12 +1,16 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.EstablishmentChangePage;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.EstablishmentPage;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EstablishmentChangeLog;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AssociatedEstablishmentNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AssociatedEstablishmentRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AssociatedEstablishment;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AssociationStatus;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentAssociationEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentContact;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentChange;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentChangeType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentAssociationInactivated;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentAssociationPublished;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentAssociationReactivated;
@@ -24,7 +28,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 
-public final class JdbcAssociatedEstablishmentRepository implements AssociatedEstablishmentRepository {
+public final class JdbcAssociatedEstablishmentRepository implements AssociatedEstablishmentRepository, EstablishmentChangeLog {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
 
@@ -56,6 +60,7 @@ public final class JdbcAssociatedEstablishmentRepository implements AssociatedEs
                         timestamp(item.updatedAt()), item.contact().email(), item.contact().phone(), item.contact().address());
             }
             for (var event : item.pullEvents()) insertEvent(event);
+            for (var change : item.pullChanges()) insertChange(change);
         });
     }
 
@@ -93,6 +98,33 @@ public final class JdbcAssociatedEstablishmentRepository implements AssociatedEs
                 + " ORDER BY a.created_at DESC, a.association_id DESC LIMIT ? OFFSET ?",
                 (row, index) -> map(row), arguments.toArray());
         return new EstablishmentPage(items, total);
+    }
+
+    // The trace is appended in the transaction of the state it describes and is never edited (HU-COM-002, AC-02.14).
+    private void insertChange(EstablishmentChange change) {
+        jdbc.update("INSERT INTO commercial_reservation.associated_establishment_change "
+                + "(change_id, tenant_id, association_id, event_type, reason, actor_id, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                change.changeId(), change.tenantId(), change.associationId(), change.eventType().name(), change.reason(),
+                change.actorId(), timestamp(change.occurredAt()));
+    }
+
+    @Override
+    public EstablishmentChangePage listByTenant(UUID tenantId, Optional<EstablishmentType> type, int page, int limit) {
+        String join = "FROM commercial_reservation.associated_establishment_change c JOIN commercial_reservation.associated_establishment a "
+                + "ON a.tenant_id = c.tenant_id AND a.association_id = c.association_id WHERE c.tenant_id = ?"
+                + (type.isPresent() ? " AND a.establishment_type = ?" : "");
+        var arguments = new ArrayList<Object>(List.of(tenantId));
+        type.ifPresent(value -> arguments.add(value.name()));
+        long total = jdbc.queryForObject("SELECT count(*) " + join, Long.class, arguments.toArray());
+        arguments.add(limit);
+        arguments.add((page - 1L) * limit);
+        List<EstablishmentChange> items = jdbc.query("SELECT c.change_id, c.tenant_id, c.association_id, a.commercial_name, c.event_type, "
+                + "c.reason, c.actor_id, c.occurred_at " + join + " ORDER BY c.occurred_at DESC, c.change_id DESC LIMIT ? OFFSET ?",
+                (row, index) -> new EstablishmentChange(row.getObject("change_id", UUID.class), row.getObject("tenant_id", UUID.class),
+                        row.getObject("association_id", UUID.class), row.getString("commercial_name"),
+                        EstablishmentChangeType.valueOf(row.getString("event_type")), row.getString("reason"),
+                        row.getObject("actor_id", UUID.class), instant(row, "occurred_at")), arguments.toArray());
+        return new EstablishmentChangePage(items, total);
     }
 
     private void insertEvent(EstablishmentAssociationEvent event) {
