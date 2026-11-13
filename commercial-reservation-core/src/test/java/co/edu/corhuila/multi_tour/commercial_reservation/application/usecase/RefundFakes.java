@@ -70,7 +70,7 @@ final class RefundFakes {
 
     FinancialDecision openAt(DecisionKind kind, long base, Instant recognizedAt) {
         FinancialDecision decision = FinancialDecision.open(ids.newId(), TENANT, UUID.randomUUID(), kind, new co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents(base),
-                null, null, recognizedAt);
+                null, kind == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST ? UUID.randomUUID() : null, recognizedAt);
         decisions.put(decision.id(), decision);
         return decision;
     }
