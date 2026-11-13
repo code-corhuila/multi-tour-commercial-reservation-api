@@ -95,6 +95,26 @@ class RefundWriteHttpTest extends ReservationHttpBase {
         assertThat(refunds.events).isEmpty();
     }
 
+    @Test void theAdministratorAuthorizesAnOpenCreditBalanceRequestWithItsRefundInOneAct() throws Exception {
+        var refund = CatalogHttpTest.json(exchange(write(request.id(), "refund-authorization", Map.of("reason", "The customer asked for the money back"), "authorize-key-09", ADMIN), 201));
+
+        assertThat(refund.get("authorizedAmountCents").asInt()).isEqualTo(50_000);
+        assertThat(refund.get("authorizationMode").asText()).isEqualTo("TENANT_ADMINISTRATOR");
+        assertThat(refund.get("financialDecisionId").asText()).isEqualTo(request.id().toString());
+        assertThat(decisions.decisions.get(request.id()).outcome().name()).isEqualTo("AUTHORIZED");
+        assertThat(decisions.decisions.get(request.id()).decidedBySystem()).isFalse();
+        assertThat(refunds.refunds).hasSize(1);
+        assertThat(refunds.events).hasSize(1);
+        exchange(write(request.id(), "rejection", Map.of("justification", "Too late"), "reject-key-09", ADMIN), 422);
+    }
+
+    @Test void aRejectedCreditBalanceRequestCannotBeAuthorized() throws Exception {
+        exchange(write(request.id(), "rejection", Map.of("justification", "Not refundable"), "reject-key-10", ADMIN), 200);
+
+        exchange(write(request.id(), "refund-authorization", Map.of("reason", "Again"), "authorize-key-10", ADMIN), 422);
+        assertThat(refunds.refunds).isEmpty();
+    }
+
     @Test void onlyACreditBalanceRequestIsRejectedWithItsJustification() throws Exception {
         var rejected = CatalogHttpTest.json(exchange(write(request.id(), "rejection", Map.of("justification", " The balance is not refundable "),
                 "reject-key-01", ADMIN), 200));
