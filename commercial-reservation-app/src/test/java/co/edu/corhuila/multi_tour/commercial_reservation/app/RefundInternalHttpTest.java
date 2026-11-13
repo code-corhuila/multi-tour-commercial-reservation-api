@@ -4,11 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationSnapshot;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExecuteRefund;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExecuteRefundUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKind;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundOrigin;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +20,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
@@ -25,6 +32,15 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 // the service decides. Every value is invented.
 @Import(RefundHttpFixture.class)
 class RefundInternalHttpTest extends ReservationHttpBase {
+
+    // The completion step writes the REFUND_PROCESSED notice (HU-COM-015) through a JDBC outbox that the configuration builds inline, so over memory it would open the
+    // fictitious database and answer 500. These routes run over the memory fakes: the use case is built here without the notice, which job 4 and its own tests cover.
+    @TestConfiguration
+    static class ExecuteRefundWithoutNotice {
+        @Bean @Primary ExecuteRefund memoryExecuteRefund(RefundHttpFixture.MemoryRefunds refunds, PaymentTransaction transaction, Clock clock) {
+            return new ExecuteRefundUseCase(refunds, transaction, clock);
+        }
+    }
 
     private final UUID reservationId = new UUID(51, 1);
     private final UUID person = new UUID(51, 2), movement = new UUID(51, 3);
