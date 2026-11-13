@@ -48,12 +48,16 @@ class InactiveTenantRefundsTest {
         FinancialDecision open = fakes.open(DecisionKind.CUSTOMER_CANCELLATION, 80_000);
         suspendedSince = null;
         manage.recordRefundDecision(admin, open.id());
+        // DP-01: recording the decision already authorized its own refund (one refund, one event); that is the state to keep while the tenant is inactive.
+        int refundsBefore = fakes.refunds.size();
+        int eventsBefore = fakes.events.size();
         suspendedSince = RefundFakes.NOW.minus(Duration.ofHours(1));
 
         assertThatThrownBy(() -> manage.authorize(admin, open.id(), "Reason")).isInstanceOf(BusinessRuleViolation.class);
 
-        assertThat(fakes.refunds).isEmpty();
-        assertThat(fakes.events).isEmpty();
+        assertThat(refundsBefore).isEqualTo(1);
+        assertThat(fakes.refunds).hasSize(refundsBefore);
+        assertThat(fakes.events).hasSize(eventsBefore);
     }
 
     @Test
