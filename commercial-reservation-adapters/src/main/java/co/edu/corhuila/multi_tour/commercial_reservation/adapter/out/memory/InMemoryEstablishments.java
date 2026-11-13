@@ -8,17 +8,25 @@ import java.util.function.*;
 
 // One monitor is the transaction boundary of this volatile adapter, including key and image writes.
 public final class InMemoryEstablishments implements AssociatedEstablishmentRepository,
-        AssociatedEstablishmentKeys, EstablishmentImages {
+        AssociatedEstablishmentKeys, EstablishmentImages, EstablishmentChangeLog {
     private record Key(UUID tenant, String value) {}
     private record ImageKey(UUID tenant, String reference) {}
     private final Map<UUID, AssociatedEstablishment> rows = new HashMap<>();
     private final Map<Key, UUID> keys = new HashMap<>();
     private final Map<ImageKey, Image> images = new HashMap<>();
     private final List<EstablishmentAssociationEvent> outbox = new ArrayList<>();
+    private final List<EstablishmentChange> changes = new ArrayList<>();
 
     @Override public synchronized void save(AssociatedEstablishment item) {
         rows.put(item.associationId(), copy(item));
         outbox.addAll(item.pullEvents());
+        changes.addAll(item.pullChanges());
+    }
+    @Override public synchronized EstablishmentChangePage listByTenant(UUID tenant, Optional<EstablishmentType> type, int page, int limit) {
+        var matching = changes.stream().filter(change -> change.tenantId().equals(tenant))
+                .filter(change -> type.isEmpty() || rows.get(change.associationId()).establishmentType() == type.get())
+                .sorted(Comparator.comparing(EstablishmentChange::occurredAt).thenComparing(change -> changes.indexOf(change)).reversed()).toList();
+        return new EstablishmentChangePage(matching.stream().skip((page - 1L) * limit).limit(limit).toList(), matching.size());
     }
     @Override public synchronized Optional<AssociatedEstablishment> findByTenantAndId(UUID tenant, UUID id) {
         return Optional.ofNullable(rows.get(id)).filter(item -> item.tenantId().equals(tenant)).map(InMemoryEstablishments::copy);
@@ -62,10 +70,11 @@ public final class InMemoryEstablishments implements AssociatedEstablishmentRepo
         var oldKeys = new HashMap<>(keys);
         var oldImages = new HashMap<>(images);
         var oldEvents = new ArrayList<>(outbox);
+        var oldChanges = new ArrayList<>(changes);
         try { return operation.get(); }
         catch (RuntimeException failure) {
             rows.clear(); rows.putAll(oldRows); keys.clear(); keys.putAll(oldKeys);
-            images.clear(); images.putAll(oldImages); outbox.clear(); outbox.addAll(oldEvents);
+            images.clear(); images.putAll(oldImages); outbox.clear(); outbox.addAll(oldEvents); changes.clear(); changes.addAll(oldChanges);
             throw failure;
         }
     }
