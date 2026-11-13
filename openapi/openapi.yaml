@@ -2145,7 +2145,7 @@ paths:
         token user. The parameters apply to a reservation at the payment moment (decision of docs pull
         request 758); a per-reservation snapshot taken at creation is a later improvement. No penalty field
         exists (DP-09). `400 VALIDATION_ERROR` (each field named) for a missing reason or a value out of
-        bounds.
+        bounds. `422 BUSINESS_RULE_VIOLATION` when the `Idempotency-Key` was already used with another body (built).
         **Requires:** `TENANT_ADMINISTRATOR`; any other role answers `403`.
         The `Idempotency-Key` header is required, like on every write of this contract; a request without it
         is refused with `400` (fixed in the api, pull request 153).
@@ -2178,6 +2178,8 @@ paths:
           $ref: './_shared.yaml#/components/responses/Unauthorized'
         '403':
           $ref: './_shared.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/BusinessRuleViolation'
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
@@ -6632,7 +6634,9 @@ components:
       type: object
       description: |
         PROPOSED (decided by default 2026-11-06). Reduced row of a payment parameter for the Final Customer: what is enabled,
-        nothing else. No author, reason, change time, hours or minimum deposit.
+        nothing else. No author, reason, change time, hours or minimum deposit. It is closed, and a full row (`PaymentParameter`) never matches it because it carries `changedBy`, so a response row is exactly one of the two.
+      additionalProperties: false
+      not: {required: [changedBy]}
       required: [paymentType, transferEnabled, cashEnabled]
       properties:
         paymentType: {$ref: '#/components/schemas/ReservationPaymentType'}
@@ -6692,7 +6696,7 @@ components:
 
     PaymentProofSummary:
       type: object
-      description: Row of the review panel. It carries everything the panel draws (reservation code, customer, type and method of payment, declared amount, state, mark), so a client reads no reservation per row. `customerName` is read from the customer record and never logged. `reviewDueAt` is 24 running hours after `presentedAt`; `reviewOverdue` is derived at read time.
+      description: Row of the review panel. It carries everything the panel draws (reservation code, customer, type and method of payment, declared amount, state, mark), so a client reads no reservation per row. `customerName` is read from the customer record and never logged. `reviewDueAt` is 24 running hours after `presentedAt`; `reviewOverdue` is derived at read time. `reservationStatus` and `paymentStatus` are those of the reservation the proof belongs to (PROPOSED), so the panel draws them without reading the reservation.
       required: [paymentId, reservationId, customerName, paymentType, declaredAmountCents, validationStatus, presentedAt, reviewDueAt, reviewOverdue, pendingBalanceCents]
       properties:
         paymentId: {$ref: './_shared.yaml#/components/schemas/UUID'}
@@ -6707,6 +6711,8 @@ components:
         reviewDueAt: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
         reviewOverdue: {type: boolean, description: "Revisión vencida: a mark, not a state", x-proposed: true}
         pendingBalanceCents: {type: integer, format: int64, minimum: 0, x-proposed: true}
+        reservationStatus: {$ref: '#/components/schemas/ReservationStatus'}
+        paymentStatus: {$ref: '#/components/schemas/ReservationPaymentStatus'}
 
     PaymentProofPage:
       type: object
