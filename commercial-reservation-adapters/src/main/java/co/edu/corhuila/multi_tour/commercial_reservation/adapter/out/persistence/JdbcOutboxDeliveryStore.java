@@ -26,7 +26,7 @@ public final class JdbcOutboxDeliveryStore implements OutboxDeliveryStore {
     private static final String COLUMNS = "outbox_event_id, event_type, tenant_id, COALESCE(service_id, association_id, discount_rule_id, reservation_id, "
             + "customer_id, authorization_id) AS aggregate_id, COALESCE(payload, jsonb_strip_nulls(jsonb_build_object('previousCatalogStatus', previous_catalog_status, "
             + "'newCatalogStatus', new_catalog_status)))::text AS payload, COALESCE(correlation_id, outbox_event_id::text) AS correlation_id, occurred_at, "
-            + "published_at, failed_at, attempts, last_error, next_attempt_at";
+            + "published_at, failed_at, attempts, last_error, next_attempt_at, reason";
     private static final String PENDING = " FROM commercial_reservation.outbox_event WHERE published_at IS NULL AND failed_at IS NULL "
             + "AND (next_attempt_at IS NULL OR next_attempt_at <= ?)";
     private final JdbcTemplate jdbc;
@@ -74,7 +74,7 @@ public final class JdbcOutboxDeliveryStore implements OutboxDeliveryStore {
                     row.getObject("tenant_id", UUID.class), row.getObject("aggregate_id", UUID.class), payload(row.getString("payload")),
                     row.getString("correlation_id"), instant(row.getObject("occurred_at", OffsetDateTime.class)), published,
                     failed ? OutboxStatus.FAILED : published != null ? OutboxStatus.PUBLISHED : OutboxStatus.PENDING, row.getInt("attempts"),
-                    row.getString("last_error"), instant(row.getObject("next_attempt_at", OffsetDateTime.class)));
+                    row.getString("last_error"), instant(row.getObject("next_attempt_at", OffsetDateTime.class)), row.getString("reason"));
         };
     }
 

@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ActionMarker;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ClientNoticeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityAllocated;
@@ -31,6 +32,7 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final JdbcTemplate jdbc;
     private final ClientNoticeOutbox notices;
+    private final ActionMarker marker;
 
     public JdbcPaymentEventOutbox(JdbcTemplate jdbc) {
         this(jdbc, (tenantId, reservationId, type, triggeringEventType, triggeringEventId, occurredAt) -> { });
@@ -38,8 +40,14 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
 
     // The notices of RF-019 are written right after the event that triggers them, in the same transaction (HU-COM-015 plan D-03).
     public JdbcPaymentEventOutbox(JdbcTemplate jdbc, ClientNoticeOutbox notices) {
+        this(jdbc, notices, ActionMarker.NONE);
+    }
+
+    // HU-COM-020 AC-20.13 (DP-05 default): the event of a restricted action carries the marker in the reason of the envelope; the payload gets no key.
+    public JdbcPaymentEventOutbox(JdbcTemplate jdbc, ClientNoticeOutbox notices, ActionMarker marker) {
         this.jdbc = jdbc;
         this.notices = notices;
+        this.marker = marker;
     }
 
     private static String type(PaymentEvent event) {
@@ -140,12 +148,12 @@ public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
         try {
             UUID eventId = UUID.randomUUID();
             jdbc.update("INSERT INTO commercial_reservation.outbox_event (outbox_event_id, tenant_id, event_type, reservation_id, actor_id, occurred_at, "
-                    + "payload) VALUES (?, ?, ?, ?, COALESCE(?, (SELECT COALESCE(decided_by, registered_by) FROM "
+                    + "payload, reason) VALUES (?, ?, ?, ?, COALESCE(?, (SELECT COALESCE(decided_by, registered_by) FROM "
                     + "commercial_reservation.payment_attempt WHERE reservation_id = ? ORDER BY COALESCE(decided_at, registered_at) DESC "
-                    + "LIMIT 1), (SELECT created_by FROM commercial_reservation.reservation WHERE reservation_id = ?)), ?, ?::jsonb)",
+                    + "LIMIT 1), (SELECT created_by FROM commercial_reservation.reservation WHERE reservation_id = ?)), ?, ?::jsonb, ?)",
                     eventId, event.tenantId(), type(event), event.reservationId(), actor(event), event.reservationId(),
                     event.reservationId(), event.occurredAt().truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC),
-                    JSON.writeValueAsString(payload));
+                    JSON.writeValueAsString(payload), marker.reason().orElse(null));
             notice(event, eventId);
         } catch (JsonProcessingException failure) {
             throw new IllegalStateException("the event payload cannot be written", failure);

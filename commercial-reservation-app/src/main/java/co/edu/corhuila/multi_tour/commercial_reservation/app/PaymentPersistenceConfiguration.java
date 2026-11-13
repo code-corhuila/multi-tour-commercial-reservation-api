@@ -15,6 +15,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentConditionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcClientNoticeOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RestrictedActionMarker;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentParameterRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentParametersChangeOutbox;
@@ -71,7 +72,8 @@ class PaymentPersistenceConfiguration {
 
     @Bean
     PaymentEventOutbox paymentEventOutbox(JdbcTemplate jdbc, @Lazy CustomerProfileReader customers) {
-        return new JdbcPaymentEventOutbox(jdbc, new JdbcClientNoticeOutbox(jdbc, customers));
+        // HU-COM-020 AC-20.13: the event of a restricted action carries the marker in the reason of its envelope.
+        return new JdbcPaymentEventOutbox(jdbc, new JdbcClientNoticeOutbox(jdbc, customers), new RestrictedActionMarker());
     }
 
     @Bean
