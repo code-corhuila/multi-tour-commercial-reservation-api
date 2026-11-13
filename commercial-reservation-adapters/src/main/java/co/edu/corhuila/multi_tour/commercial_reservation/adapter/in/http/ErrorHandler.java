@@ -17,6 +17,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CashUnavai
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingReservationDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingHighRiskDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ApprovalThroughSagaRequiredException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReasonRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DiscountRuleAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.EstablishmentAccessDeniedException;
@@ -120,6 +121,10 @@ public class ErrorHandler {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
             details = missing.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
+        } else if (ex instanceof ApprovalThroughSagaRequiredException closed) {
+            // HU-COM-010 DP-11: the human route of approval is closed; the saga register-payment is the approval.
+            code = ApiError.Code.BUSINESS_RULE_VIOLATION;
+            message = closed.getMessage();
         } else if (ex instanceof ReasonRuleViolation violation) {
             code = ApiError.Code.BUSINESS_RULE_VIOLATION;
             message = violation.getMessage();

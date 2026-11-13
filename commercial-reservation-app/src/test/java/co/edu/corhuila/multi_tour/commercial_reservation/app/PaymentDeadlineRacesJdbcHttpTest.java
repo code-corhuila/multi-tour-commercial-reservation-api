@@ -107,6 +107,14 @@ class PaymentDeadlineRacesJdbcHttpTest {
                 .header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn().getResponse().getStatus();
     }
 
+    // DP-11: the approval is step 2 of the saga register-payment (service token); the human route is closed.
+    int approveViaStep2(UUID attempt, long amount) throws Exception {
+        var body = Map.of("approvedBy", UUID.randomUUID().toString(), "verifiedAmountCents", amount);
+        return mvc.perform(post(BASE + "/internal/tenants/" + tenant + "/payment-proofs/" + attempt + "/validated-payment")
+                .header("Authorization", "Bearer " + CustomerHttpTest.token(null, "SERVICE", List.of())).header("X-Correlation-Id", CatalogHttpTest.TRACE)
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(body))).andReturn().getResponse().getStatus();
+    }
+
     UUID reservation() throws Exception {
         var body = Map.of("serviceId", tour.toString(), "salidaId", departure.toString(), "people", 3, "customerId", customer.toString(),
                 "paymentType", "DEPOSIT", "paymentMethod", "TRANSFER");
@@ -246,8 +254,7 @@ class PaymentDeadlineRacesJdbcHttpTest {
         UUID id = reservation();
         assertThat(transfer(id, 90_000)).isEqualTo(201);
         UUID attempt = jdbc.queryForObject("SELECT payment_attempt_id FROM commercial_reservation.payment_attempt WHERE reservation_id = ?", UUID.class, id);
-        assertThat(send(post(BASE + "/payment-proofs/" + attempt + "/approve").header("Idempotency-Key", key())
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))))).isEqualTo(200);
+        assertThat(approveViaStep2(attempt, 90_000L)).isEqualTo(200);
         assertThat(status(id)).isEqualTo("CONFIRMED");
         assertThat(heldSeats()).isEqualTo(7);
         jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, deadline_kind, due_at) "
@@ -272,8 +279,7 @@ class PaymentDeadlineRacesJdbcHttpTest {
         UUID id = reservation();
         assertThat(transfer(id, 90_000)).isEqualTo(201);
         UUID attempt = jdbc.queryForObject("SELECT payment_attempt_id FROM commercial_reservation.payment_attempt WHERE reservation_id = ?", UUID.class, id);
-        assertThat(send(post(BASE + "/payment-proofs/" + attempt + "/approve").header("Idempotency-Key", key())
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))))).isEqualTo(200);
+        assertThat(approveViaStep2(attempt, 90_000L)).isEqualTo(200);
         for (var row : List.of(List.of("BALANCE", 30), List.of("PENDING_DIFFERENCE", 60))) {
             jdbc.update("INSERT INTO commercial_reservation.payment_deadline (payment_deadline_id, tenant_id, reservation_id, deadline_kind, due_at) "
                     + "VALUES (?, ?, ?, ?, ?)", UUID.randomUUID(), tenant, id, row.get(0),
