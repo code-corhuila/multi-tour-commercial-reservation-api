@@ -40,8 +40,12 @@ final class CatalogContract {
     }
 
     static void assertNoDeletion() {
-        API.getPaths().values().forEach(path -> assertThat(path.readOperationsMap())
-                .doesNotContainKeys(PathItem.HttpMethod.DELETE, PathItem.HttpMethod.PUT));
+        // The contract holds every operation of the service now; RN-06 is about the catalog services (the settings of the catalog are set with a PUT) and the associated establishments.
+        API.getPaths().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith("/catalog/services") || entry.getKey().equals("/associated-establishments")
+                        || entry.getKey().startsWith("/associated-establishments/"))
+                .forEach(entry -> assertThat(entry.getValue().readOperationsMap())
+                        .doesNotContainKeys(PathItem.HttpMethod.DELETE, PathItem.HttpMethod.PUT));
     }
 
     void assertCoverage() {
