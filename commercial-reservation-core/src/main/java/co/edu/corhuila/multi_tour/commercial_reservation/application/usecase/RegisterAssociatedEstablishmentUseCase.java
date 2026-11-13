@@ -8,6 +8,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.As
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AssociatedEstablishment;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentContact;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.EstablishmentType;
 import java.time.Clock;
 
@@ -29,7 +30,9 @@ public final class RegisterAssociatedEstablishmentUseCase implements RegisterAss
         return keys.register(actor.tenantId(), key, () -> {
             var item = AssociatedEstablishment.register(ids.newId(), actor.tenantId(),
                     EstablishmentType.parse(command.establishmentType()), command.commercialName(),
-                    command.commercialInformation(), command.imageReference(), actor.actorId(), clock.instant());
+                    command.commercialInformation(), command.imageReference(),
+                    EstablishmentContact.of(command.contactEmail(), command.contactPhone(), command.contactAddress()),
+                    actor.actorId(), clock.instant());
             repository.save(item);
             return item;
         }, id -> EstablishmentLookup.require(repository, actor.tenantId(), id));

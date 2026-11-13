@@ -38,7 +38,7 @@ class PublicTenantHttpTest {
         var created = mvc.perform(multipart("/api/v1/commercial-reservation/associated-establishments")
                 .file(new MockMultipartFile("image", "image.png", "image/png", EstablishmentHttpTest.PNG))
                 .param("establishmentType", "HOTEL").param("commercialName", "Hotel example")
-                .param("commercialInformation", "Promotional contact information")
+                .param("commercialInformation", "Promotional contact information").param("contactEmail", "info@hotel.example")
                 .header("Idempotency-Key", "tenant-directory-key-" + UUID.randomUUID())
                 .header("Authorization", "Bearer " + CatalogHttpTest.token(TestJwtKeys.TENANT, "TENANT_ADMINISTRATOR"))).andReturn();
         association = CatalogHttpTest.json(created).get("associationId").asText();

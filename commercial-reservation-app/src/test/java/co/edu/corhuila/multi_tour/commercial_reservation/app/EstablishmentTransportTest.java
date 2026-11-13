@@ -28,7 +28,7 @@ class EstablishmentTransportTest {
         String boundary = "establishment-transport-boundary";
         var bytes = new ByteArrayOutputStream();
         for (String[] field : new String[][] {{"establishmentType", "HOTEL"}, {"commercialName", "Hotel"},
-                {"commercialInformation", "Contact"}}) {
+                {"commercialInformation", "Contact"}, {"contactEmail", "info@hotel.example"}}) {
             bytes.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + field[0]
                     + "\"\r\n\r\n" + field[1] + "\r\n").getBytes(StandardCharsets.UTF_8));
         }

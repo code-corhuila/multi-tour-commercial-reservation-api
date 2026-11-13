@@ -2,6 +2,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolvePublicTenant;
 import static co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.EstablishmentHttpAccess.actor;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.*;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.*;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.*;
@@ -35,9 +36,13 @@ public final class EstablishmentController {
             @RequestParam(value = "establishmentType", required = false) String type,
             @RequestParam(value = "commercialName", required = false) String name,
             @RequestParam(value = "commercialInformation", required = false) String information,
+            @RequestParam(value = "contactEmail", required = false) String email,
+            @RequestParam(value = "contactPhone", required = false) String phone,
+            @RequestParam(value = "contactAddress", required = false) String address,
             @RequestParam(value = "image", required = false) MultipartFile image, HttpServletRequest request) throws java.io.IOException {
         for (String field : request.getParameterMap().keySet()) {
-            if (!Set.of("establishmentType", "commercialName", "commercialInformation", "image").contains(field))
+            if (!Set.of("establishmentType", "commercialName", "commercialInformation", "image",
+                    "contactEmail", "contactPhone", "contactAddress").contains(field))
                 throw new DomainException(field, "unknown field");
         }
         if (image == null) throw new DomainException("image", "image is required");
@@ -46,7 +51,7 @@ public final class EstablishmentController {
         String mediaType = EstablishmentImageContent.type(bytes);
         String reference = UUID.randomUUID().toString();
         var result = images.register(bytes, mediaType, () -> register.register(actor(principal), key,
-                new RegisterAssociatedEstablishment.Command(type, name, information, reference)));
+                new RegisterAssociatedEstablishment.Command(type, name, information, reference, email, phone, address)));
         var body = Response.from(result.association());
         return result.created() ? ResponseEntity.created(URI.create("/api/v1/commercial-reservation/associated-establishments/" + body.associationId()))
                 .body(body) : ResponseEntity.ok(body);
@@ -93,11 +98,14 @@ public final class EstablishmentController {
         try { return query.containsKey(field) ? Optional.of(Enum.valueOf(type, query.get(field))) : Optional.empty(); }
         catch (IllegalArgumentException invalid) { throw new DomainException(field, "has an invalid value"); }
     }
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Response(UUID associationId, EstablishmentType establishmentType, String commercialName,
-            String commercialInformation, String imageReference, AssociationStatus associationStatus) {
+            String commercialInformation, String imageReference, AssociationStatus associationStatus,
+            String contactEmail, String contactPhone, String contactAddress) {
         static Response from(AssociatedEstablishment item) {
             return new Response(item.associationId(), item.establishmentType(), item.commercialName(),
-                    item.commercialInformation(), item.imageReference(), item.associationStatus());
+                    item.commercialInformation(), item.imageReference(), item.associationStatus(),
+                    item.contact().email(), item.contact().phone(), item.contact().address());
         }
     }
 }
