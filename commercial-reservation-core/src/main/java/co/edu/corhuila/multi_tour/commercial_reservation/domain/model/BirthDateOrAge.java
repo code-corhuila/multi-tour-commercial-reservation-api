@@ -3,7 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 import java.time.LocalDate;
 
 // RN-10: a birth date is never in the future; "today" comes from the clock port in the tenant's zone.
-// TODO(DP-07): age bounds and minors are NO DEFINIDO; any positive age is accepted.
+// Decision (spec 005 DP-07, open): the age bounds and the minor rules are NO DEFINIDO, so only a future birth date is refused and any positive age is accepted.
 public record BirthDateOrAge(LocalDate birthDate, Integer age) {
     public static BirthDateOrAge ofBirthDate(LocalDate birthDate, LocalDate today) {
         if (birthDate == null) throw new DomainException("birthDateOrAge", "birthDateOrAge is required");
