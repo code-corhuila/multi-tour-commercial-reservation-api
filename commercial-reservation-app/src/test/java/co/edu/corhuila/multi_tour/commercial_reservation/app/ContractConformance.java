@@ -1,5 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import com.atlassian.oai.validator.report.LevelResolver;
+import com.atlassian.oai.validator.report.ValidationReport;
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.mockmvc.MockMvcRequest;
 import com.atlassian.oai.validator.mockmvc.MockMvcResponse;
@@ -42,12 +44,21 @@ public class ContractConformance {
         }
     }
 
+    /**
+     * swagger-request-validator injects additionalProperties:false into every branch of an allOf, so each branch rejects the
+     * properties of the other one even though the contract declares no such restriction; the check of undeclared properties is
+     * switched off for the validator (a known limitation of the library, not a decision about the contract). Everything else
+     * stays at its level.
+     */
+    private static final LevelResolver LEVELS = LevelResolver.create()
+            .withLevel("validation.schema.additionalProperties", ValidationReport.Level.IGNORE).build();
+
     private static final String SPEC = Path.of("../openapi/openapi.yaml").toAbsolutePath().toUri().toString();
     private static final OpenAPI API = new OpenAPIV3Parser().read(SPEC);
     private static final OpenApiInteractionValidator VALIDATOR = OpenApiInteractionValidator
-            .createForSpecificationUrl(SPEC).withBasePathOverride(BASE).build();
+            .createForSpecificationUrl(SPEC).withBasePathOverride(BASE).withLevelResolver(LEVELS).build();
     private static final OpenApiInteractionValidator HEALTH = OpenApiInteractionValidator
-            .createForSpecificationUrl(SPEC).withBasePathOverride("").build();
+            .createForSpecificationUrl(SPEC).withBasePathOverride("").withLevelResolver(LEVELS).build();
 
     /** The operations ("METHOD /template") that the tests of this JVM exercised, for the coverage test. */
     static final Set<String> EXERCISED = ConcurrentHashMap.newKeySet();
@@ -125,7 +136,7 @@ public class ContractConformance {
             var report = validator.validateResponse(path, request.getMethod(), MockMvcResponse.of(result.getResponse()));
             var messages = report.getMessages().stream().filter(m -> m.getKey().startsWith("validation.response."))
                     .map(m -> m.getKey() + ": " + m.getMessage().replace('\n', ' ')).toList();
-            if (!messages.isEmpty() && !RECONCILING.contains(operation + " " + status)) {
+            if (!messages.isEmpty() && (System.getProperty("contract.report") != null || !RECONCILING.contains(operation + " " + status))) {
                 String line = operation + " " + status + " -> " + messages;
                 if (System.getProperty("contract.report") != null) {
                     record(line);
