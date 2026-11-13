@@ -43,13 +43,13 @@ public class ManageCancellationPoliciesUseCase implements ManageCancellationPoli
         PaymentActor actor = command.actor();
         CancellationAuthorization.requireChangePolicy(actor);
         if (command.reason() == null || command.reason().isBlank()) throw new DomainException("reason", "reason is required");
-        if (command.policies() == null || command.policies().isEmpty()) throw new DomainException("policies", "at least one policy row is required");
+        if (command.policies() == null || command.policies().isEmpty()) throw new DomainException("policies", "policies must have at least one row");
         Instant now = Instant.now(clock);
         Set<UUID> seen = new HashSet<>();
         for (CancellationPolicyValues values : command.policies()) {
             if (values.penaltyBasisPoints() == null) throw new DomainException("penaltyBasisPoints", "penaltyBasisPoints is required");
             if (!seen.add(values.serviceId() == null ? TENANT_LEVEL : values.serviceId())) {
-                throw new DomainException("serviceId", "a service appears twice in the same change");
+                throw new DomainException("serviceId", "serviceId appears twice in the same change");
             }
         }
         List<CancellationPolicy> changes = command.policies().stream()
