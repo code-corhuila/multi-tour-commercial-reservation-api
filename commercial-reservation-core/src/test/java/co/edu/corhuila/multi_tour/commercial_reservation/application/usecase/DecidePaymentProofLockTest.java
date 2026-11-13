@@ -3,7 +3,6 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ApproveProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RejectProofCommand;
@@ -93,7 +92,7 @@ class DecidePaymentProofLockTest {
     @Test void anApprovalLocksTheReservationOfTheProofInsideTheTransaction() {
         plant();
 
-        decide.approve(new ApproveProofCommand(admin(), PROOF, 100_000L, null));
+        decide.recordApproval(admin().tenantId(), admin().actorId(), PROOF, 100_000L, null);
 
         assertThat(spy.locked).containsExactly(RESERVATION);
         assertThat(spy.lockedInsideTransaction).containsExactly(true);
@@ -121,7 +120,7 @@ class DecidePaymentProofLockTest {
         plant();
         PaymentActor stranger = new PaymentActor(new UUID(11, 99), ADMIN, Role.TENANT_ADMINISTRATOR);
 
-        assertThatThrownBy(() -> decide.approve(new ApproveProofCommand(stranger, PROOF, 100_000L, null))).isInstanceOf(PaymentProofNotFoundException.class);
+        assertThatThrownBy(() -> decide.recordApproval(stranger.tenantId(), stranger.actorId(), PROOF, 100_000L, null)).isInstanceOf(PaymentProofNotFoundException.class);
         assertThatThrownBy(() -> decide.reject(new RejectProofCommand(stranger, PROOF, "illegible"))).isInstanceOf(PaymentProofNotFoundException.class);
 
         assertThat(spy.locked).isEmpty();
