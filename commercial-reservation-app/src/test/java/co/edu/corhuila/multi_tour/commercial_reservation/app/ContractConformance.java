@@ -57,13 +57,25 @@ public class ContractConformance {
      * It must end empty: an entry is removed when the code or the contract is reconciled.
      */
     static final Set<String> RECONCILING = Set.of(
-            "POST /reservations 201", "POST /reservations 200", "GET /reservations 200", "GET /reservations/{reservationId} 200",
-            "POST /reservations/{reservationId}/payments 503", "POST /customers 422", "PUT /payment-parameters 200", "PUT /payment-parameters 422", "GET /payment-parameters 200",
+            "POST /reservations 201",
+            "POST /reservations 200",
+            "GET /reservations 200",
+            "GET /reservations/{reservationId} 200",
+            "POST /reservations/{reservationId}/payments 503",
+            "POST /customers 422",
+            "PUT /payment-parameters 200",
+            "PUT /payment-parameters 422",
+            "GET /payment-parameters 200",
             "POST /internal/tenants/{tenantId}/payment-proofs/{paymentId}/validated-payment 200",
             "POST /financial-decisions/{financialDecisionId}/refund-decision 200",
-            "POST /payment-proofs/{paymentId}/reject 200", "GET /payment-proofs 200", "GET /payment-proofs/{paymentId} 200",
-            "GET /internal/tenants/{tenantId}/payment-proofs 200", "GET /credit-balances/{creditBalanceId} 200",
-            "GET /public/tenants/{identifier}/tours/{serviceId} 200", "POST /internal/outbox/{eventId}/published 200");
+            "POST /payment-proofs/{paymentId}/reject 200",
+            "GET /payment-proofs 200",
+            "GET /payment-proofs/{paymentId} 200",
+            "GET /internal/tenants/{tenantId}/payment-proofs 200",
+            "GET /credit-balances/{creditBalanceId} 200",
+            "GET /public/tenants/{identifier}/tours/{serviceId} 200",
+            "POST /internal/outbox/{eventId}/published 200"
+    );
 
     private record Route(String method, String template, Pattern pattern, int parameters) {}
 
