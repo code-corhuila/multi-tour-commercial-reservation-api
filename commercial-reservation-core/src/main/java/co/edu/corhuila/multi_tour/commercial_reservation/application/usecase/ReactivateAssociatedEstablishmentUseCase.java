@@ -14,11 +14,12 @@ public final class ReactivateAssociatedEstablishmentUseCase implements Reactivat
     public ReactivateAssociatedEstablishmentUseCase(AssociatedEstablishmentRepository repository, Clock clock) {
         this.repository = repository; this.clock = clock;
     }
-    @Override public AssociatedEstablishment reactivate(EstablishmentActor actor, UUID associationId) {
+    @Override public AssociatedEstablishment reactivate(EstablishmentActor actor, UUID associationId, String reason) {
         EstablishmentAuthorization.require(actor, true);
         var item = EstablishmentLookup.require(repository, actor.tenantId(), associationId);
+        AssociatedEstablishment.requireReason(reason);
         if (item.associationStatus() == AssociationStatus.INACTIVE) {
-            item.reactivate(actor.actorId(), clock.instant()); repository.save(item);
+            item.reactivate(actor.actorId(), reason, clock.instant()); repository.save(item);
         }
         return item;
     }
