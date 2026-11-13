@@ -72,11 +72,11 @@ class EstablishmentChangeLogTest {
 
     @Test void theLogIsNewestFirstFilteredByTypeAndOfTheTenantOnly() {
         var hotel = registered("Hotel one").associationId();
-        register.register(admin, "restaurant-key", new Command("RESTAURANT", "Restaurant one", "Info", "ref-2"));
+        register.register(admin, "restaurant-key", new Command("RESTAURANT", "Restaurant one", "Info", "ref-2", null, null, null));
         var later = new InactivateAssociatedEstablishmentUseCase(repository, Clock.offset(clock, Duration.ofSeconds(5)));
         later.inactivate(admin, hotel, "Closed for works");
         var foreign = new EstablishmentActor(OTHER, ACTOR, TENANT_ADMINISTRATOR);
-        register.register(foreign, "foreign-key", new Command("HOTEL", "Foreign", "Info", "ref-3"));
+        register.register(foreign, "foreign-key", new Command("HOTEL", "Foreign", "Info", "ref-3", null, null, null));
         var all = list.list(admin, Optional.empty(), 1, 20);
         assertThat(all.total()).isEqualTo(3);
         assertThat(all.items().get(0).eventType()).isEqualTo(EstablishmentChangeType.INACTIVATED);
@@ -106,6 +106,6 @@ class EstablishmentChangeLogTest {
     }
 
     private AssociatedEstablishment registered(String name) {
-        return register.register(admin, "key-" + name, new Command("HOTEL", name, "Info", "ref-" + name)).association();
+        return register.register(admin, "key-" + name, new Command("HOTEL", name, "Info", "ref-" + name, null, null, null)).association();
     }
 }
