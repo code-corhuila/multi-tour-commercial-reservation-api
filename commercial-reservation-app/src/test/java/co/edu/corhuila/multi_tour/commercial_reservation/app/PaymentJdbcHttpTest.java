@@ -184,14 +184,21 @@ class PaymentJdbcHttpTest {
         assertThat(file.getResponse().getHeader("Cache-Control")).contains("no-store");
     }
 
+    // DP-11: the only approval is step 2 of the saga register-payment (service token, path tenant); the human route is closed.
+    private MvcResult approveViaStep2(UUID forTenant, String proof, Map<String, Object> amount, int expected) throws Exception {
+        var body = new java.util.LinkedHashMap<String, Object>(amount);
+        body.put("approvedBy", UUID.randomUUID().toString());
+        return exchange(post(BASE + "/internal/tenants/" + forTenant + "/payment-proofs/" + proof + "/validated-payment")
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(body)), CustomerHttpTest.token(null, "SERVICE", List.of()), expected);
+    }
+
     @Test void theApprovalConfirmsTheReservationAndTheRejectionKeepsTheHistory() throws Exception {
         String id = reservation("pay-jdbc-0004");
         configure();
         String first = transfer(id, 90_000, "pay-jdbc-0005").get("paymentId").asText();
         String second = transfer(id, 20_000, "pay-jdbc-0006").get("paymentId").asText();
 
-        JsonNode approved = CatalogHttpTest.json(exchange(post(BASE + "/payment-proofs/" + first + "/approve").header("Idempotency-Key", "pay-jdbc-0007")
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 200));
+        JsonNode approved = CatalogHttpTest.json(approveViaStep2(tenant, first, Map.of("verifiedAmountCents", 90_000L), 200));
         JsonNode rejected = CatalogHttpTest.json(exchange(post(BASE + "/payment-proofs/" + second + "/reject").header("Idempotency-Key", "pay-jdbc-0008")
                 .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("reason", "Illegible proof"))), admin(), 200));
 
@@ -202,8 +209,7 @@ class PaymentJdbcHttpTest {
                 String.class, UUID.fromString(id))).isEqualTo("CONFIRMED");
         assertThat(jdbc.queryForList("SELECT event_type FROM commercial_reservation.outbox_event WHERE reservation_id = ?", String.class, UUID.fromString(id)))
                 .contains("PaymentEvidenceRegistered", "CapacityAllocated", "PaymentValidated", "ReservationConfirmed", "PaymentRejected");
-        exchange(post(BASE + "/payment-proofs/" + first + "/approve").header("Idempotency-Key", "pay-jdbc-0009")
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 422);
+        approveViaStep2(tenant, first, Map.of("verifiedAmountCents", 80_000L, "reason", "Another amount"), 422);
     }
 
     // DP-05, decided 2026-11-11 (PDR v1.9: RN-RES-006A, RN-RES-004, GAP-03): the minimum (90.000 of 300.000) conditions the confirmation,
@@ -213,8 +219,7 @@ class PaymentJdbcHttpTest {
         configure();
 
         String small = transfer(id, 50_000, "pay-jdbc-0021").get("paymentId").asText();
-        JsonNode partial = CatalogHttpTest.json(exchange(post(BASE + "/payment-proofs/" + small + "/approve").header("Idempotency-Key", "pay-jdbc-0022")
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 50_000L))), admin(), 200));
+        JsonNode partial = CatalogHttpTest.json(approveViaStep2(tenant, small, Map.of("verifiedAmountCents", 50_000L), 200));
 
         assertThat(partial.get("reservationStatus").asText()).isEqualTo("PENDING_PAYMENT");
         assertThat(partial.get("validatedValueCents").asLong()).isEqualTo(50_000L);
@@ -222,8 +227,7 @@ class PaymentJdbcHttpTest {
                 String.class, UUID.fromString(id))).isEqualTo("PARTIAL:250000");
 
         String rest = transfer(id, 40_000, "pay-jdbc-0023").get("paymentId").asText();
-        JsonNode confirmed = CatalogHttpTest.json(exchange(post(BASE + "/payment-proofs/" + rest + "/approve").header("Idempotency-Key", "pay-jdbc-0024")
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 40_000L))), admin(), 200));
+        JsonNode confirmed = CatalogHttpTest.json(approveViaStep2(tenant, rest, Map.of("verifiedAmountCents", 40_000L), 200));
 
         assertThat(confirmed.get("reservationStatus").asText()).isEqualTo("CONFIRMED");
         assertThat(confirmed.get("validatedValueCents").asLong()).isEqualTo(90_000L);
@@ -439,15 +443,17 @@ class PaymentJdbcHttpTest {
         exchange(get(BASE + "/payment-proofs/" + theirs), admin(), 404);
         exchange(get(BASE + "/payment-proofs/" + theirs + "/file"), admin(), 404);
         exchange(get(BASE + "/payment-proofs/" + mine), otherAdmin, 404);
-        exchange(post(BASE + "/payment-proofs/" + theirs + "/approve").header("Idempotency-Key", "iso-approve-" + UUID.randomUUID())
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 404);
+        approveViaStep2(tenant, theirs, Map.of("verifiedAmountCents", 90_000L), 404);
         exchange(post(BASE + "/payment-proofs/" + mine + "/reject").header("Idempotency-Key", "iso-reject-" + UUID.randomUUID())
                 .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("reason", "Not mine to reject"))), otherAdmin, 404);
         assertThat(attemptStatus(mine)).isEqualTo("IN_VALIDATION");
         assertThat(attemptStatus(theirs)).isEqualTo("IN_VALIDATION");
 
+        // DP-11: the human route is closed and leaves the proof under validation; only the saga step 2 applies the amount.
         exchange(post(BASE + "/payment-proofs/" + mine + "/approve").header("Idempotency-Key", "iso-own-" + UUID.randomUUID())
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 200);
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), admin(), 422);
+        assertThat(attemptStatus(mine)).isEqualTo("IN_VALIDATION");
+        approveViaStep2(tenant, mine, Map.of("verifiedAmountCents", 90_000L), 200);
         assertThat(attemptStatus(mine)).isEqualTo("APPROVED");
         assertThat(attemptStatus(theirs)).isEqualTo("IN_VALIDATION");
     }

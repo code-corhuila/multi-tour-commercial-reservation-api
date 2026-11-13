@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
@@ -13,19 +14,34 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 // HU-COM-010 over HTTP, the decisions (api spec T-03, T-04, T-06; AC-10.1 to AC-10.3, AC-10.8, AC-10.10, AC-10.13) and the step 2 of the
 // saga register-payment that records the validated payment (DP-11, answered 2026-10-30; PROPOSED internal route).
 @ExtendWith(OutputCaptureExtension.class)
+// A class-level @Import replaces the one of the base, so the fixtures of the base are listed again.
+@Import({CatalogHttpFixture.class, CustomerHttpFixture.class, DiscountRuleHttpFixture.class, ReservationHttpFixture.class, PaymentHttpFixture.class,
+        PaymentProofHttpFixture.class, PaymentDeadlineHttpFixture.class, PaymentProofDecisionHttpTest.NoSuspendedTenant.class})
 class PaymentProofDecisionHttpTest extends ReservationHttpBase {
+
+    // The decision reads whether the tenant is suspended (HU-COM-020); these routes run over the memory fakes, so no tenant is, instead of the JDBC reader that
+    // would open the fictitious database of the HTTP tests.
+    @TestConfiguration
+    static class NoSuspendedTenant {
+        @Bean @Primary SuspensionReader noSuspension() { return tenantId -> Optional.empty(); }
+    }
 
     private final UUID proof = new UUID(21, 1), reservationId = new UUID(21, 2);
 
@@ -51,12 +67,19 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
                 .content(TestJwtKeys.JSON.writeValueAsBytes(body));
     }
 
+    // The only way to approve (DP-11): step 2 of the saga, which acts for the person who clicked and carries the service token.
+    private MockHttpServletRequestBuilder approveAsAdministrator(Map<String, Object> amount) throws Exception {
+        var body = new LinkedHashMap<String, Object>(amount);
+        body.put("approvedBy", TestJwtKeys.ACCOUNT);
+        return step2(tenant, body, CustomerHttpTest.token(null, "SERVICE", List.of()));
+    }
+
     private static List<String> names(List<PaymentEvent> events) {
         return events.stream().map(e -> e.getClass().getSimpleName()).toList();
     }
 
     @Test void theAdministratorApprovesTheProofAndTheReservationIsConfirmedWithTheStoredDecisionOnARepeat() throws Exception {
-        var decision = CatalogHttpTest.json(exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-001", token(ADMIN)), 200));
+        var decision = CatalogHttpTest.json(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 200));
 
         assertThat(decision.get("validationStatus").asText()).isEqualTo("APPROVED");
         assertThat(decision.get("appliedAmountCents").asLong()).isEqualTo(90_000L);
@@ -65,24 +88,23 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
         assertThat(decision.get("validatedValueCents").asLong()).isEqualTo(90_000L);
         assertThat(names(payments.events)).containsExactly("PaymentValidated", "ReservationConfirmed");
 
-        var again = CatalogHttpTest.json(exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-001", token(ADMIN)), 200));
+        var again = CatalogHttpTest.json(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 200));
         assertThat(again).isEqualTo(decision);
         assertThat(payments.events).hasSize(2);
-        var other = CatalogHttpTest.json(exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-002", token(ADMIN)), 422));
+        var other = CatalogHttpTest.json(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 80_000L, "reason", "Another amount")), 422));
         assertThat(other.get("error").asText()).isEqualTo("INVALID_STATUS_TRANSITION");
         assertThat(payments.events).hasSize(2);
     }
 
     @Test void aDifferentVerifiedAmountNeedsAReasonAndTheExcessIsHandedToTheCreditBalance() throws Exception {
-        CatalogHttpTest.assertField(exchange(decide("approve", Map.of("verifiedAmountCents", 80_000L), "decision-key-003", token(ADMIN)), 400), "reason");
-        CatalogHttpTest.assertField(exchange(decide("approve", Map.of(), "decision-key-004", token(ADMIN)), 400), "verifiedAmountCents");
-        CatalogHttpTest.assertField(exchange(decide("approve", Map.of("verifiedAmountCents", 0L), "decision-key-005", token(ADMIN)), 400), "verifiedAmountCents");
-        CatalogHttpTest.assertField(exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), null, token(ADMIN)), 400), "Idempotency-Key");
+        CatalogHttpTest.assertField(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 80_000L)), 400), "reason");
+        CatalogHttpTest.assertField(exchange(approveAsAdministrator(Map.of()), 400), "verifiedAmountCents");
+        CatalogHttpTest.assertField(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 0L)), 400), "verifiedAmountCents");
         assertThat(payments.events).isEmpty();
 
         var body = new LinkedHashMap<String, Object>();
         body.put("verifiedAmountCents", 350_000L); body.put("reason", "The customer paid the whole value");
-        var decision = CatalogHttpTest.json(exchange(decide("approve", body, "decision-key-006", token(ADMIN)), 200));
+        var decision = CatalogHttpTest.json(exchange(approveAsAdministrator(body), 200));
 
         assertThat(decision.get("appliedAmountCents").asLong()).isEqualTo(300_000L);
         assertThat(decision.get("excessAmountCents").asLong()).isEqualTo(50_000L);
@@ -96,7 +118,7 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
         }
         assertThat(payments.events).isEmpty();
         String granted = CustomerHttpTest.token(tenant.toString(), COLLABORATOR, List.of("VALIDATE_PAYMENT_PROOFS"));
-        exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-009", granted), 200);
+        exchange(decide("reject", Map.of("reason", "illegible"), "decision-key-009", granted), 200);
     }
 
     @Test void aRejectionKeepsTheReasonAndTheDecisionIsFinal() throws Exception {
@@ -110,7 +132,7 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
         assertThat(names(payments.events)).containsExactly("PaymentRejected");
         assertThat(CatalogHttpTest.json(exchange(decide("reject", Map.of("reason", "The proof is illegible"), "decision-key-011", token(ADMIN)), 200)))
                 .isEqualTo(decision);
-        exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-012", token(ADMIN)), 422);
+        exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 422);
     }
 
     // AC-10.20: a decision after the deadline cancels the reservation; while that cancellation is not built the refusal says so, not
@@ -127,10 +149,43 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
         assertThat(payments.cancelled).isEmpty();
     }
 
-    @Test void aProofOfAnotherTenantOrAnUnknownOneLooksMissing() throws Exception {
-        exchange(post(BASE + "/payment-proofs/" + new UUID(21, 99) + "/approve").header("Authorization", "Bearer " + token(ADMIN))
-                .header("Idempotency-Key", "decision-key-013").header("X-Correlation-Id", TRACE).contentType(MediaType.APPLICATION_JSON)
-                .content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L))), 404);
+    @Test void anUnknownProofLooksMissingToStep2() throws Exception {
+        String service = CustomerHttpTest.token(null, "SERVICE", List.of());
+        exchange(post(BASE + "/internal/tenants/" + tenant + "/payment-proofs/" + new UUID(21, 99) + "/validated-payment")
+                .header("Authorization", "Bearer " + service).header("X-Correlation-Id", TRACE).contentType(MediaType.APPLICATION_JSON)
+                .content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("approvedBy", new UUID(21, 7).toString(), "verifiedAmountCents", 90_000L))), 404);
+    }
+
+    // DP-11 (Jhon, 2026-10-30): the income reaches the cash box before the payment is applied, and only the saga does it. The human route no
+    // longer applies the amount for anybody: it answers 422 and the proof stays under validation, so no payment is registered without Cash.
+    @Test void theHumanApproveRouteIsClosedAndRecordsNothingWithoutCash() throws Exception {
+        String granted = CustomerHttpTest.token(tenant.toString(), COLLABORATOR, List.of("VALIDATE_PAYMENT_PROOFS"));
+        for (String bearer : List.of(token(ADMIN), granted)) {
+            var refused = CatalogHttpTest.json(exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-030", bearer), 422));
+            assertThat(refused.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+            assertThat(refused.get("message").asText()).contains("saga register-payment");
+        }
+        exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-031", token(MANAGER)), 403);
+
+        assertThat(payments.events).isEmpty();
+        assertThat(payments.income).isEmpty();
+        assertThat(store.reservations.get(reservationId).reservationStatus().name()).isNotEqualTo("CONFIRMED");
+    }
+
+    // The step 2 that the saga calls after Cash recorded the income applies the amount with the reason, confirms and emits the events once.
+    @Test void step2WithAReasonAppliesTheAmountDifferenceAndConfirmsOnce() throws Exception {
+        var body = new LinkedHashMap<String, Object>();
+        body.put("verifiedAmountCents", 100_000L); body.put("reason", "The bank statement shows a higher amount");
+
+        var first = CatalogHttpTest.json(exchange(approveAsAdministrator(body), 200));
+        var again = CatalogHttpTest.json(exchange(approveAsAdministrator(body), 200));
+
+        assertThat(first.get("validationStatus").asText()).isEqualTo("APPROVED");
+        assertThat(first.get("verifiedAmountCents").asLong()).isEqualTo(100_000L);
+        assertThat(first.get("decisionReason").asText()).isEqualTo("The bank statement shows a higher amount");
+        assertThat(first.get("reservationStatus").asText()).isEqualTo("CONFIRMED");
+        assertThat(again).isEqualTo(first);
+        assertThat(names(payments.events)).containsExactly("PaymentValidated", "ReservationConfirmed");
     }
 
     @Test void step2OfTheSagaRecordsTheValidatedPaymentForTheForwardedUserAndRepeatsIdempotently() throws Exception {
@@ -183,8 +238,8 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
 
         withApplicationTrace(() -> {
             try {
-                exchange(decide("approve", body, "decision-key-018", token(ADMIN)), 200);
-                exchange(decide("approve", body, "decision-key-018", token(ADMIN)), 200);
+                exchange(approveAsAdministrator(body), 200);
+                exchange(approveAsAdministrator(body), 200);
                 exchange(decide("approve", body, "decision-key-019", token(ADMIN)), 422);
                 return null;
             } catch (Exception e) {

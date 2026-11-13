@@ -117,13 +117,24 @@ class PaymentProofDecisionRaceJdbcTest {
 
     private record Outcome(int status, String error) {}
 
+    // DP-11: an approval is step 2 of the saga register-payment (service token, tenant in the path, no key); a rejection is the human route.
     private Outcome decide(CountDownLatch start, String proof, String action, Map<String, Object> body, String key) throws Exception {
         start.await();
-        MockHttpServletResponse response = mvc.perform(post(BASE + "/payment-proofs/" + proof + "/" + action).header("Idempotency-Key", key)
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(body)).header("Authorization", bearer())
+        var request = action.equals("approve")
+                ? post(BASE + "/internal/tenants/" + tenant + "/payment-proofs/" + proof + "/validated-payment")
+                        .content(TestJwtKeys.JSON.writeValueAsBytes(approvedBy(body))).header("Authorization", "Bearer " + CustomerHttpTest.token(null, "SERVICE", List.of()))
+                : post(BASE + "/payment-proofs/" + proof + "/" + action).header("Idempotency-Key", key)
+                        .content(TestJwtKeys.JSON.writeValueAsBytes(body)).header("Authorization", bearer());
+        MockHttpServletResponse response = mvc.perform(request.contentType(MediaType.APPLICATION_JSON)
                 .header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn().getResponse();
         String content = response.getContentAsString();
         return new Outcome(response.getStatus(), content.isBlank() ? "" : TestJwtKeys.JSON.readTree(content).path("error").asText());
+    }
+
+    private static Map<String, Object> approvedBy(Map<String, Object> body) {
+        var withApprover = new java.util.LinkedHashMap<String, Object>(body);
+        withApprover.put("approvedBy", UUID.randomUUID().toString());
+        return withApprover;
     }
 
     private List<Outcome> together(CountDownLatch start, List<Callable<Outcome>> calls) throws Exception {
@@ -145,7 +156,7 @@ class PaymentProofDecisionRaceJdbcTest {
 
     // RNF-06: two decisions on the SAME proof with different keys, at the same moment, in every combination of the two actions.
     @Test void twoDecisionsOnTheSameProofLeaveExactlyOneWinnerAndTheOtherGetsTheFinalRefusal() throws Exception {
-        String[][] pairs = {{"approve", "approve"}, {"approve", "reject"}, {"reject", "approve"}, {"reject", "reject"}};
+        String[][] pairs = {{"approve", "reject"}, {"reject", "approve"}, {"reject", "reject"}};
         for (int round = 0; round < ROUNDS; round++) {
             String[] pair = pairs[round % pairs.length];
             String reservation = reservation(salida(), "race-same-" + round + "-0");
@@ -232,29 +243,16 @@ class PaymentProofDecisionRaceJdbcTest {
         assertThat(TestJwtKeys.JSON.readTree(response.getContentAsString()).at("/meta/total").asInt()).isZero();
     }
 
-    // The same key with the same proof but another body is refused, never answered with the stored decision.
-    @Test void theSameKeyWithAnotherBodyIsRefusedAndTheSameBodyReplays() throws Exception {
-        String proof = proof("idem-body");
-        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-body-key-1").status()).isEqualTo(200);
-
-        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-body-key-1").status()).isEqualTo(200);
-        Outcome otherAmount = once(proof, "approve", Map.of("verifiedAmountCents", 80_000L, "reason", "Short"), "idem-body-key-1");
-        Outcome otherReason = once(proof, "approve", Map.of("verifiedAmountCents", 90_000L, "reason", "Not the same"), "idem-body-key-1");
-        Outcome otherAction = once(proof, "reject", Map.of("reason", "Illegible proof"), "idem-body-key-1");
-
-        assertThat(List.of(otherAmount, otherReason, otherAction)).allMatch(o -> o.status() == 422 && o.error().equals("BUSINESS_RULE_VIOLATION"));
-        assertThat(decisionEvents(proof)).isEqualTo(1);
-    }
-
+    // The same key with the same proof but another reason is refused, never answered with the stored decision (an approval has no key: DP-11).
     @Test void aRejectionReplaysOnlyWithTheSameReason() throws Exception {
         String proof = proof("idem-rej");
         assertThat(once(proof, "reject", Map.of("reason", "Illegible proof"), "idem-rej-key-1").status()).isEqualTo(200);
 
         assertThat(once(proof, "reject", Map.of("reason", "Illegible proof"), "idem-rej-key-1").status()).isEqualTo(200);
         Outcome other = once(proof, "reject", Map.of("reason", "Another reason"), "idem-rej-key-1");
-        Outcome approve = once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-rej-key-1");
 
-        assertThat(List.of(other, approve)).allMatch(o -> o.status() == 422 && o.error().equals("BUSINESS_RULE_VIOLATION"));
+        assertThat(other).matches(o -> o.status() == 422 && o.error().equals("BUSINESS_RULE_VIOLATION"));
+        assertThat(decisionEvents(proof)).isEqualTo(1);
     }
 
     // HU-COM-010 debt (audit of 2026-11-06), db changeset 034: the decision events carry the proof id so a consumer can correlate and
@@ -285,17 +283,17 @@ class PaymentProofDecisionRaceJdbcTest {
     @Test void aRefusedDecisionDoesNotBurnItsKey() throws Exception {
         String proof = proof("idem-burn");
 
-        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 80_000L), "idem-burn-key-1").status()).isEqualTo(400);
-        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-burn-key-1").status()).isEqualTo(200);
+        assertThat(once(proof, "reject", Map.of(), "idem-burn-key-1").status()).isEqualTo(400);
+        assertThat(once(proof, "reject", Map.of("reason", "Illegible proof"), "idem-burn-key-1").status()).isEqualTo(200);
     }
 
     // The permission is checked before the replay: whoever cannot decide learns nothing from a stored key.
     @Test void aCollaboratorWithoutThePermissionIsRefusedEvenWithAStoredKey() throws Exception {
         String proof = proof("idem-perm");
-        assertThat(once(proof, "approve", Map.of("verifiedAmountCents", 90_000L), "idem-perm-key-1").status()).isEqualTo(200);
+        assertThat(once(proof, "reject", Map.of("reason", "Illegible proof"), "idem-perm-key-1").status()).isEqualTo(200);
 
-        MockHttpServletResponse response = mvc.perform(post(BASE + "/payment-proofs/" + proof + "/approve").header("Idempotency-Key", "idem-perm-key-1")
-                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("verifiedAmountCents", 90_000L)))
+        MockHttpServletResponse response = mvc.perform(post(BASE + "/payment-proofs/" + proof + "/reject").header("Idempotency-Key", "idem-perm-key-1")
+                .contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("reason", "Illegible proof")))
                 .header("Authorization", "Bearer " + CatalogHttpTest.token(tenant.toString(), "OPERATIONAL_COLLABORATOR"))
                 .header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn().getResponse();
 
@@ -310,8 +308,8 @@ class PaymentProofDecisionRaceJdbcTest {
             String key = "idem-race-key-" + round;
 
             List<Outcome> outcomes = together(start, List.of(
-                    () -> decide(start, proof, "approve", Map.of("verifiedAmountCents", 90_000L), key),
-                    () -> decide(start, proof, "approve", Map.of("verifiedAmountCents", 90_000L), key)));
+                    () -> decide(start, proof, "reject", Map.of("reason", "Illegible proof"), key),
+                    () -> decide(start, proof, "reject", Map.of("reason", "Illegible proof"), key)));
 
             assertThat(outcomes).as("round %d", round).extracting(Outcome::status).containsExactly(200, 200);
             assertThat(decisionEvents(proof)).isEqualTo(1);
@@ -326,8 +324,8 @@ class PaymentProofDecisionRaceJdbcTest {
             String key = "idem-mix-key-" + round;
 
             List<Outcome> outcomes = together(start, List.of(
-                    () -> decide(start, proof, "approve", Map.of("verifiedAmountCents", 90_000L), key),
-                    () -> decide(start, proof, "reject", Map.of("reason", "Illegible proof"), key)));
+                    () -> decide(start, proof, "reject", Map.of("reason", "Illegible proof"), key),
+                    () -> decide(start, proof, "reject", Map.of("reason", "Another reason"), key)));
 
             assertThat(outcomes).as("round %d", round).extracting(Outcome::status).containsExactlyInAnyOrder(200, 422);
             assertThat(outcomes).filteredOn(o -> o.status() == 422).extracting(Outcome::error).containsExactly("BUSINESS_RULE_VIOLATION");

@@ -1,6 +1,5 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ApproveProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DecidedProof;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RecordValidatedPaymentCommand;
@@ -8,6 +7,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Rejec
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.DecidePaymentProofWithKey;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RecordValidatedPayment;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadCustomerName;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentProofAuthorization;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ApprovalThroughSagaRequiredException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import java.time.Clock;
 import java.time.Instant;
@@ -22,13 +23,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-// The decisions on a proof (PROPOSED in the contract). The approval and the rejection are the human decision of the reviewer; step 2
-// of the saga register-payment records the validated payment through an internal route for the SERVICE role (HU-COM-010 DP-11).
-// The reviewer, the time and the state are never read from the body of a person; the saga forwards the user it acts for.
+// The decisions on a proof (PROPOSED in the contract). The rejection is the human decision of the reviewer. The approval is the saga
+// register-payment (HU-COM-010 DP-11): Cash records the income and step 2 records the validated payment through an internal route for the
+// SERVICE role, so the human route of approval is closed and applies nothing. The reviewer, the time and the state are never read from the
+// body of a person; the saga forwards the user it acts for.
 @RestController
 @RequestMapping("/api/v1/commercial-reservation")
 public final class PaymentProofDecisionController {
-    public record Approve(Long verifiedAmountCents, String reason) {}
     public record Reject(String reason) {}
     public record ValidatedPayment(UUID approvedBy, Long verifiedAmountCents, String reason) {}
 
@@ -45,13 +46,12 @@ public final class PaymentProofDecisionController {
         this.clock = clock;
     }
 
+    // Closed (DP-11): whoever may decide is told to use the saga and nothing is recorded; whoever may not gets 403 as before.
     @PostMapping("/payment-proofs/{paymentId}/approve")
     public ProofDecisionResponse approve(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
-            @PathVariable("paymentId") UUID paymentId, @RequestHeader(value = "Idempotency-Key", required = false) String key,
-            @RequestBody Approve request) {
-        requireKey(key);
-        PaymentActor actor = PaymentActors.of(principal);
-        return answer(decisions.approve(new ApproveProofCommand(actor, paymentId, request.verifiedAmountCents(), request.reason()), key));
+            @PathVariable("paymentId") UUID paymentId) {
+        PaymentProofAuthorization.requireDecide(PaymentActors.of(principal));
+        throw new ApprovalThroughSagaRequiredException();
     }
 
     @PostMapping("/payment-proofs/{paymentId}/reject")
