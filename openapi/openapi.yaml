@@ -689,6 +689,59 @@ paths:
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
+  /associated-establishments/changes:
+    get:
+      summary: List the change log of the associated establishments
+      description: |
+        PROPOSED (HU-COM-002, AC-PE.14, 2026-11-12). Returns the traceability of the tenant's associations,
+        newest first: one entry per registration, inactivation or reactivation, with the establishment, the
+        event, the reason, the person who did it and the instant. The log is append-only and has no write
+        operation of its own: entries are written by the operations above, in the same transaction as the
+        state change. The tenant is resolved from the bearer token. `reason` is empty for `REGISTERED`.
+        An association registered before this change has no `REGISTERED` entry. The person is shown by
+        identifier: the service holds no display name (DP-002-V19-3).
+        **Requires:** `TENANT_ADMINISTRATOR`; `MANAGER` and `ANALYST` read it like the list above.
+      operationId: listAssociatedEstablishmentChanges
+      tags: [Associated establishments]
+      x-proposed: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: './_shared.yaml#/components/parameters/PageParam'
+        - $ref: './_shared.yaml#/components/parameters/LimitParam'
+        - name: establishmentType
+          in: query
+          description: Filter by establishment type
+          schema:
+            $ref: '#/components/schemas/AssociatedEstablishmentType'
+      responses:
+        '200':
+          description: Paginated tenant-scoped change log, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EstablishmentChangeResponse'
+                  meta:
+                    $ref: './_shared.yaml#/components/schemas/PaginatedMeta'
+        '400':
+          description: Invalid pagination or filter value
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
   /associated-establishments/{associationId}/inactivate:
     parameters:
       - $ref: '#/components/parameters/AssociationIdPath'
@@ -698,10 +751,23 @@ paths:
         Inactivates the tenant-scoped association, retaining its history and excluding it from
         new promotional consultations. The operation is idempotent for an already inactive
         association (plan D-09) and does not delete or modify catalog services.
+        PROPOSED (HU-COM-002, 2026-11-12): the request carries a mandatory `reason`; a missing, blank or
+        too long reason answers `400` naming `reason` and nothing is written. The event, the actor, the
+        reason and the time are recorded in the change log in the same transaction as the state
+        (PDR RF-018: both actions leave a trace). A repeated call on an already inactive association
+        answers `200` and records nothing.
+        **Requires:** `TENANT_ADMINISTRATOR`.
       operationId: inactivateAssociatedEstablishment
       tags: [Associated establishments]
       security:
         - bearerAuth: []
+      x-proposed: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstablishmentChangeReasonRequest'
       responses:
         '200':
           description: Association after inactivation
@@ -710,7 +776,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AssociatedEstablishmentResponse'
         '400':
-          description: The identifier is not a UUID
+          description: The identifier is not a UUID, or the reason is missing, blank or longer than 500 characters
           content:
             application/json:
               schema:
@@ -734,10 +800,20 @@ paths:
         for new promotional consultations. The operation is idempotent for an already active
         association (plan D-09) and does not create rooms, dishes, menus, seats, rates or
         availability.
+        PROPOSED (HU-COM-002, 2026-11-12): same mandatory `reason` and same change log as `inactivate`
+        (RN-ASO-001, GAP-10: the reactivation is recorded with traceability).
+        **Requires:** `TENANT_ADMINISTRATOR`.
       operationId: reactivateAssociatedEstablishment
       tags: [Associated establishments]
       security:
         - bearerAuth: []
+      x-proposed: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstablishmentChangeReasonRequest'
       responses:
         '200':
           description: Association after reactivation
@@ -746,7 +822,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AssociatedEstablishmentResponse'
         '400':
-          description: The identifier is not a UUID
+          description: The identifier is not a UUID, or the reason is missing, blank or longer than 500 characters
           content:
             application/json:
               schema:
@@ -818,6 +894,49 @@ components:
           nullable: true
           description: PROPOSED (HU-COM-002). Optional postal address.
           x-proposed: true
+
+    EstablishmentChangeType:
+      type: string
+      enum: [REGISTERED, INACTIVATED, REACTIVATED]
+      description: PROPOSED (HU-COM-002, AC-PE.14). Closed set of the events the change log records.
+      x-proposed: true
+
+    EstablishmentChangeReasonRequest:
+      type: object
+      description: PROPOSED (HU-COM-002, AC-PE.13). Body of `inactivate` and `reactivate`.
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why the state changes; it must not be blank.
+      x-proposed: true
+
+    EstablishmentChangeResponse:
+      type: object
+      description: PROPOSED (HU-COM-002, AC-PE.14). One entry of the change log. `tenantId` is not exposed.
+      required: [changeId, associationId, commercialName, eventType, actorId, occurredAt]
+      properties:
+        changeId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        associationId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        commercialName:
+          type: string
+        eventType:
+          $ref: '#/components/schemas/EstablishmentChangeType'
+        reason:
+          type: string
+          nullable: true
+          description: Empty (`null`) for `REGISTERED`.
+        actorId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+        occurredAt:
+          type: string
+          format: date-time
+      x-proposed: true
 
     CreateAssociatedEstablishmentRequest:
       type: object

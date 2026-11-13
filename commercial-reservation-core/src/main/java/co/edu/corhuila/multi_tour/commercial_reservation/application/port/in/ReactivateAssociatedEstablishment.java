@@ -5,5 +5,5 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Associated
 import java.util.UUID;
 
 public interface ReactivateAssociatedEstablishment {
-    AssociatedEstablishment reactivate(EstablishmentActor actor, UUID associationId);
+    AssociatedEstablishment reactivate(EstablishmentActor actor, UUID associationId, String reason);
 }
