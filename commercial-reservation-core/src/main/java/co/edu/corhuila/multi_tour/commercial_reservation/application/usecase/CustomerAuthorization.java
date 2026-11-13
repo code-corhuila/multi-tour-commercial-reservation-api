@@ -4,8 +4,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Custo
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CustomerActor.Role;
 
 public final class CustomerAuthorization {
-    // TODO(OPEN): the literal value of the permission inside the claim is not decided (spec "Decisions taken by
-    // default 2026-10-28"); the portal uses CONSULT_SENSITIVE_DATA today. This is the only place that names it.
+    // Decision (default, spec "Decisions taken by default 2026-10-28", pending the Project Lead): the permission inside the claim is
+    // CONSULT_SENSITIVE_DATA, as the portal sends it today. This is the only place that names it.
     public static final String SENSITIVE_DATA_PERMISSION = "CONSULT_SENSITIVE_DATA";
 
     private CustomerAuthorization() {}
@@ -31,7 +31,7 @@ public final class CustomerAuthorization {
     }
 
     // RBAC matrix (authentication.md): Administrator and Collaborator write.
-    // TODO DP-09: the Final Customer's own routes are not decided, so they are refused here.
+    // Decision (spec 005 DP-09, open, owned by HU-COM-014): the own-data routes of the Final Customer are not defined, so they are refused here.
     public static void requireWrite(CustomerActor actor) {
         if (actor == null || actor.tenantId() == null || actor.actorId() == null
                 || (actor.role() != Role.TENANT_ADMINISTRATOR && actor.role() != Role.OPERATIONAL_COLLABORATOR))
