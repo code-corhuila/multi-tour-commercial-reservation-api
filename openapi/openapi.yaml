@@ -2010,6 +2010,19 @@ paths:
           $ref: '#/components/responses/BusinessRuleViolation'
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
+        '503':
+          description: |
+            The cash does not answer, times out, answers `5xx`, or its service token or base url is missing
+            (`SERVICE_UNAVAILABLE`, HU-COM-009 DP-02, cash income recorded directly in the cash): the payment is not
+            registered, nothing is stored and no seat is held. The retry with the same `Idempotency-Key` is safe.
+          headers:
+            Retry-After:
+              description: Seconds to wait before the retry
+              schema: {type: integer, example: 5}
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
 
   /reservations/{reservationId}/payments/{paymentId}:
     parameters:
@@ -2927,6 +2940,8 @@ paths:
           $ref: './_shared.yaml#/components/responses/Unauthorized'
         '403':
           $ref: './_shared.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/BusinessRuleViolation'
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
     get:
@@ -6405,6 +6420,7 @@ components:
         proofStatus: {$ref: '#/components/schemas/PaymentValidationStatus'}
         continueAction: {$ref: '#/components/schemas/ReservationNextAction'}
         cancellationCause: {type: string, description: "Present when the reservation is `CANCELLED` and a cause is stored: the code, with no label (DP-14-05, OPEN)", x-proposed: true}
+        paymentDeadline: {allOf: [{$ref: './_shared.yaml#/components/schemas/Timestamp'}], description: "Due instant of the open payment deadline; omitted, never `null`, when there is none or it is frozen (HU-COM-011, HU-COM-014)"}
 
     DepartureReservation:
       type: object
