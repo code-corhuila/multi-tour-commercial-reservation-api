@@ -32,8 +32,12 @@ class EffectiveCapacityRecalculationTest {
             Clock.fixed(NOW.plusSeconds(1), ZoneOffset.UTC), departures::maxHeld, departures);
 
     private void tourOf(int capacity) {
+        tourOf(capacity, false);
+    }
+
+    private void tourOf(int capacity, boolean transportRequired) {
         repository.plant(CatalogService.register(service, tenant, CatalogServiceType.TOUR, "Recalculated tour",
-                CommercialTerms.of(100L, 50L, capacity, false, false), NOW));
+                CommercialTerms.of(100L, 50L, capacity, transportRequired, false), NOW));
     }
 
     private UUID departure(DepartureStatus status, int effective, int held, Integer vehicles) {
@@ -86,8 +90,8 @@ class EffectiveCapacityRecalculationTest {
     }
 
     @Test
-    void aDepartureWithoutAKnownVehicleTotalKeepsItsEffectiveCapacity() {
-        tourOf(20);
+    void aMandatoryTransportDepartureWithoutAKnownVehicleTotalKeepsItsEffectiveCapacity() {
+        tourOf(20, true);
         UUID id = departure(DepartureStatus.SCHEDULED, 20, 10, null);
 
         update.update(tenant, service, capacity(15));
@@ -95,6 +99,40 @@ class EffectiveCapacityRecalculationTest {
 
         assertThat(departures.rows.get(id).effectiveCapacity()).isEqualTo(20);
         assertThat(departures.saves).isZero();
+    }
+
+    @Test
+    void aDepartureWithoutTransportAndWithoutAVehicleTotalFollowsTheTourCapacity() {
+        tourOf(20, false);
+        UUID id = departure(DepartureStatus.SCHEDULED, 20, 10, null);
+
+        update.update(tenant, service, capacity(15));
+        assertThat(departures.rows.get(id).effectiveCapacity()).isEqualTo(15);
+
+        update.update(tenant, service, capacity(30));
+        assertThat(departures.rows.get(id).effectiveCapacity()).isEqualTo(30);
+    }
+
+    @Test
+    void aDepartureWithoutTransportNeverFallsBelowTheHeldSeatsAndFinalOnesStay() {
+        tourOf(20, false);
+        UUID open = departure(DepartureStatus.SCHEDULED, 20, 10, null);
+        UUID finalized = departure(DepartureStatus.FINALIZED, 20, 3, null);
+
+        update.update(tenant, service, capacity(10));
+
+        assertThat(departures.rows.get(open).effectiveCapacity()).isEqualTo(10);
+        assertThat(departures.rows.get(finalized).effectiveCapacity()).isEqualTo(20);
+    }
+
+    @Test
+    void aKnownVehicleTotalStillBoundsADepartureWithoutMandatoryTransport() {
+        tourOf(20, false);
+        UUID id = departure(DepartureStatus.SCHEDULED, 20, 0, 12);
+
+        update.update(tenant, service, capacity(30));
+
+        assertThat(departures.rows.get(id).effectiveCapacity()).isEqualTo(12);
     }
 
     @Test

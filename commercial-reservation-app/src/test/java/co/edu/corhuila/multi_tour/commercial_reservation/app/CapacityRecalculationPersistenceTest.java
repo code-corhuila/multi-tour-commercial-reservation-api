@@ -39,8 +39,12 @@ class CapacityRecalculationPersistenceTest {
     @Autowired CatalogServiceRepository repository;
 
     private CatalogService tour(UUID tenant, int capacity) {
+        return tour(tenant, capacity, false);
+    }
+
+    private CatalogService tour(UUID tenant, int capacity, boolean transportRequired) {
         var item = CatalogService.register(UUID.randomUUID(), tenant, CatalogServiceType.TOUR, "Recalculated capacity tour",
-                CommercialTerms.of(100L, 50L, capacity, false, false), TestJwtKeys.NOW);
+                CommercialTerms.of(100L, 50L, capacity, transportRequired, false), TestJwtKeys.NOW);
         repository.save(item);
         return item;
     }
@@ -101,9 +105,9 @@ class CapacityRecalculationPersistenceTest {
                 Integer.class, item.serviceId())).isEqualTo(20);
     }
 
-    @Test void aDepartureWithoutAVehicleTotalAndAFinalDepartureKeepTheirEffectiveCapacity() throws Exception {
+    @Test void aMandatoryTransportDepartureWithoutATotalAndAFinalDepartureKeepTheirEffectiveCapacity() throws Exception {
         UUID tenant = UUID.randomUUID();
-        var item = tour(tenant, 20);
+        var item = tour(tenant, 20, true);
         UUID unknown = row(tenant, item.serviceId(), "SCHEDULED", 20, 10, null);
         UUID finalized = row(tenant, item.serviceId(), "FINALIZED", 20, 0, 20);
         UUID otherService = row(tenant, tour(tenant, 20).serviceId(), "SCHEDULED", 20, 0, 20);
@@ -113,6 +117,36 @@ class CapacityRecalculationPersistenceTest {
         assertThat(effective(tenant, unknown)).isEqualTo(20);
         assertThat(effective(tenant, finalized)).isEqualTo(20);
         assertThat(effective(tenant, otherService)).isEqualTo(20);
+    }
+
+    @Test void aDepartureWithoutTransportAndWithoutATotalFollowsTheTourCapacityNeverBelowTheHeldSeats() throws Exception {
+        UUID tenant = UUID.randomUUID();
+        var item = tour(tenant, 20);
+        UUID salida = row(tenant, item.serviceId(), "SCHEDULED", 20, 10, null);
+
+        status().isOk().match(patchCapacity(tenant, item.serviceId(), 15));
+        assertThat(effective(tenant, salida)).isEqualTo(15);
+        status().isOk().match(patchCapacity(tenant, item.serviceId(), 25));
+        assertThat(effective(tenant, salida)).isEqualTo(25);
+        status().isUnprocessableEntity().match(patchCapacity(tenant, item.serviceId(), 9));
+        assertThat(effective(tenant, salida)).isEqualTo(25);
+    }
+
+    // HU-COM-012 saga route: lowering and restoring the ceiling writes the effective capacity only. The stored vehicle total stays, so
+    // after the restore a change of the tour capacity is computed from the same total as before the saga.
+    @Test void theSagaCeilingRouteLeavesTheStoredVehicleTotalAndTheNextTourChangeUsesIt() throws Exception {
+        UUID tenant = UUID.randomUUID();
+        var item = tour(tenant, 15);
+        UUID salida = row(tenant, item.serviceId(), "SCHEDULED", 15, 4, 20);
+        var ceilings = new co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDepartureCeilings(jdbc);
+
+        ceilings.setCeiling(tenant, salida, 6);
+        ceilings.setCeiling(tenant, salida, 15);
+
+        assertThat(jdbc.queryForObject("SELECT vehicle_capacity_ceiling FROM commercial_reservation.salida_capacity WHERE salida_id = ?",
+                Integer.class, salida)).isEqualTo(20);
+        status().isOk().match(patchCapacity(tenant, item.serviceId(), 30));
+        assertThat(effective(tenant, salida)).isEqualTo(20);
     }
 
     @Test void theMirrorRowKeepsTheVehicleTotalAndASaveDoesNotLoseIt() {
