@@ -97,6 +97,19 @@ class ArchitectureRulesTest {
         assertThat(found).isEmpty();
     }
 
+    // K2 (rubric c3-release): a transaction is a concern of the use cases and of the out adapters, not of the entry layer. A class of
+    // adapter.in.http opens one through the port RequestTransaction, never through a Spring transaction class.
+    @Test void theHttpAdaptersImportNoSpringTransaction() throws IOException {
+        Path http = sources("commercial-reservation-adapters").resolve(ROOT.replace('.', '/') + "adapter/in/http");
+        Map<String, List<String>> found = new TreeMap<>();
+        for (Path file : javaFiles(http)) {
+            List<String> violations = imports(file).stream().filter(imported -> imported.startsWith("org.springframework.transaction.")).toList();
+            if (!violations.isEmpty()) found.put(file.getFileName().toString().replace(".java", ""), violations);
+        }
+
+        assertThat(found).as("a class of adapter.in.http must open its transaction through RequestTransaction").isEmpty();
+    }
+
     @Test void theCoreImportsNoAdapter() throws IOException {
         Map<String, List<String>> found = new TreeMap<>();
         for (Path file : javaFiles(sources("commercial-reservation-core"))) {
