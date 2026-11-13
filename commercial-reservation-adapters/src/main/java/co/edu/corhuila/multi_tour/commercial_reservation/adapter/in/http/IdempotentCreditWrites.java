@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CreditBalanceView;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCreditBalances;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RequestTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditApplication;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
@@ -11,7 +12,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import org.springframework.transaction.support.TransactionTemplate;
 
 // AC-17.15, RNF-06: the key is registered last, in the same transaction as the credit or the application and its effects, so a refusal can be asked again with the
 // same key. A repeat answers the stored record (200, the first time 201 for an application); a key lost in a race discards the second write and answers the first.
@@ -28,9 +28,9 @@ public class IdempotentCreditWrites {
 
     private final ManageCreditBalances credits;
     private final Keys keys;
-    private final TransactionTemplate transactions;
+    private final RequestTransaction transactions;
 
-    public IdempotentCreditWrites(ManageCreditBalances credits, Keys keys, TransactionTemplate transactions) {
+    public IdempotentCreditWrites(ManageCreditBalances credits, Keys keys, RequestTransaction transactions) {
         this.credits = credits;
         this.keys = keys;
         this.transactions = transactions;
@@ -56,19 +56,28 @@ public class IdempotentCreditWrites {
         Optional<UUID> known = keys.findResourceId(tenant, key);
         if (known.isPresent()) return replay(load.apply(known.get()), mine);
         Object[] made = new Object[1];
-        Boolean lost = transactions.execute(status -> {
-            @SuppressWarnings("unchecked") T value = (T) (made[0] = act.get());
-            if (!keys.tryRegister(tenant, key, type, idOf.apply(value))) {
-                status.setRollbackOnly();
-                return true;
-            }
-            return false;
-        });
-        if (Boolean.TRUE.equals(lost)) {
+        boolean lost = false;
+        try {
+            transactions.inTransaction(() -> {
+                @SuppressWarnings("unchecked") T value = (T) (made[0] = act.get());
+                if (!keys.tryRegister(tenant, key, type, idOf.apply(value))) throw new KeyLostInARace();
+                return value;
+            });
+        } catch (KeyLostInARace race) {
+            lost = true;
+        }
+        if (lost) {
             return replay(load.apply(keys.findResourceId(tenant, key).orElseThrow(() -> new IllegalStateException("registered key has no resource"))), mine);
         }
         @SuppressWarnings("unchecked") T value = (T) made[0];
         return new Outcome<>(value, true);
+    }
+
+    // The write is rolled back by throwing it out of the transaction: the key of another request won the race.
+    private static final class KeyLostInARace extends RuntimeException {
+        KeyLostInARace() {
+            super(null, null, false, false);
+        }
     }
 
     private static <T> Outcome<T> replay(T stored, Predicate<T> mine) {
