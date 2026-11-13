@@ -219,6 +219,55 @@ class SensitiveDataRetentionJdbcHttpTest {
                 .isEqualTo(audited + 1);
     }
 
+    // AC-19.8 (T-06, RN-11): a deletion that commits writes the event with ids, the basis and counts, and no log line (message, arguments, MDC, exception) nor the event nor
+    // an answer carries the name, document, e-mail, telephone or medical value that was deleted. The application loggers run at TRACE, the web layer at DEBUG and the JDBC
+    // layer at TRACE (it would print bound values), and a control line proves the capture sees them, so an empty scan cannot come from a broken capture. Values are invented.
+    @Test void theDeletionLeavesNoPersonalValueInTheLogsTheEventOrTheAnswers() throws Exception {
+        String medical = "MEDICO-PRIVADO-7731";
+        jdbc.update("UPDATE commercial_reservation.reservation_companion_sensitive_data SET activity_requirements = ('{\"envelope\":\"" + medical + "\"}')::jsonb WHERE tenant_id = ?", tenant);
+        jdbc.update("UPDATE commercial_reservation.customer_sensitive_data SET emergency_info = ('{\"envelope\":\"" + medical + "\"}')::jsonb WHERE tenant_id = ?", tenant);
+        List<String> personal = List.of("Persona Ficticia", "CC12345", "persona@example.invalid", "3000000000", "Acompanante Ficticio", "DOC-FICT-0", "DOC-FICT-1", medical);
+        var loggers = List.of((ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("co.edu.corhuila"),
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("org.springframework.web"),
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("org.springframework.jdbc"));
+        var before = new ArrayList<ch.qos.logback.classic.Level>();
+        loggers.forEach(logger -> before.add(logger.getLevel()));
+        var root = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
+        var logs = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        logs.start();
+        loggers.get(0).setLevel(ch.qos.logback.classic.Level.TRACE);
+        loggers.get(1).setLevel(ch.qos.logback.classic.Level.DEBUG);
+        loggers.get(2).setLevel(ch.qos.logback.classic.Level.TRACE);
+        root.addAppender(logs);
+        List<String> answers = new ArrayList<>();
+        try {
+            org.slf4j.LoggerFactory.getLogger("co.edu.corhuila.control").trace("capture-control");
+            answers.add(exchange(due(tenant, ""), service(), 200).getResponse().getContentAsString());
+            answers.add(exchange(delete(tenant, first, "delete-key-0020"), service(), 200).getResponse().getContentAsString());
+            answers.add(exchange(delete(tenant, first, "delete-key-0020"), service(), 200).getResponse().getContentAsString());
+            answers.add(exchange(delete(tenant, first, "delete-key-0021"), service(), 200).getResponse().getContentAsString());
+        } finally {
+            root.detachAppender(logs);
+            for (int index = 0; index < loggers.size(); index++) loggers.get(index).setLevel(before.get(index));
+        }
+
+        assertThat(logs.list).anyMatch(event -> event.getFormattedMessage().equals("capture-control"));
+        StringBuilder text = new StringBuilder();
+        for (var event : logs.list) {
+            text.append('\n').append(event.getFormattedMessage());
+            if (event.getThrowableProxy() != null) text.append('\n').append(ch.qos.logback.classic.spi.ThrowableProxyUtil.asString(event.getThrowableProxy()));
+            event.getMDCPropertyMap().values().forEach(value -> text.append('\n').append(value));
+        }
+        String payload = jdbc.queryForObject("SELECT payload::text FROM commercial_reservation.outbox_event WHERE tenant_id = ? AND event_type = 'SensitiveDataDeleted' "
+                + "ORDER BY occurred_at LIMIT 1", String.class, tenant);
+        for (String value : personal) {
+            assertThat(text.toString()).as("log: " + value).doesNotContain(value);
+            assertThat(payload).as("event: " + value).doesNotContain(value);
+            assertThat(String.join("\n", answers)).as("answer: " + value).doesNotContain(value);
+        }
+        assertThat(payload).contains("reservationId", "customerId", "anchorBasis", "anchorAt", "customerDataDeleted", "companionRowsDeleted");
+    }
+
     int sensitiveRows() {
         return jdbc.queryForObject("SELECT (SELECT count(*) FROM commercial_reservation.reservation_companion_sensitive_data WHERE tenant_id = ?) + "
                 + "(SELECT count(*) FROM commercial_reservation.customer_sensitive_data WHERE tenant_id = ?)", Integer.class, tenant, tenant);
