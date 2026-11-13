@@ -11,7 +11,10 @@ public final class CancellationHttpAccess implements HandlerInterceptor {
 
     @Override public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         var actor = PaymentActors.of((AuthenticatedPrincipal) request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE));
-        if ("GET".equals(request.getMethod()) && !request.getRequestURI().endsWith("/cancellation-quote")) CancellationAuthorization.requireRead(actor);
+        if (request.getRequestURI().endsWith("/cancellation-policies")) {
+            if ("GET".equals(request.getMethod())) CancellationAuthorization.requireRead(actor);
+            else CancellationAuthorization.requireChangePolicy(actor);
+        } else if ("GET".equals(request.getMethod()) && !request.getRequestURI().endsWith("/cancellation-quote")) CancellationAuthorization.requireRead(actor);
         else CancellationAuthorization.requireCancel(actor);
         return true;
     }
