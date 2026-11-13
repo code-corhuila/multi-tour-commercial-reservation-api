@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
@@ -13,12 +14,16 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
@@ -26,6 +31,13 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 // saga register-payment that records the validated payment (DP-11, answered 2026-10-30; PROPOSED internal route).
 @ExtendWith(OutputCaptureExtension.class)
 class PaymentProofDecisionHttpTest extends ReservationHttpBase {
+
+    // The decision reads whether the tenant is suspended (HU-COM-020); these routes run over the memory fakes, so no tenant is, instead of the JDBC reader that
+    // would open the fictitious database of the HTTP tests.
+    @TestConfiguration
+    static class NoSuspendedTenant {
+        @Bean @Primary SuspensionReader noSuspension() { return tenantId -> Optional.empty(); }
+    }
 
     private final UUID proof = new UUID(21, 1), reservationId = new UUID(21, 2);
 
