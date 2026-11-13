@@ -3,6 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.SendProposalCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.SendReschedulingProposal;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ClientNoticeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
@@ -15,6 +16,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Sa
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.NoticeType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReschedulingEpisode;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ValidationStatus;
@@ -24,6 +26,7 @@ import java.time.Instant;
 // HU-COM-018 RN-02, RN-03; AC-18.3, AC-18.4, AC-18.9; plan D-04: the operator proposes a new departure for an episode. The checks come in the order of the plan (role, proof, service of the
 // proposed departure, period still open, seats by the conditional update) and nothing is written before they pass; the seats of every traveller are held in the proposed departure until the
 // customer answers, and the reservation keeps its date until then. The proposal and the hold commit together.
+// HU-COM-015 AC-15.5 (DD-6 default): the notice RESCHEDULING_PROPOSED is written in the same transaction, triggered by the proposal itself under the name ReschedulingProposed.
 public class SendReschedulingProposalUseCase implements SendReschedulingProposal {
 
     private final ReschedulingRepository episodes;
@@ -33,9 +36,15 @@ public class SendReschedulingProposalUseCase implements SendReschedulingProposal
     private final PaymentTransaction transaction;
     private final IdGenerator ids;
     private final Clock clock;
+    private final ClientNoticeOutbox notices;
 
     public SendReschedulingProposalUseCase(ReschedulingRepository episodes, ReservationRepository reservations, DepartureReader departures, SalidaCapacityHolder holder,
             PaymentTransaction transaction, IdGenerator ids, Clock clock) {
+        this(episodes, reservations, departures, holder, transaction, ids, clock, (tenantId, reservationId, type, triggeringEventType, triggeringEventId, occurredAt) -> { });
+    }
+
+    public SendReschedulingProposalUseCase(ReschedulingRepository episodes, ReservationRepository reservations, DepartureReader departures, SalidaCapacityHolder holder,
+            PaymentTransaction transaction, IdGenerator ids, Clock clock, ClientNoticeOutbox notices) {
         this.episodes = episodes;
         this.reservations = reservations;
         this.departures = departures;
@@ -43,6 +52,7 @@ public class SendReschedulingProposalUseCase implements SendReschedulingProposal
         this.transaction = transaction;
         this.ids = ids;
         this.clock = clock;
+        this.notices = notices;
     }
 
     @Override
@@ -62,6 +72,7 @@ public class SendReschedulingProposalUseCase implements SendReschedulingProposal
             if (!holder.holdForRescheduling(command.tenantId(), reservation.reservationId(), proposed.departureId(), reservation.people()))
                 throw new BusinessRuleViolation("the proposed departure has no seats for every traveller");
             episodes.save(next);
+            notices.append(command.tenantId(), reservation.reservationId(), NoticeType.RESCHEDULING_PROPOSED, "ReschedulingProposed", next.pendingProposal().orElseThrow().id(), now);
             return next;
         });
     }

@@ -4,6 +4,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.Ide
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReschedulingHttpAccess;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReschedulingWriteController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcClientNoticeOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineFreezes;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReschedulingRecords;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.AnswerReschedulingProposal;
@@ -11,6 +12,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Con
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.RespondToReschedulingProposal;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.SendReschedulingProposal;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
@@ -36,8 +38,9 @@ class ReschedulingWriteConfiguration {
 
     @Bean
     SendReschedulingProposal sendReschedulingProposal(ReschedulingRepository episodes, @Lazy ReservationRepository reservations, @Lazy DepartureReader departures,
-            @Lazy SalidaCapacityHolder holder, @Lazy PaymentTransaction transaction, IdGenerator ids, Clock clock) {
-        return new SendReschedulingProposalUseCase(episodes, reservations, departures, holder, transaction, ids, clock);
+            @Lazy SalidaCapacityHolder holder, @Lazy PaymentTransaction transaction, IdGenerator ids, Clock clock, JdbcTemplate jdbc, @Lazy CustomerProfileReader customers) {
+        // HU-COM-015 AC-15.5: the RESCHEDULING_PROPOSED notice is written in the transaction of the proposal.
+        return new SendReschedulingProposalUseCase(episodes, reservations, departures, holder, transaction, ids, clock, new JdbcClientNoticeOutbox(jdbc, customers));
     }
 
     @Bean
