@@ -3,7 +3,6 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ApproveProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentDeadline;
@@ -85,7 +84,7 @@ class InactiveTenantProofDecisionTest {
     void anOverdueProofApprovedForAnInsufficientAmountCancelsAtOnceAndTheValidatedValuesGoToTreatment() {
         planted(0);
 
-        decide.approve(new ApproveProofCommand(admin(), FIRST, 60_000L, "only 60.000 arrived"));
+        decide.recordApproval(admin().tenantId(), admin().actorId(), FIRST, 60_000L, "only 60.000 arrived");
 
         assertThat(review.cancelled).containsExactly(RESERVATION);
         assertThat(review.values).containsExactly("PENDING_TREATMENT_AFTER_EXPIRY:60000");
@@ -109,7 +108,7 @@ class InactiveTenantProofDecisionTest {
 
         planted(0);
         departureAt(DepartureStatus.SCHEDULED, NOW.minus(Duration.ofMinutes(5)));
-        decide.approve(new ApproveProofCommand(admin(), FIRST, 60_000L, "only 60.000 arrived"));
+        decide.recordApproval(admin().tenantId(), admin().actorId(), FIRST, 60_000L, "only 60.000 arrived");
         assertThat(review.cancelled).as("scheduled time reached").isEmpty();
         assertThat(review.values).isEmpty();
     }
@@ -119,7 +118,7 @@ class InactiveTenantProofDecisionTest {
         planted(0);
         suspendedSince = PRESENTED.minus(Duration.ofHours(1));
 
-        assertThatThrownBy(() -> decide.approve(new ApproveProofCommand(admin(), FIRST, 100_000L, null))).isInstanceOf(BusinessRuleViolation.class);
+        assertThatThrownBy(() -> decide.recordApproval(admin().tenantId(), admin().actorId(), FIRST, 100_000L, null)).isInstanceOf(BusinessRuleViolation.class);
         assertThatThrownBy(() -> decide.reject(new RejectProofCommand(admin(), FIRST, "illegible"))).isInstanceOf(BusinessRuleViolation.class);
 
         assertThat(fakes.saved).isEmpty();

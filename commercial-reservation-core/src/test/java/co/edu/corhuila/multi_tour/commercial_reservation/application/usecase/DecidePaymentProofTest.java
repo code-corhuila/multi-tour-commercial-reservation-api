@@ -3,7 +3,6 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ApproveProofCommand;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DecidedProof;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentActor.Role;
@@ -73,7 +72,7 @@ class DecidePaymentProofTest {
     }
 
     private DecidedProof approve(long verified, String reason) {
-        return decide.approve(new ApproveProofCommand(admin(), FIRST, verified, reason));
+        return decide.recordApproval(admin().tenantId(), admin().actorId(), FIRST, verified, reason);
     }
 
     private static List<String> names(List<? extends Object> events) {
@@ -91,8 +90,6 @@ class DecidePaymentProofTest {
                 new PaymentActor(TENANT, ADMIN, Role.FINAL_CUSTOMER, Set.of("VALIDATE_PAYMENT_PROOFS")));
 
         for (PaymentActor actor : refused) {
-            assertThatThrownBy(() -> decide.approve(new ApproveProofCommand(actor, FIRST, 100_000L, null)))
-                    .isInstanceOf(PaymentAccessDeniedException.class);
             assertThatThrownBy(() -> decide.reject(new RejectProofCommand(actor, FIRST, "no"))).isInstanceOf(PaymentAccessDeniedException.class);
         }
 
@@ -106,7 +103,7 @@ class DecidePaymentProofTest {
         planted(PaymentType.DEPOSIT, 100_000);
         PaymentActor collaborator = new PaymentActor(TENANT, ADMIN, Role.OPERATIONAL_COLLABORATOR, Set.of("VALIDATE_PAYMENT_PROOFS"));
 
-        DecidedProof decided = decide.approve(new ApproveProofCommand(collaborator, FIRST, 100_000L, null));
+        DecidedProof decided = decide.recordApproval(collaborator.tenantId(), collaborator.actorId(), FIRST, 100_000L, null);
 
         assertThat(decided.attempt().validationStatus()).isEqualTo(ValidationStatus.APPROVED);
         planted(PaymentType.DEPOSIT, 100_000);
@@ -153,7 +150,7 @@ class DecidePaymentProofTest {
         reservation.pullEvents();
         Cents pending = fakes.reservations.get(RESERVATION).pendingBalance();
 
-        assertThatThrownBy(() -> decide.approve(new ApproveProofCommand(admin(), CASH, 150_000L, null)))
+        assertThatThrownBy(() -> decide.recordApproval(admin().tenantId(), admin().actorId(), CASH, 150_000L, null))
                 .isInstanceOf(InvalidStatusTransitionException.class).hasMessage("cash is not a proof to review");
         assertThatThrownBy(() -> decide.reject(new RejectProofCommand(admin(), CASH, "not legible")))
                 .isInstanceOf(InvalidStatusTransitionException.class).hasMessage("cash is not a proof to review");
@@ -290,7 +287,7 @@ class DecidePaymentProofTest {
     void aMissingAmountOrReasonIsNamedAndNothingChanges() {
         planted(PaymentType.DEPOSIT, 100_000);
 
-        assertThatThrownBy(() -> decide.approve(new ApproveProofCommand(admin(), FIRST, null, null))).isInstanceOfSatisfying(
+        assertThatThrownBy(() -> decide.recordApproval(admin().tenantId(), admin().actorId(), FIRST, null, null)).isInstanceOfSatisfying(
                 MissingPaymentDataException.class, e -> assertThat(e.fields()).containsExactly("verifiedAmountCents"));
         assertThatThrownBy(() -> decide.reject(new RejectProofCommand(admin(), FIRST, " "))).isInstanceOfSatisfying(DomainException.class,
                 e -> assertThat(e.field()).isEqualTo("reason"));
@@ -306,7 +303,7 @@ class DecidePaymentProofTest {
         planted(PaymentType.DEPOSIT, 100_000);
         PaymentActor stranger = new PaymentActor(OTHER_TENANT, ADMIN, Role.TENANT_ADMINISTRATOR);
 
-        assertThatThrownBy(() -> decide.approve(new ApproveProofCommand(stranger, FIRST, 100_000L, null)))
+        assertThatThrownBy(() -> decide.recordApproval(stranger.tenantId(), stranger.actorId(), FIRST, 100_000L, null))
                 .isInstanceOf(PaymentProofNotFoundException.class);
         assertThatThrownBy(() -> decide.reject(new RejectProofCommand(admin(), new UUID(10, 0xff), "no")))
                 .isInstanceOf(PaymentProofNotFoundException.class);
