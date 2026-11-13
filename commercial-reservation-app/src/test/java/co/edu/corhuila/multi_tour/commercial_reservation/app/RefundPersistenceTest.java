@@ -165,4 +165,21 @@ class RefundPersistenceTest {
                 + "AND authorization_mode = 'AUTOMATIC_DETERMINATION'", Long.class, decision.id())).containsExactly(2_500L);
         assertThat(events()).hasSize(2);
     }
+
+    // DP-01: the refund of the decision is the one the decision created, also when a late value is authorized at the same instant and its id sorts first. No chance involved:
+    // the increment takes the lowest possible id, so ordering by the id alone would answer the increment.
+    @Test
+    void theRefundOfTheDecisionIsFoundBeforeALateValueAuthorizedAtTheSameInstantWhateverTheIds() {
+        FinancialDecision decision = openCancellation();
+        FinancialDecision decided = manage.recordRefundDecision(admin, decision.id());
+        RefundAuthorization increment = RefundAuthorization.increment(new UUID(0L, System.nanoTime()), decided, new Cents(2_500), NOW, NOW.plus(Duration.ofDays(7)));
+        refunds.save(increment);
+
+        RefundAuthorization own = refunds.findByDecision(fixture.tenant, decision.id()).orElseThrow();
+
+        assertThat(own.id()).as("the late value is not the refund of the decision").isNotEqualTo(increment.id());
+        assertThat(own.authorizedAmount()).isEqualTo(new Cents(80_000));
+        assertThat(fixture.jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.refund_authorization WHERE financial_decision_id = ? AND authorized_at = ?",
+                Integer.class, decision.id(), java.time.OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC))).as("both rows share the same authorized_at").isEqualTo(2);
+    }
 }

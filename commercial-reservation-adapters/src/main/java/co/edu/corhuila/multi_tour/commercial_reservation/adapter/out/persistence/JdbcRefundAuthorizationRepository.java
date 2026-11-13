@@ -37,8 +37,12 @@ public final class JdbcRefundAuthorizationRepository implements RefundAuthorizat
 
     @Override
     public Optional<RefundAuthorization> findByDecision(UUID tenantId, UUID financialDecisionId) {
+        // DP-01: the refund of the decision is the one created with it, for the base amount of the decision; a late value (DP-11) follows it for the increment. Authorized at the same
+        // instant (one fixed clock), the order never falls to the random id: the refund for the base amount goes first, then the id only settles an exact copy.
         return jdbc.query("SELECT " + COLUMNS + " FROM commercial_reservation.refund_authorization WHERE tenant_id = ? AND financial_decision_id = ? "
-                + "ORDER BY authorized_at, refund_authorization_id LIMIT 1", (row, index) -> map(row), tenantId, financialDecisionId).stream().findFirst();
+                + "ORDER BY authorized_at, (authorized_amount_cents = (SELECT d.base_amount_cents FROM commercial_reservation.financial_decision d "
+                + "WHERE d.tenant_id = ? AND d.financial_decision_id = ?)) DESC, refund_authorization_id LIMIT 1", (row, index) -> map(row), tenantId, financialDecisionId,
+                tenantId, financialDecisionId).stream().findFirst();
     }
 
     @Override
