@@ -23,6 +23,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -30,6 +31,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 // HU-COM-010 over HTTP, the decisions (api spec T-03, T-04, T-06; AC-10.1 to AC-10.3, AC-10.8, AC-10.10, AC-10.13) and the step 2 of the
 // saga register-payment that records the validated payment (DP-11, answered 2026-10-30; PROPOSED internal route).
 @ExtendWith(OutputCaptureExtension.class)
+// A class-level @Import replaces the one of the base, so the fixtures of the base are listed again.
+@Import({CatalogHttpFixture.class, CustomerHttpFixture.class, DiscountRuleHttpFixture.class, ReservationHttpFixture.class, PaymentHttpFixture.class,
+        PaymentProofHttpFixture.class, PaymentDeadlineHttpFixture.class, PaymentProofDecisionHttpTest.NoSuspendedTenant.class})
 class PaymentProofDecisionHttpTest extends ReservationHttpBase {
 
     // The decision reads whether the tenant is suspended (HU-COM-020); these routes run over the memory fakes, so no tenant is, instead of the JDBC reader that
