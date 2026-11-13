@@ -81,6 +81,15 @@ public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID
         return decide(DecisionOutcome.REJECTED, false, by, at, text);
     }
 
+    // HU-COM-016 DP-17 (RN-RES-009, GAP-014): the Administrator authorizes an open credit-balance refund request inside its 24 hours; the amount is the requested one.
+    public FinancialDecision authorizeRequest(UUID by, Instant at) {
+        requireOpen();
+        if (kind != DecisionKind.CREDIT_BALANCE_REFUND_REQUEST)
+            throw new BusinessRuleViolation("only a credit-balance refund request is authorized without a refund outcome");
+        if (by == null) throw new DomainException("decidedBy", "the person is required");
+        return decide(DecisionOutcome.AUTHORIZED, false, by, at, null);
+    }
+
     // RN-06: 24 running hours without a decision are the 100 % refund (or the authorization of the request), counted as authorized.
     public FinancialDecision applyDefault(Instant at) {
         requireOpen();

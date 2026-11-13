@@ -11,6 +11,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKind;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
 import java.time.Clock;
@@ -80,8 +82,12 @@ public class ManageRefundDecisionsUseCase implements ManageRefundDecisions {
         Instant now = Instant.now(clock);
         return transaction.inTransaction(() -> {
             // HU-COM-016 DP-02: the five business days count from the determination (recognizedAt), not from this authorization; a resumed decision keeps its recognition instant (question for the Project Lead).
-            RefundAuthorization refund = RefundAuthorization.authorize(ids.newId(), decision, reason, actor.actorId(), now,
+            // HU-COM-016 DP-17: an open credit-balance request is authorized by this same act (the outcome and the refund in one transaction); a rejected one is already decided and fails.
+            FinancialDecision basis = decision.kind() == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST && decision.outcome() != DecisionOutcome.AUTHORIZED
+                    ? decision.authorizeRequest(actor.actorId(), now) : decision;
+            RefundAuthorization refund = RefundAuthorization.authorize(ids.newId(), basis, reason, actor.actorId(), now,
                     calendar.addBusinessDays(decision.recognizedAt(), RefundAuthorizationRules.BUSINESS_DAYS));
+            if (basis != decision) decisions.save(basis);
             refunds.save(refund);
             outbox.append(refund);
             return refund;
