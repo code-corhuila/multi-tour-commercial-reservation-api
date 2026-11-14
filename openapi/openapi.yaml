@@ -2269,6 +2269,12 @@ paths:
           $ref: './_shared.yaml#/components/responses/Forbidden'
         '404':
           $ref: './_shared.yaml#/components/responses/NotFound'
+        '422':
+          description: The same `Idempotency-Key` was already used with another body; nothing is changed
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
