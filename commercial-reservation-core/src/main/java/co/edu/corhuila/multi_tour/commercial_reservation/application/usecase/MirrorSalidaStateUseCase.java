@@ -99,9 +99,11 @@ public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
         if (tour.isEmpty()) {
             return MirrorOutcome.IGNORED_UNKNOWN;
         }
-        // The lower of the tour capacity and the vehicle total, never below the seats already held (H8).
-        int effective = Math.max(Math.min(capacityOf(tour.get()), event.vehicleTotalCapacity()), row.get().heldSeats());
-        departures.save(row.get().withEffectiveCapacity(effective).appliedAt(event.occurredAt()));
+        // The lower of the tour capacity and the vehicle total, never below the seats already held (H8). The total is kept, so a later
+        // change of the tour capacity can recompute the effective capacity (ND-08, DP-D6-8).
+        int effective = DepartureState.effectiveCapacityOf(capacityOf(tour.get()), event.vehicleTotalCapacity(), row.get().heldSeats());
+        departures.save(row.get().withEffectiveCapacity(effective).withVehicleCapacityCeiling(event.vehicleTotalCapacity())
+                .appliedAt(event.occurredAt()));
         return MirrorOutcome.APPLIED;
     }
 
