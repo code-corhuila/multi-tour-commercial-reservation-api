@@ -41,9 +41,10 @@ class CatalogCapacityIntegrationTest {
         item.reactivate(UUID.fromString(TestJwtKeys.ACCOUNT), TestJwtKeys.NOW);
         repository.save(item);
         row(tenant, item.serviceId(), 5); row(tenant, item.serviceId(), 12);
-        // The simple FK permits a mismatched tenant; that row must not affect this service's maximum (DB DD-6).
+        // Another tenant's row (on its own service, since the composite FK of DB DD-11 rejects a mismatched tenant)
+        // must not affect this service's maximum.
         UUID foreignTenant = UUID.randomUUID();
-        row(foreignTenant, item.serviceId(), 100);
+        row(foreignTenant, otherTenantService(foreignTenant), 100);
         Map<String, Object> original = stored(tenant, item.serviceId());
         var events = events(tenant, item.serviceId());
         assertThat(events).hasSize(2);
@@ -79,13 +80,21 @@ class CatalogCapacityIntegrationTest {
                 CommercialTerms.of(100L, 50L, 18, false, false), TestJwtKeys.NOW);
         repository.save(empty); repository.save(other);
         row(tenant, other.serviceId(), 100);
-        row(UUID.randomUUID(), empty.serviceId(), 100);
+        UUID otherTenant = UUID.randomUUID();
+        row(otherTenant, otherTenantService(otherTenant), 100);
         var accepted = mvc.perform(patch(CatalogHttpTest.BASE + "/" + empty.serviceId())
                 .header("Authorization", "Bearer " + CatalogHttpTest.token(tenant.toString(), "TENANT_ADMINISTRATOR"))
                 .contentType(MediaType.APPLICATION_JSON).content("{\"configuredCapacity\":1}")).andReturn();
         status().isOk().match(accepted);
         new CatalogContract().validate(accepted, false);
         assertThat(stored(tenant, empty.serviceId()).get("configured_capacity")).isEqualTo(1);
+    }
+
+    private UUID otherTenantService(UUID tenant) {
+        var service = CatalogService.register(UUID.randomUUID(), tenant, CatalogServiceType.TOUR, "Other tenant tour",
+                CommercialTerms.of(100L, 50L, 18, false, false), TestJwtKeys.NOW);
+        repository.save(service);
+        return service.serviceId();
     }
 
     private void row(UUID tenant, UUID service, int held) {
