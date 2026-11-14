@@ -46,7 +46,7 @@ public class RegisterLeadCustomerUseCase implements RegisterLeadCustomer {
         boolean highRisk = risk.isHighRisk(actor.tenantId(), command.serviceId())
                 .orElseThrow(() -> new CatalogServiceNotFoundException(command.serviceId()));
         Instant now = clock.instant();
-        // TODO(RN-10): the clock zone stands for the tenant's official time zone (PDR G14) until it is a port.
+        // Decision (spec 005 D-06, RN-10): the clock zone stands for the tenant's official time zone (PDR G14); a tenant zone port replaces it later.
         LocalDate today = LocalDate.now(clock);
         Customer lead = Customer.registerLead(ids.newId(), actor.tenantId(), command.documentNumber(),
                 command.fullName(), birth(command, today), new ContactInfo(command.email(), command.phone()),
