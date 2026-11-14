@@ -5,8 +5,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 // HU-COM-016 RN-01, RN-02, RN-06, RN-08; plan D-02, D-04: one financial decision of 24 running hours. The outcome is recorded once with the person (or the
-// system) and the instant; the amount is the base amount recognized and is never typed; a frozen decision is never defaulted; only a credit-balance refund
-// request can be rejected. Immutable: every change returns a new value. The 24 hours are not parametrizable (PDR section 15).
+// system) and the instant; the amount is the base amount recognized and is never typed; a frozen decision and a credit-balance refund request are never
+// defaulted; only a credit-balance refund request can be rejected. Immutable: every change returns a new value. The 24 hours are not parametrizable (PDR section 15).
 public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID creditBalanceId, DecisionKind kind, Cents baseAmount, Cents penalty,
         Instant recognizedAt, Instant frozenAt, Long remainingAtFreezeMinutes, DecisionOutcome outcome, boolean decidedBySystem, UUID decidedBy,
         Instant decidedAt, String rejectionJustification, Instant resumedDueAt) {
@@ -48,9 +48,9 @@ public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID
         return resumedDueAt != null ? resumedDueAt : recognizedAt.plus(WINDOW);
     }
 
-    // Open, not frozen, and the 24 running hours have passed.
+    // Open, not frozen, the 24 running hours have passed, and not a credit-balance refund request (DP-13 out: it has no default).
     public boolean isDue(Instant now) {
-        return !isDecided() && !isFrozen() && !now.isBefore(dueAt());
+        return !isDecided() && !isFrozen() && kind != DecisionKind.CREDIT_BALANCE_REFUND_REQUEST && !now.isBefore(dueAt());
     }
 
     public FinancialDecision recordRefundFull(UUID by, Instant at) {
@@ -90,13 +90,14 @@ public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID
         return decide(DecisionOutcome.AUTHORIZED, false, by, at, null);
     }
 
-    // RN-06: 24 running hours without a decision are the 100 % refund (or the authorization of the request), counted as authorized.
+    // RN-06: 24 running hours without a decision are the 100 % refund, counted as authorized. DP-13 out (Project Lead, 2026-11-12): a credit-balance refund
+    // request has no default; it stays open until a person authorizes or rejects it.
     public FinancialDecision applyDefault(Instant at) {
         requireOpen();
+        if (kind == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST) throw new BusinessRuleViolation("a credit-balance refund request is not defaulted: a person decides it");
         if (isFrozen()) throw new BusinessRuleViolation("a frozen decision is not defaulted");
         if (at.isBefore(dueAt())) throw new BusinessRuleViolation("the 24 hours have not passed");
-        DecisionOutcome result = kind == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST ? DecisionOutcome.AUTHORIZED : DecisionOutcome.REFUND_FULL;
-        return decide(result, true, null, at, null);
+        return decide(DecisionOutcome.REFUND_FULL, true, null, at, null);
     }
 
     // GAP-003: a value recognized again for an open decision takes the updated amount, without a second decision.
