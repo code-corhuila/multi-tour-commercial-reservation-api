@@ -48,7 +48,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 // HU-COM-016: the decisions and the refunds are real (JDBC over the tables and guards of the db), and one FinancialDecisionOpening answers the four ports that
 // 010, 011, 012 and 013 declared and left as stand-ins. The remaining stand-in is only the credit balance (HU-COM-017), so the
 // CancelledValueRecorder has a single candidate. The business calendar counts Monday to Friday until the holidays have a source (DP-03, debt DD-6). The saga and
-// the cash step (HU-WFL-003, HU-CSH-001) and job 2 (HU-WRK-002) are other repositories; the routes follow in the next slices.
+// the cash step (HU-WFL-003, HU-CSH-001) and job 2 (HU-WRK-002) are other repositories; the routes are in the refund controllers.
 @Configuration
 class RefundConfiguration {
 
