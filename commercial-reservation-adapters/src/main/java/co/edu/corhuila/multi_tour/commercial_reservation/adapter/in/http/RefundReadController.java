@@ -77,6 +77,14 @@ public final class RefundReadController {
         return new ReservationListResponses<>(page.items().stream().map(RefundResponse::of).toList(), paging.meta(page.total()));
     }
 
+    // G-WF3-4 (HU-WFL-003, AC-WF3-04): the saga execute-refund reads one refund after an unknown step 3; the read changes nothing.
+    @GetMapping("/internal/tenants/{tenantId}/refund-authorizations/{refundAuthorizationId}")
+    public RefundResponse internalRefund(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @PathVariable("tenantId") UUID tenantId, @PathVariable("refundAuthorizationId") UUID id) {
+        requireService(principal);
+        return RefundResponse.of(read.internalRefund(tenantId, id));
+    }
+
     private static <E extends Enum<E>> E choice(Class<E> type, Map<String, String> query, String name) {
         if (!query.containsKey(name)) return null;
         try {
