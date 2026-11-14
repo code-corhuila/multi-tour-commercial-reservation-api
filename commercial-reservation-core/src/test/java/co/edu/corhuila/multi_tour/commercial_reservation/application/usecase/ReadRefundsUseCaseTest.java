@@ -95,4 +95,17 @@ class ReadRefundsUseCaseTest {
 
         assertThat(calls).containsExactly("dueDecisions " + tenant + " " + RefundFakes.NOW, "dueRefunds " + tenant + " " + RefundFakes.NOW);
     }
+
+    // G-WF3-4 (HU-WFL-003, AC-WF3-04 amended): the saga reads one refund with the tenant of the path; one of another tenant looks missing.
+    @Test
+    void theSagaReadsOneRefundWithTheTenantOfThePathAndOneOfAnotherTenantLooksMissing() {
+        RefundAuthorization refund = RefundAuthorization.determine(UUID.randomUUID(), RefundFakes.TENANT, UUID.randomUUID(),
+                co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundOrigin.NOT_ATTRIBUTABLE_TO_CUSTOMER, new Cents(1_000), RefundFakes.NOW, RefundFakes.NOW);
+        fakes.refunds.put(refund.id(), refund);
+
+        assertThat(read.internalRefund(RefundFakes.TENANT, refund.id())).isEqualTo(refund);
+        assertThatThrownBy(() -> read.internalRefund(UUID.randomUUID(), refund.id())).isInstanceOf(RefundNotFoundException.class);
+        assertThatThrownBy(() -> read.internalRefund(RefundFakes.TENANT, UUID.randomUUID())).isInstanceOf(RefundNotFoundException.class);
+        assertThat(calls).isEmpty();
+    }
 }
