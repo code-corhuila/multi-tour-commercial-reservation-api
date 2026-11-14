@@ -58,8 +58,10 @@ class EstablishmentConfiguration {
     @Bean ReactivateAssociatedEstablishment reactivateEstablishment(AssociatedEstablishmentRepository repository, Clock clock) {
         return new ReactivateAssociatedEstablishmentUseCase(repository, clock);
     }
-    // The JDBC adapter is the repository and the change log at once: the use case takes the log from the stores, not from a bean looked up by type.
-    @Bean ListEstablishmentChanges listEstablishmentChanges(EstablishmentStores stores) { return new ListEstablishmentChangesUseCase(stores.changes()); }
+    // The JDBC adapter is the repository and the change log at once, so a lookup by type can find it twice: the unique (or primary) log wins, otherwise the one of the stores.
+    @Bean ListEstablishmentChanges listEstablishmentChanges(ObjectProvider<EstablishmentChangeLog> logs, EstablishmentStores stores) {
+        return new ListEstablishmentChangesUseCase(logs.getIfUnique(stores::changes));
+    }
     @Bean EstablishmentController establishmentController(RegisterAssociatedEstablishment register,
             GetAssociatedEstablishment get, ListAssociatedEstablishments list, InactivateAssociatedEstablishment inactivate,
             ReactivateAssociatedEstablishment reactivate, ListEstablishmentChanges changes, AssociatedEstablishmentRepository repository,

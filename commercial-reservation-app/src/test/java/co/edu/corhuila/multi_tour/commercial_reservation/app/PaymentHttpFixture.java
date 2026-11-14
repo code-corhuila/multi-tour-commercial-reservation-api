@@ -9,6 +9,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Pa
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParametersChangeOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentParametersChange;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofStore;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
@@ -38,10 +40,11 @@ class PaymentHttpFixture {
 
     static final class MemoryPayments implements PaymentDeadlineReader, PaymentConditionReader, SalidaCapacityHolder, PaymentProofStore,
             PaymentEventOutbox, PaymentTransaction, CashSessionStatus, CashIncomeRecorder, CreditBalanceRecorder, PaymentParameterRepository,
-            CancelledValueRecorder, ReservationCancellation {
+            CancelledValueRecorder, ReservationCancellation, PaymentParametersChangeOutbox {
         final Map<UUID, ProofFile> proofs = new HashMap<>();
         final List<PaymentEvent> events = new ArrayList<>();
         final List<PaymentParameter> parameters = new ArrayList<>();
+        final List<PaymentParametersChange> parameterChanges = new ArrayList<>();
         final List<String> income = new ArrayList<>();
         final List<UUID> cancelled = new ArrayList<>();
         Cents minimumDeposit = new Cents(90_000);
@@ -49,7 +52,7 @@ class PaymentHttpFixture {
         PaymentDeadline deadline;
 
         void clear() {
-            proofs.clear(); events.clear(); parameters.clear(); income.clear(); cancelled.clear();
+            proofs.clear(); events.clear(); parameters.clear(); parameterChanges.clear(); income.clear(); cancelled.clear();
             cashDown = false; minimumDeposit = new Cents(90_000); sessionOpen = true; availability = true; cancellationAvailable = true; deadline = null;
         }
         public Optional<PaymentDeadline> openDeadline(UUID tenant, UUID reservation) { return Optional.ofNullable(deadline); }
@@ -59,6 +62,7 @@ class PaymentHttpFixture {
         public void save(UUID tenant, UUID attempt, ProofFile proof) { proofs.put(attempt, proof); }
         public Optional<ProofFile> read(UUID tenant, UUID attempt) { return Optional.ofNullable(proofs.get(attempt)); }
         public void append(PaymentEvent event) { events.add(event); }
+        public void append(PaymentParametersChange change) { parameterChanges.add(change); }
         public <T> T inTransaction(Supplier<T> work) { return work.get(); }
         public boolean isOpen(UUID tenant) { return sessionOpen; }
         public UUID record(UUID tenant, UUID reservation, String intentKey, Cents amount, UUID registeredBy) {
