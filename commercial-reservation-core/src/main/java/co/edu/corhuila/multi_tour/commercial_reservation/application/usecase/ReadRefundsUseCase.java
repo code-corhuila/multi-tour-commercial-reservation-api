@@ -62,4 +62,9 @@ public class ReadRefundsUseCase implements ReadRefunds {
     public RefundPage<RefundAuthorization> dueRefunds(UUID tenantId, int page, int limit) {
         return queries.dueRefunds(tenantId, Instant.now(clock), page, limit);
     }
+
+    @Override
+    public RefundAuthorization internalRefund(UUID tenantId, UUID refundAuthorizationId) {
+        return refunds.find(tenantId, refundAuthorizationId).orElseThrow(() -> new RefundNotFoundException("refund authorization", refundAuthorizationId));
+    }
 }
