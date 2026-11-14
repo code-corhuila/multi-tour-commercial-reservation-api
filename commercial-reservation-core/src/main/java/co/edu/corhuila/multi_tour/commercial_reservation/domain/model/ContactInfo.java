@@ -1,7 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
 
 // Email and phone are the two channels 06-data names; its "related information" is NO DEFINIDO.
-// TODO(DP-06 / 06-data): rule for "contact present" is assumed as at least one channel.
+// Decision (spec 005 DP-06, proposed default pending the Project Lead): "contact present" means at least one channel, e-mail or phone.
 public record ContactInfo(String email, String phone) {
     // The e-mail is stored trimmed and lower-cased (contract), so two spellings are one address.
     public ContactInfo {
