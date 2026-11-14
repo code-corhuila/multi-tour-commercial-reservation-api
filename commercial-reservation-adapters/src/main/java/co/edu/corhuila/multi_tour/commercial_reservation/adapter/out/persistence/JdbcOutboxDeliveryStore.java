@@ -42,7 +42,7 @@ public final class JdbcOutboxDeliveryStore implements OutboxDeliveryStore {
     public OutboxEventPage pending(Instant now, int page, int limit) {
         OffsetDateTime at = at(now);
         Long total = jdbc.queryForObject("SELECT count(*)" + PENDING, Long.class, at);
-        var items = jdbc.query("SELECT " + COLUMNS + PENDING + " ORDER BY next_attempt_at NULLS FIRST, occurred_at LIMIT ? OFFSET ?", rows(), at, limit,
+        var items = jdbc.query("SELECT " + COLUMNS + PENDING + " ORDER BY next_attempt_at NULLS FIRST, occurred_at, outbox_event_id LIMIT ? OFFSET ?", rows(), at, limit,
                 (long) (page - 1) * limit);
         return new OutboxEventPage(items, total == null ? 0 : total);
     }

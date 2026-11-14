@@ -201,6 +201,38 @@ class OutboxDeliveryPersistenceTest {
         assertThat(pendingEvents()).filteredOn(found -> found.eventId().equals(event)).singleElement().extracting(OutboxEventView::aggregateId).isEqualTo(condition);
     }
 
+    // Events that share one instant are written in batches while others are published and retried, as in a busy outbox: walking the list page by page must still
+    // return every pending event exactly once, so the order ends in a unique key.
+    @Test
+    void theEventsThatShareTheSameInstantAreListedOnceEachAcrossPages() {
+        String insert = "INSERT INTO commercial_reservation.outbox_event (outbox_event_id, tenant_id, event_type, service_id, actor_id, occurred_at, previous_catalog_status, "
+                + "new_catalog_status) SELECT gen_random_uuid(), ?, 'CatalogServiceInactivated', ?, ?, ?::timestamptz, 'ACTIVE', 'INACTIVE' FROM generate_series(1, 1500)";
+        String instant = ReservationPersistenceFixture.NOW.toString();
+        fixture.jdbc.update(insert, fixture.tenant, fixture.service, fixture.actor, instant);
+        fixture.jdbc.update("UPDATE commercial_reservation.outbox_event SET published_at = now(), next_attempt_at = NULL WHERE tenant_id = ? AND random() < 0.3", fixture.tenant);
+        fixture.jdbc.update(insert, fixture.tenant, fixture.service, fixture.actor, instant);
+        fixture.jdbc.update("UPDATE commercial_reservation.outbox_event SET attempts = attempts + 1, last_error = 'retry' WHERE tenant_id = ? AND published_at IS NULL AND random() < 0.3",
+                fixture.tenant);
+        fixture.jdbc.update(insert, fixture.tenant, fixture.service, fixture.actor, instant);
+        fixture.jdbc.update("UPDATE commercial_reservation.outbox_event SET attempts = attempts + 1, last_error = 'retry again' WHERE tenant_id = ? AND published_at IS NULL AND random() < 0.3",
+                fixture.tenant);
+        List<UUID> expected = fixture.jdbc.queryForList("SELECT outbox_event_id FROM commercial_reservation.outbox_event WHERE tenant_id = ? AND published_at IS NULL AND failed_at IS NULL",
+                UUID.class, fixture.tenant);
+        UUID tenantMark = fixture.tenant;
+
+        // The pending-delivery index serves this order, and with it equal instants come out in a stable order. When the planner sorts instead (stale statistics, other settings) the
+        // pages of a tied order are not stable, so the walk is made here under that plan, inside one transaction that carries the settings to the queries of the store.
+        List<UUID> walked = new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(fixture.jdbc.getDataSource()))
+                .execute(status -> {
+                    fixture.jdbc.execute("SET LOCAL enable_indexscan = off");
+                    fixture.jdbc.execute("SET LOCAL enable_bitmapscan = off");
+                    fixture.jdbc.execute("SET LOCAL enable_indexonlyscan = off");
+                    return pendingEvents().stream().filter(found -> tenantMark.equals(found.tenantId())).map(OutboxEventView::eventId).toList();
+                });
+
+        assertThat(walked).doesNotHaveDuplicates().containsExactlyInAnyOrderElementsOf(expected);
+    }
+
     @Test
     void theCatalogServiceEventIsDeliveredWithTheServiceAsAggregate() {
         UUID event = insertEvent("CatalogServiceInactivated", "service_id", fixture.service, ", previous_catalog_status, new_catalog_status", ", 'ACTIVE', 'INACTIVE'", null);
