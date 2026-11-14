@@ -114,6 +114,9 @@ public class AuthFilter extends OncePerRequestFilter {
                 || path.matches("/api/v1/commercial-reservation/internal/tenants/[^/]+/events") || "/api/v1/commercial-reservation/internal/events".equals(path)) {
             return false;
         }
+        // Decision (api spec 021 RN-TSC-08 and DP-TSC-05, plan D-05): a tenant with no copy of its status is not refused on a person route, because the token was
+        // issued by security for an existing tenant and the copy can lag the relay by seconds; a lookup that fails is never a pass, it is the 500 of doFilterInternal.
+        // Both are fixed by InactiveTenantHttpTest#aTokenOfATenantWithNoCopyPasses and #aFailingLookupIs500NotAPass.
         Optional<TenantStatus> status = statuses.statusOf(principal.tenantId());
         if (status.isEmpty()) {
             LOG.warn("No tenant status copy yet, tenantId={}", principal.tenantId());
