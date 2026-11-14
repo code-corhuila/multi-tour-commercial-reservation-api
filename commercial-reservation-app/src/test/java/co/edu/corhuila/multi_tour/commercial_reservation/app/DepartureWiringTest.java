@@ -11,6 +11,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.De
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureStateRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ProcessedEvents;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaMirrorTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ServiceDepartures;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,5 +32,12 @@ class DepartureWiringTest {
         assertThat(context.getBean(ProcessedEvents.class)).isInstanceOf(JdbcProcessedEvents.class);
         assertThat(context.getBean(SalidaMirrorTransaction.class)).isInstanceOf(JdbcSalidaMirrorTransaction.class);
         assertThat(context.getBeansOfType(MirrorSalidaState.class)).hasSize(1);
+    }
+
+    @Test
+    void theJdbcDepartureAdapterIsTheOnlyCandidateForBothOfItsPorts() {
+        assertThat(context.getBeansOfType(DepartureStateRepository.class)).hasSize(1);
+        assertThat(context.getBeansOfType(ServiceDepartures.class)).hasSize(1);
+        assertThat(context.getBean(ServiceDepartures.class)).isSameAs(context.getBean(DepartureStateRepository.class));
     }
 }
