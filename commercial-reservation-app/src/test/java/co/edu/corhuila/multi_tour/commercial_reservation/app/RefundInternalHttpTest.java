@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationSnapshot;
@@ -113,6 +114,35 @@ class RefundInternalHttpTest extends ReservationHttpBase {
         CatalogHttpTest.assertField(exchange(step(tenant, refund.id(), "execution-completion", Map.of(), service), 400), "cashMovementId");
         exchange(step(otherTenant, refund.id(), "execution-start", start(), service), 404);
         exchange(step(tenant, new UUID(51, 99), "execution-undo", Map.of(), service), 404);
+        assertThat(refunds.refunds.get(refund.id())).isEqualTo(refund);
+    }
+
+    private MockHttpServletRequestBuilder lookup(UUID forTenant, UUID id) {
+        return get(BASE + "/internal/tenants/" + forTenant + "/refund-authorizations/" + id).header("X-Correlation-Id", TRACE);
+    }
+
+    // G-WF3-4 (HU-WFL-003, AC-WF3-04 amended): the saga execute-refund reads the refund after an unknown step 3; the read changes nothing.
+    @Test void theSagaReadsTheExecutionStateAndTheMovementOfARefundAndTheReadChangesNothing() throws Exception {
+        var authorized = CatalogHttpTest.json(exchange(lookup(tenant, refund.id()).header("Authorization", "Bearer " + service), 200));
+        assertThat(authorized.get("refundAuthorizationId").asText()).isEqualTo(refund.id().toString());
+        assertThat(authorized.get("executionState").asText()).isEqualTo("AUTHORIZED");
+        assertThat(authorized.has("cashMovementId")).isFalse();
+        assertThat(refunds.refunds.get(refund.id())).isEqualTo(refund);
+
+        exchange(step(tenant, refund.id(), "execution-start", start(), service), 200);
+        exchange(step(tenant, refund.id(), "execution-completion", Map.of("cashMovementId", movement.toString()), service), 200);
+        var executed = CatalogHttpTest.json(exchange(lookup(tenant, refund.id()).header("Authorization", "Bearer " + service), 200));
+        assertThat(executed.get("executionState").asText()).isEqualTo("EXECUTED");
+        assertThat(executed.get("cashMovementId").asText()).isEqualTo(movement.toString());
+        assertThat(CatalogHttpTest.json(exchange(lookup(tenant, refund.id()).header("Authorization", "Bearer " + service), 200))).isEqualTo(executed);
+    }
+
+    @Test void theReadIsForTheServiceTokenOnlyAndAnUnknownRefundOrOneOfAnotherTenantLooksMissing() throws Exception {
+        exchange(lookup(tenant, new UUID(51, 99)).header("Authorization", "Bearer " + service), 404);
+        exchange(lookup(otherTenant, refund.id()).header("Authorization", "Bearer " + service), 404);
+        exchange(lookup(tenant, refund.id()).header("Authorization", "Bearer " + token(ADMIN)), 403);
+        exchange(lookup(tenant, refund.id()).header("Authorization", "Bearer " + token(COLLABORATOR)), 403);
+        CatalogHttpTest.assertError(exchange(lookup(tenant, refund.id()), 401), "UNAUTHORIZED", "authentication is required");
         assertThat(refunds.refunds.get(refund.id())).isEqualTo(refund);
     }
 
