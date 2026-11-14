@@ -1,5 +1,5 @@
-﻿openapi: 3.0.3
-# Reference copy from multi-tour-docs origin/main:07-api/contracts/openapi/_shared.yaml.
+openapi: 3.0.3
+# Reference copy from multi-tour-docs origin/main:07-api/contracts/openapi/_shared.yaml (the contract of this service, all its operations).
 info:
   title: Shared Components
   version: 1.0.0

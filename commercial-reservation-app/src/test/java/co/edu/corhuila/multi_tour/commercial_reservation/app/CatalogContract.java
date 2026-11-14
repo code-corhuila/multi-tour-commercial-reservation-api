@@ -40,14 +40,24 @@ final class CatalogContract {
     }
 
     static void assertNoDeletion() {
-        API.getPaths().values().forEach(path -> assertThat(path.readOperationsMap())
-                .doesNotContainKeys(PathItem.HttpMethod.DELETE, PathItem.HttpMethod.PUT));
+        // The contract holds every operation of the service now; RN-06 is about the catalog services (the settings of the catalog are set with a PUT) and the associated establishments.
+        API.getPaths().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith("/catalog/services") || entry.getKey().equals("/associated-establishments")
+                        || entry.getKey().startsWith("/associated-establishments/"))
+                .forEach(entry -> assertThat(entry.getValue().readOperationsMap())
+                        .doesNotContainKeys(PathItem.HttpMethod.DELETE, PathItem.HttpMethod.PUT));
     }
 
     void assertCoverage() {
         Set<String> declared = new HashSet<>();
-        API.getPaths().values().forEach(path -> path.readOperations()
-                .forEach(operation -> declared.add(operation.getOperationId())));
+        // The contract holds every operation of the service now; the coverage of all of them is ContractCoverageTest.
+        // This gate keeps the scope it always had: the health check and the catalog services.
+        API.getPaths().forEach((template, path) -> {
+            if (template.equals("/health") || template.equals("/catalog/services") || template.startsWith("/catalog/services/{serviceId}")
+                    && !template.contains("departures")) {
+                path.readOperations().forEach(operation -> declared.add(operation.getOperationId()));
+            }
+        });
         assertThat(PENDING).isEmpty();
         // EstablishmentHttpTest has its own gate for all six establishment operations.
         declared.removeIf(operation -> operation.contains("AssociatedEstablishment"));
