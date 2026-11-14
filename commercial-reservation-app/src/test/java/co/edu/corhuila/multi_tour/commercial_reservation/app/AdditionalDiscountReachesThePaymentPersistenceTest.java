@@ -1,7 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAdditionalDiscountRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAuthorizableReasonRepository;
@@ -15,7 +14,6 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Di
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.RegisterAdditionalDiscountUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AuthorizableReason;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
-import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
@@ -93,9 +91,10 @@ class AdditionalDiscountReachesThePaymentPersistenceTest {
         var attempt = charged.registerTransfer(UUID.randomUUID(), new Cents(AFTER), new Cents(100_000), fixture.actor, NOW);
 
         assertThat(attempt.amount()).isEqualTo(new Cents(AFTER));
-        // What was due before the discount can no longer be charged, and the payment wrote no discount of its own.
-        assertThatThrownBy(() -> charged.registerTransfer(UUID.randomUUID(), new Cents(BEFORE), new Cents(100_000), fixture.actor, NOW))
-                .isInstanceOf(DomainException.class);
+        // DP-05 (decided 2026-11-11): an amount above the balance is registered as declared and its excess is settled at validation;
+        // the payment still wrote no discount of its own.
+        assertThat(charged.registerTransfer(UUID.randomUUID(), new Cents(BEFORE), new Cents(100_000), fixture.actor, NOW).amount())
+                .isEqualTo(new Cents(BEFORE));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM commercial_reservation.reservation_additional_discount "
                 + "WHERE reservation_id = ?", Integer.class, reservation)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT amount_cents FROM commercial_reservation.reservation_additional_discount "
