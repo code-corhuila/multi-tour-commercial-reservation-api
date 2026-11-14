@@ -27,7 +27,7 @@ import java.time.Instant;
 
 // HU-COM-018 RN-01, RN-05; AC-18.1, AC-18.6, AC-18.14; plan D-04, D-05: accepting a proposal. The role and the ownership come before anything is written (the customer answers only their own
 // proposal; the Administrator and the Collaborator record an outside answer). The same reservation takes the proposed departure with its payments and history, the hold becomes its seat, the frozen
-// economic deadlines resume capped by the new start, and the record, the event and the episode commit together. The rejection and the lapses are the next slice.
+// economic deadlines resume capped by the new start, and the record, the event and the episode commit together. The rejection is concluded by ConcludeReschedulingUseCase, never here.
 public class AcceptReschedulingProposalUseCase implements AnswerReschedulingProposal {
 
     private final ReschedulingRepository episodes;
