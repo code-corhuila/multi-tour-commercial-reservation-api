@@ -27,7 +27,8 @@ class DepartureMirrorConfiguration {
     }
 
     @Bean
-    DepartureStateRepository departureStateRepository(JdbcTemplate jdbc) {
+    // One adapter instance serves both of its ports, so each port has a single candidate at every injection point.
+    JdbcDepartureStateRepository departureStateRepository(JdbcTemplate jdbc) {
         return new JdbcDepartureStateRepository(jdbc);
     }
 

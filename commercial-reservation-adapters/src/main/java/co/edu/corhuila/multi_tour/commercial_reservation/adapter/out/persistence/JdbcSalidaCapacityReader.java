@@ -18,9 +18,10 @@ public final class JdbcSalidaCapacityReader implements SalidaCapacityReader {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Capacity checks require the catalog update transaction");
         }
-        // PostgreSQL cannot lock an aggregate result; lock departures first, then compute the maximum.
+        // PostgreSQL cannot lock an aggregate result; lock departures first, then compute the maximum. The lock is FOR UPDATE, not FOR SHARE: the same
+        // update then rewrites their effective capacity (ND-08), and a share lock raised to an update lock could deadlock two concurrent updates.
         return jdbc.query("SELECT held_seats FROM commercial_reservation.salida_capacity "
-                        + "WHERE tenant_id = ? AND service_id = ? ORDER BY salida_capacity_id FOR SHARE",
+                        + "WHERE tenant_id = ? AND service_id = ? ORDER BY salida_capacity_id FOR UPDATE",
                 (row, index) -> row.getInt("held_seats"), tenantId, serviceId)
                 .stream().mapToInt(Integer::intValue).max().orElse(0);
     }
