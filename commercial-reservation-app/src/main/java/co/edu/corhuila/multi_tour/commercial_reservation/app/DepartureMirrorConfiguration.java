@@ -10,7 +10,6 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.De
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureStateRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ProcessedEvents;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaMirrorTransaction;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ServiceDepartures;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.MirrorSalidaStateUseCase;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,12 +27,8 @@ class DepartureMirrorConfiguration {
     }
 
     @Bean
-    DepartureStateRepository departureStateRepository(JdbcTemplate jdbc) {
-        return new JdbcDepartureStateRepository(jdbc);
-    }
-
-    @Bean
-    ServiceDepartures serviceDepartures(JdbcTemplate jdbc) {
+    // One adapter instance serves both of its ports, so each port has a single candidate at every injection point.
+    JdbcDepartureStateRepository departureStateRepository(JdbcTemplate jdbc) {
         return new JdbcDepartureStateRepository(jdbc);
     }
 
