@@ -6,7 +6,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Ca
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CatalogSettings;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogSettingsRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ServiceDepartures;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogStatus;
 import java.time.Clock;
 import java.time.ZoneOffset;
@@ -39,6 +41,13 @@ class CatalogHttpFixture {
         return (tenant, service) -> catalog.findByTenantAndId(tenant, service)
                 .map(item -> catalog.held.getOrDefault(service, List.of()).stream()
                         .mapToInt(Integer::intValue).max().orElse(0)).orElse(0);
+    }
+    // The catalog tests keep no departures: the update has nothing to realign and never reaches the database.
+    @Bean @Primary ServiceDepartures noDepartures() {
+        return new ServiceDepartures() {
+            public List<DepartureState> lockAllOf(UUID tenant, UUID service) { return List.of(); }
+            public void save(DepartureState state) { }
+        };
     }
     @Bean @Primary Clock catalogClock() { return Clock.fixed(TestJwtKeys.NOW, ZoneOffset.UTC); }
     @Bean @Primary PlatformTransactionManager memoryTransactions() {
