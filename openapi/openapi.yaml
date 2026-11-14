@@ -2269,6 +2269,12 @@ paths:
           $ref: './_shared.yaml#/components/responses/Forbidden'
         '404':
           $ref: './_shared.yaml#/components/responses/NotFound'
+        '422':
+          description: The same `Idempotency-Key` was already used with another body; nothing is changed
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
@@ -6671,15 +6677,15 @@ components:
         penaltyBasisPoints: {type: integer, minimum: 0, maximum: 10000, description: "Share of the validated values kept on a customer cancellation; 0 means no penalty", x-proposed: true}
 
     CancellationPolicy:
-      description: A policy row with the last change only.
-      allOf:
-        - $ref: '#/components/schemas/CancellationPolicyValues'
-        - type: object
-          required: [changedBy, changeReason, changedAt]
-          properties:
-            changedBy: {$ref: './_shared.yaml#/components/schemas/UUID'}
-            changeReason: {type: string, x-proposed: true}
-            changedAt: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
+      type: object
+      description: A policy row with the last change only. The values of `CancellationPolicyValues` plus the change, as one flat object, because an `allOf` with the closed `CancellationPolicyValues` would refuse the change fields.
+      required: [penaltyBasisPoints, changedBy, changeReason, changedAt]
+      properties:
+        serviceId: {allOf: [{$ref: './_shared.yaml#/components/schemas/UUID'}], description: "Absent: the policy of the whole tenant", x-proposed: true}
+        penaltyBasisPoints: {type: integer, minimum: 0, maximum: 10000, description: "Share of the validated values kept on a customer cancellation; 0 means no penalty", x-proposed: true}
+        changedBy: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        changeReason: {type: string, x-proposed: true}
+        changedAt: {$ref: './_shared.yaml#/components/schemas/Timestamp'}
 
     ChangeCancellationPoliciesRequest:
       type: object
@@ -7386,8 +7392,8 @@ components:
 
     RetentionAnchorBasis:
       type: string
-      enum: [DEPARTURE_REAL_END, DEPARTURE_ESTIMATED_END, CANCELLATION_CLOSING, CANCELLATION_INSTANT]
-      description: PROPOSED. What the year counts from. The real end prevails once the departure is finalized (DP-04); the estimated end applies after 7 calendar days without regularization (DP-03); a cancelled reservation counts from its definitive closing, or from its cancellation when no value is left to treat or the closing is blocked by a frozen decision.
+      enum: [SERVICE_END, ESTIMATED_END, CLOSING, CANCELLATION_NO_VALUES, CANCELLATION_BLOCKED]
+      description: PROPOSED. The five codes of `chk_sensitive_data_deletion_basis` (`06-data/modeling-conventions.md`), the same on the wire, in the record and in the event. What the year counts from. The real end prevails once the departure is finalized (DP-04); the estimated end applies after 7 calendar days without regularization (DP-03); a cancelled reservation counts from its definitive closing, or from its cancellation when no value is left to treat or the closing is blocked by a frozen decision.
 
     SensitiveDataRetentionDueRow:
       type: object

@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 public final class RetentionInternalController {
     public record DueRowResponse(UUID reservationId, UUID customerId, String anchorBasis, String anchorAt) {}
     public record DueResponse(List<DueRowResponse> data, UUID next) {}
-    public record DeletionResponse(String outcome, int companionRowsDeleted, boolean customerDataDeleted) {}
+    public record DeletionResponse(UUID reservationId, String outcome, int companionRowsDeleted, boolean customerDataDeleted) {}
 
     private final ListDueSensitiveData list;
     private final DeleteSensitiveData deletion;
@@ -51,7 +51,7 @@ public final class RetentionInternalController {
         requireService(principal);
         if (key == null || key.length() < 8 || key.length() > 128) throw new DomainException("Idempotency-Key", "header required, 8 to 128 characters");
         DeletionResult result = deletion.delete(tenantId, reservationId);
-        return new DeletionResponse(result.outcome().name(), result.companionRows(), result.customerDataDeleted());
+        return new DeletionResponse(reservationId, result.outcome().name(), result.companionRows(), result.customerDataDeleted());
     }
 
     private static UUID uuid(String value, String field) {
