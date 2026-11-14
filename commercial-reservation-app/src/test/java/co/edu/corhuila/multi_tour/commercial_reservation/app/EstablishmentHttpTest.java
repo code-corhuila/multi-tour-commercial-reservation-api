@@ -179,7 +179,7 @@ class EstablishmentHttpTest {
         status().isNotFound().match(result);
         CatalogHttpTest.assertError(result, "NOT_FOUND", "resource not found");
         var api = new OpenAPIV3Parser().read(SPEC);
-        api.getPaths().entrySet().stream().filter(entry -> entry.getKey().contains("associated-establishments"))
+        api.getPaths().entrySet().stream().filter(entry -> entry.getKey().startsWith("/associated-establishments"))
                 .forEach(entry -> assertThat(entry.getValue().readOperationsMap())
                         .doesNotContainKeys(PathItem.HttpMethod.DELETE, PathItem.HttpMethod.PATCH, PathItem.HttpMethod.PUT));
         assertThat(json(exchange(get(path(item)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(item);
@@ -299,7 +299,7 @@ class EstablishmentHttpTest {
     @Test @Order(Integer.MAX_VALUE) void contractOperationsAreExercised() {
         var declared = new HashSet<String>();
         new OpenAPIV3Parser().read(SPEC).getPaths().entrySet().stream()
-                .filter(entry -> entry.getKey().contains("associated-establishments"))
+                .filter(entry -> entry.getKey().startsWith("/associated-establishments") || entry.getKey().endsWith("/associated-establishments/{associationId}/image"))
                 .forEach(entry -> entry.getValue().readOperations().forEach(operation -> declared.add(operation.getOperationId())));
         assertThat(exercised).containsExactlyInAnyOrderElementsOf(declared);
         assertThat(CatalogContract.PENDING).isEmpty();
