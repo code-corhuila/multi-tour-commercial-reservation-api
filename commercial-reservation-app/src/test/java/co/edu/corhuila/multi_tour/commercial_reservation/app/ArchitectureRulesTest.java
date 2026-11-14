@@ -17,8 +17,8 @@ import org.junit.jupiter.api.Test;
 // Hexagonal layers by a scan of the imports of the sources (HU-COM-010 audit, 2026-11-06; ADR-004, norm 5.2). No library: a class of
 // adapter.in.http does not import adapter.out nor the ports ReservationRepository and CustomerRepository, and the core imports no
 // Spring, JDBC or Jackson. The known exceptions are listed here, by class and by import: a new violation fails the test, and so does an
-// exception that no longer applies, so the list only shrinks. Each Idempotent* class of the http package still takes the key table of the
-// adapter and a Spring transaction template; they move to the core one by one, as IdempotentDecidePaymentProofUseCase did.
+// exception that no longer applies, so the list only shrinks. A class of the http package opens a transaction through the port RequestTransaction,
+// never with a Spring class (theHttpAdaptersImportNoSpringTransaction).
 class ArchitectureRulesTest {
     private static final String ROOT = "co.edu.corhuila.multi_tour.commercial_reservation.";
     private static final String KEYS = ROOT + "adapter.out.persistence.IdempotencyKeys";
@@ -95,6 +95,19 @@ class ArchitectureRulesTest {
         }
 
         assertThat(found).isEmpty();
+    }
+
+    // K2 (rubric c3-release): a transaction is a concern of the use cases and of the out adapters, not of the entry layer. A class of
+    // adapter.in.http opens one through the port RequestTransaction, never through a Spring transaction class.
+    @Test void theHttpAdaptersImportNoSpringTransaction() throws IOException {
+        Path http = sources("commercial-reservation-adapters").resolve(ROOT.replace('.', '/') + "adapter/in/http");
+        Map<String, List<String>> found = new TreeMap<>();
+        for (Path file : javaFiles(http)) {
+            List<String> violations = imports(file).stream().filter(imported -> imported.startsWith("org.springframework.transaction.")).toList();
+            if (!violations.isEmpty()) found.put(file.getFileName().toString().replace(".java", ""), violations);
+        }
+
+        assertThat(found).as("a class of adapter.in.http must open its transaction through RequestTransaction").isEmpty();
     }
 
     @Test void theCoreImportsNoAdapter() throws IOException {

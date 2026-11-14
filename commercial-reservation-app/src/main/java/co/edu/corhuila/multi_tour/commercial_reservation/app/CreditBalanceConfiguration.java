@@ -4,6 +4,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CreditH
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CreditReadController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CreditWriteController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCreditWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.SpringRequestTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditApplicationReader;
@@ -80,7 +81,7 @@ class CreditBalanceConfiguration {
                 return keys.findResourceId(tenantId, key);
             }
         };
-        return new IdempotentCreditWrites(credits, store, new TransactionTemplate(manager));
+        return new IdempotentCreditWrites(credits, store, new SpringRequestTransaction(new TransactionTemplate(manager)));
     }
 
     @Bean
