@@ -79,7 +79,8 @@ public class Rs256Verifier {
             return new AuthenticatedPrincipal(sub.textValue(), tenantId, names, granted,
                     "restricted".equals(claims.path("access").textValue()), exceptionalAccess, issuedAt);
         } catch (Exception failure) {
-            LOG.warn("Access token rejected: {}", failure instanceof IllegalArgumentException
+            // Only the reason written by this class is logged: the message of a library (a UUID or a base64 decoder) repeats the value it failed on.
+            LOG.warn("Access token rejected: {}", failure instanceof Rejection
                     ? failure.getMessage() : failure.getClass().getSimpleName());
             throw new InvalidTokenException();
         }
@@ -112,7 +113,13 @@ public class Rs256Verifier {
         return node;
     }
 
+    private static final class Rejection extends IllegalArgumentException {
+        Rejection(String reason) {
+            super(reason);
+        }
+    }
+
     private static void require(boolean condition, String reason) {
-        if (!condition) throw new IllegalArgumentException(reason);
+        if (!condition) throw new Rejection(reason);
     }
 }
