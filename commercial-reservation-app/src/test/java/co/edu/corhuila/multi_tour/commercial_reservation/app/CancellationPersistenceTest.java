@@ -3,7 +3,6 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.DeferredFinancialDecisionOpener;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cancellation.NoCancellationPenaltyPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCancellationRecords;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDepartureReader;
@@ -48,7 +47,7 @@ class CancellationPersistenceTest {
         reservations = new JdbcReservationRepository(fixture.jdbc, fixture.cipher, fixture.transactions, new JdbcReservationCreatedOutbox(fixture.jdbc));
         records = new JdbcCancellationRecords(fixture.jdbc);
         cancel = new CancelReservationUseCase(reservations, new JdbcDepartureReader(fixture.jdbc), new JdbcSalidaCapacityHolder(fixture.jdbc),
-                new NoCancellationPenaltyPolicy(), new JdbcReprogrammingMark(fixture.jdbc), new DeferredFinancialDecisionOpener(), records,
+                new NoCancellationPenaltyPolicy(), new JdbcReprogrammingMark(fixture.jdbc), (tenantId, reservationId, base, penalty, recognizedAt) -> { }, records,
                 new JdbcPaymentEventOutbox(fixture.jdbc), new JdbcPaymentTransaction(fixture.transactions), Clock.fixed(NOW.plusSeconds(60), ZoneOffset.UTC));
     }
 
