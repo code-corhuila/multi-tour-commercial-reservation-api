@@ -4454,6 +4454,40 @@ paths:
               schema: {$ref: './_shared.yaml#/components/schemas/ErrorResponse'}
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
+  /internal/tenants/{tenantId}/refund-authorizations/{refundAuthorizationId}:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdPath'
+      - $ref: '#/components/parameters/RefundAuthorizationIdPath'
+    get:
+      summary: Read the execution state of a refund (saga lookup after an unknown step 3)
+      description: |
+        **PROPOSED** (HU-WFL-003, AC-WF3-04 amended 2026-11-14, gap G-WF3-4). The saga `execute-refund` reads the refund
+        after `execution-completion` ended with an unknown outcome (timeout, `5xx`, network): `EXECUTED` with its
+        movement completes the saga; `EXECUTING` or `AUTHORIZED` makes it compensate. Read only and idempotent: it never
+        changes the refund. A refund that does not exist or belongs to another tenant answers `404`. **Requires:**
+        `SERVICE` role and nothing else. A person's token gets `403` and the tenant comes from the path. The public
+        `getRefundAuthorization` is not used because it requires a person's role.
+      operationId: getInternalRefundAuthorization
+      tags: [Internal]
+      security:
+        - bearerAuth: []
+      x-proposed: true
+      responses:
+        '200':
+          description: The refund as it stands, with `executionState` and, when `EXECUTED`, `cashMovementId`
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RefundAuthorization'}
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
   /internal/tenants/{tenantId}/refund-authorizations/{refundAuthorizationId}/overdue-mark:
     parameters:
       - $ref: '#/components/parameters/TenantIdPath'

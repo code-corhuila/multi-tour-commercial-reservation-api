@@ -21,4 +21,7 @@ public interface ReadRefunds {
     RefundPage<FinancialDecision> dueDecisions(UUID tenantId, int page, int limit);
 
     RefundPage<RefundAuthorization> dueRefunds(UUID tenantId, int page, int limit);
+
+    // G-WF3-4 (HU-WFL-003, AC-WF3-04): the saga execute-refund reads one refund with the tenant of the path after an unknown step 3.
+    RefundAuthorization internalRefund(UUID tenantId, UUID refundAuthorizationId);
 }
