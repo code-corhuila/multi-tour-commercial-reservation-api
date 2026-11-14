@@ -41,8 +41,10 @@ public final class JdbcRefundQueries implements RefundQueries {
 
     @Override
     public RefundPage<FinancialDecision> dueDecisions(UUID tenantId, Instant now, int page, int limit) {
+        // DP-13 out (Project Lead, 2026-11-12): a credit-balance refund request has no default, so job 2 is never handed one.
         List<Object> args = List.of(tenantId, time(now));
-        return page("d.recognized_at, d.financial_decision_id", DECISIONS + " AND d.outcome IS NULL AND d.frozen_at IS NULL AND COALESCE(d.resumed_due_at, d.recognized_at + interval '24 hours') <= ?", args,
+        return page("d.recognized_at, d.financial_decision_id", DECISIONS + " AND d.outcome IS NULL AND d.frozen_at IS NULL"
+                + " AND d.decision_kind <> 'CREDIT_BALANCE_REFUND_REQUEST' AND COALESCE(d.resumed_due_at, d.recognized_at + interval '24 hours') <= ?", args,
                 page, limit, "d.", JdbcFinancialDecisionRepository.COLUMNS, (row, index) -> JdbcFinancialDecisionRepository.map(row));
     }
 
