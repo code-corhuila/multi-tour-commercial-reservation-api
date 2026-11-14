@@ -2,12 +2,14 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcFinancialDecisionRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundAuthorizationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCreatedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalance;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKind;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ExecutionState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
@@ -30,7 +32,8 @@ class RefundQueriesPersistenceTest {
     private JdbcRefundAuthorizationRepository refunds;
     private JdbcRefundQueries queries;
     private UUID open, frozen, decided, pendingAuth;
-    private UUID overdueRefund, freshRefund;
+    private UUID overdueRefund, freshRefund, creditRequest;
+    private JdbcCreditBalanceRepository credits;
 
     @BeforeEach
     void plant() {
@@ -40,6 +43,7 @@ class RefundQueriesPersistenceTest {
         decisions = new JdbcFinancialDecisionRepository(fixture.jdbc);
         refunds = new JdbcRefundAuthorizationRepository(fixture.jdbc);
         queries = new JdbcRefundQueries(fixture.jdbc);
+        credits = new JdbcCreditBalanceRepository(fixture.jdbc);
         var reservations = new JdbcReservationRepository(fixture.jdbc, fixture.cipher, fixture.transactions, new JdbcReservationCreatedOutbox(fixture.jdbc));
         UUID r1 = UUID.randomUUID(), r2 = UUID.randomUUID(), r3 = UUID.randomUUID();
         for (UUID id : new UUID[] {r1, r2, r3}) reservations.save(fixture.reservation(id, true));
@@ -58,6 +62,14 @@ class RefundQueriesPersistenceTest {
         refunds.save(fresh);
         overdueRefund = late.id();
         freshRefund = fresh.id();
+        FinancialDecision source = save(r2, DecisionKind.PENDING_TREATMENT, NOW.minus(Duration.ofHours(40)), false).recordCreditFull(fixture.actor, NOW.minus(Duration.ofHours(39)));
+        decisions.save(source);
+        CreditBalance credit = CreditBalance.ofDecision(UUID.randomUUID(), source, fixture.actor, NOW.minus(Duration.ofHours(39)));
+        credits.save(credit);
+        FinancialDecision request = FinancialDecision.open(UUID.randomUUID(), fixture.tenant, r2, DecisionKind.CREDIT_BALANCE_REFUND_REQUEST, new Cents(10_000), null,
+                credit.id(), NOW.minus(Duration.ofHours(30)));
+        decisions.save(request);
+        creditRequest = request.id();
     }
 
     private FinancialDecision save(UUID reservation, DecisionKind kind, Instant recognizedAt, boolean freeze) {
@@ -80,6 +92,9 @@ class RefundQueriesPersistenceTest {
 
     @Test
     void theDueListsNameOnlyWhatIsDueAndTheOverdueFilterIgnoresTheExecutedAndTheFresh() {
+        // HU-COM-016 DP-13 out (Project Lead, 2026-11-12): the credit-balance refund request of 30 hours is open and past 24 hours, yet it is not listed for the default.
+        assertThat(queries.decisions(fixture.tenant, DecisionKind.CREDIT_BALANCE_REFUND_REQUEST, true, false, 1, 50).items()).extracting(FinancialDecision::id)
+                .containsExactly(creditRequest);
         assertThat(queries.dueDecisions(fixture.tenant, NOW, 1, 50).items()).extracting(FinancialDecision::id).containsExactly(open);
         assertThat(queries.dueRefunds(fixture.tenant, NOW, 1, 50).items()).extracting(RefundAuthorization::id).containsExactly(overdueRefund);
         var overdue = queries.refunds(fixture.tenant, null, true, NOW, null, 1, 50);

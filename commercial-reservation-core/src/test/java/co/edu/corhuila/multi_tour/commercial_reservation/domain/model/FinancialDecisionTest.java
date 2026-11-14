@@ -105,11 +105,18 @@ class FinancialDecisionTest {
         assertThatThrownBy(() -> frozen.applyDefault(RECOGNIZED.plus(Duration.ofDays(30)))).isInstanceOf(BusinessRuleViolation.class);
     }
 
+    // HU-COM-016 DP-13 out (Project Lead, 2026-11-12; signature of HU-WRK-002, 2026-11-14): a credit-balance refund request has no 24-hour default. It is never
+    // due, the default is refused, and it stays open until a person authorizes or rejects it, even long after the 24 hours.
     @Test
-    void theCreditRequestDefaultAuthorizesTheAmountStillAvailable() {
-        FinancialDecision defaulted = creditRequest().applyDefault(RECOGNIZED.plus(Duration.ofHours(24)));
+    void aCreditRequestIsNeverDefaultedAndStaysOpenForAPerson() {
+        FinancialDecision request = creditRequest();
+        Instant late = RECOGNIZED.plus(Duration.ofDays(30));
 
-        assertThat(defaulted.outcome()).isEqualTo(DecisionOutcome.AUTHORIZED);
-        assertThat(defaulted.baseAmount()).isEqualTo(new Cents(50_000));
+        assertThat(request.isDue(late)).isFalse();
+        assertThatThrownBy(() -> request.applyDefault(late)).isInstanceOf(BusinessRuleViolation.class);
+        FinancialDecision authorized = request.authorizeRequest(ADMIN, late);
+        assertThat(authorized.outcome()).isEqualTo(DecisionOutcome.AUTHORIZED);
+        assertThat(authorized.decidedBySystem()).isFalse();
+        assertThat(request.reject(ADMIN, "Balance already used", late).outcome()).isEqualTo(DecisionOutcome.REJECTED);
     }
 }
