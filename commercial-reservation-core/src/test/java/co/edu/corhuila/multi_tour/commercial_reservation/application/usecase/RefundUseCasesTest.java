@@ -117,6 +117,19 @@ class RefundUseCasesTest {
         assertThat(fakes.refunds).hasSize(1);
     }
 
+    // HU-COM-016 DP-13 out (Project Lead, 2026-11-12): the default asked by the service token refuses a credit-balance refund request past its 24 hours and writes nothing.
+    @Test
+    void theDefaultRefusesACreditRequestAndWritesNothing() {
+        FinancialDecision request = fakes.open(DecisionKind.CREDIT_BALANCE_REFUND_REQUEST, 50_000);
+        UnderClock later = new UnderClock(fakes, RefundFakes.NOW.plus(Duration.ofDays(3)));
+
+        assertThatThrownBy(() -> later.automation.applyDefault(RefundFakes.TENANT, request.id())).isInstanceOf(BusinessRuleViolation.class);
+
+        assertThat(fakes.decisions.get(request.id())).isEqualTo(request);
+        assertThat(fakes.refunds).isEmpty();
+        assertThat(fakes.events).isEmpty();
+    }
+
     @Test
     void notAttributableToTheCustomerIsRefundedInFullAndAuthorizedAutomatically() {
         UUID reservation = UUID.randomUUID();
