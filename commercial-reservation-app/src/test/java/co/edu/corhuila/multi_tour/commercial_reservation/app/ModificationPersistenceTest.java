@@ -156,14 +156,26 @@ class ModificationPersistenceTest {
         assertThat(held(fixture.salida)).isEqualTo(3);
     }
 
+    private int openSeats(UUID salida) {
+        return fixture.jdbc.queryForObject("SELECT coalesce(sum(party_size), 0) FROM commercial_reservation.capacity_allocation WHERE tenant_id = ? "
+                + "AND salida_id = ? AND released_at IS NULL AND allocation_kind = 'RESERVATION'", Integer.class, fixture.tenant, salida);
+    }
+
     // RNF-06 (the concurrency test the spec named): two modifications of one reservation that arrive at the same moment are serialized by the
     // row lock; the second reads what the first stored, so the history is a chain (3 to a, then a to b) and the seats held follow the last one.
+    // The setup seeds 3 held seats for one reservation only; every later round stores a new reservation of 3 on the same departure, so its
+    // seats are held here as the booking would hold them. Without that the counter drifts below the open seats and reaches the floor of 0.
     @Test
     void twoModificationsAtTheSameMomentAreSerializedAndTheSecondSeesTheFirst() throws Exception {
+        fixture.jdbc.update("UPDATE commercial_reservation.salida_capacity SET effective_capacity = 40 WHERE tenant_id = ? AND salida_id = ?",
+                fixture.tenant, fixture.salida);
+        JdbcSalidaCapacityHolder seats = new JdbcSalidaCapacityHolder(fixture.jdbc);
         for (int round = 0; round < 4; round++) {
             Reservation reservation = stored(true);
             UUID id = reservation.reservationId();
+            if (round > 0) assertThat(seats.hold(fixture.tenant, fixture.salida, 3)).isTrue();
             int heldBefore = held(fixture.salida);
+            assertThat(heldBefore).isEqualTo(openSeats(fixture.salida));
             var start = new java.util.concurrent.CountDownLatch(1);
             var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
             try {
@@ -189,6 +201,7 @@ class ModificationPersistenceTest {
                 assertThat(again.people()).isEqualTo(later.newPartySize());
                 assertThat(history.page(fixture.tenant, id, 1, 20).total()).isEqualTo(2);
                 assertThat(held(fixture.salida)).isEqualTo(heldBefore + later.newPartySize() - 3);
+                assertThat(held(fixture.salida)).isEqualTo(openSeats(fixture.salida));
             } finally {
                 pool.shutdownNow();
             }
