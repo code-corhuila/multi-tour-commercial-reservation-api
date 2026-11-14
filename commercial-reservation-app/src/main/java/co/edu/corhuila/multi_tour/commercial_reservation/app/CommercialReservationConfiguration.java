@@ -128,7 +128,7 @@ class CommercialReservationConfiguration {
     @Bean
     TransactionalCatalogUpdate catalogUpdate(UpdateDescriptiveInformation description, UpdateCommercialTerms terms,
             PlatformTransactionManager manager) {
-        return new TransactionalCatalogUpdate(description, terms, new TransactionTemplate(manager));
+        return new TransactionalCatalogUpdate(description, terms, new SpringRequestTransaction(new TransactionTemplate(manager)));
     }
 
     @Bean
