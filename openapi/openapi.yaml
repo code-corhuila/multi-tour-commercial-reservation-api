@@ -336,6 +336,7 @@ paths:
         Returns the item **whether it is active or inactive**: a reservation line must always be
         able to resolve its item. An item of another tenant answers `404`.
         **Requires:** `TENANT_ADMINISTRATOR`, `OPERATIONAL_COLLABORATOR`, `MANAGER` or `ANALYST` (the last two read only).
+        A `SERVICE` token reads through `getInternalCatalogService`, which carries the tenant in the path.
       operationId: getCatalogService
       tags: [Catalog services]
       responses:
@@ -543,6 +544,45 @@ paths:
                 error: BUSINESS_RULE_VIOLATION
                 message: The item cannot be reactivated while a restriction applies
                 traceId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  # ─── Internal: read of a catalog item by a service token (asked by `operations-cost`, G-API8-1) ─
+  # PROPOSED (x-proposed). A `SERVICE` token has no `tenantId` and is accepted only on `/internal/` routes (`authentication.md`),
+  # so the read the saga `change-departure-vehicles` needs has the tenant in the path, as every internal route has.
+
+  /internal/tenants/{tenantId}/catalog/services/{serviceId}:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdPath'
+      - $ref: '#/components/parameters/ServiceIdPath'
+    get:
+      summary: Get a catalog item, for a service
+      description: |
+        **PROPOSED (2026-11-15).** The same answer as `getCatalogService`, for the `SERVICE` token (the capacity of a tour, which the
+        saga `change-departure-vehicles` reads to lower the ceiling of a departure). The tenant comes from the path, as a service
+        token has none, and never from the body. It reads only: no write is offered here. The item is returned whether it is active
+        or inactive. An item that does not exist for that tenant, or that belongs to another, answers `404`.
+        **Requires:** `SERVICE` role and nothing else. A person's token gets `403`.
+      operationId: getInternalCatalogService
+      tags: [Internal]
+      security:
+        - bearerAuth: []
+      x-proposed: true
+      responses:
+        '200':
+          description: The catalog item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogServiceResponse'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
