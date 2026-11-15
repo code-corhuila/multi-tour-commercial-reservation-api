@@ -2600,7 +2600,6 @@ paths:
       tags: [Internal]
       security:
         - bearerAuth: []
-      x-proposed: true
       responses:
         '200':
           description: The payment is validated; the stored result
@@ -4626,7 +4625,6 @@ paths:
       tags: [Internal]
       security:
         - bearerAuth: []
-      x-proposed: true
       responses:
         '200':
           description: The refund as it stands, with `executionState` and, when `EXECUTED`, `cashMovementId`
