@@ -323,4 +323,18 @@ class MirrorSalidaStateTest extends PublicOfferFixture {
     private void vehicles(int total) {
         mirror.apply(new SalidaEvent.VehiclesChanged(event(), TENANT, DEPARTURE, total, tick()));
     }
+
+    // Spec 023 D-02: the mark of a cancellation moves to the end of the episodes (HandleCancelledDeparture), so the mirror applies the status and leaves the event unmarked.
+    @Test
+    void aCancelledEventIsAppliedButLeftUnmarkedForTheEpisodes() {
+        CatalogService tour = plantTourWith(TENANT, "Canyon", 100_000, 18, false);
+        scheduled(tour);
+        UUID cancelled = event();
+
+        assertThat(mirror.apply(new SalidaEvent.Cancelled(cancelled, TENANT, DEPARTURE, tick()))).isEqualTo(MirrorOutcome.APPLIED);
+        assertThat(store.processed).doesNotContain(cancelled);
+        assertThat(mirror.apply(new SalidaEvent.Cancelled(cancelled, TENANT, DEPARTURE, tick()))).isEqualTo(MirrorOutcome.IGNORED_OUT_OF_ORDER);
+        assertThat(store.processed).doesNotContain(cancelled);
+        assertThat(row().status()).isEqualTo(DepartureStatus.CANCELLED);
+    }
 }
