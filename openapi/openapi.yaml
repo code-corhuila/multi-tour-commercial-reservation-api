@@ -2546,6 +2546,38 @@ paths:
     parameters:
       - $ref: '#/components/parameters/TenantIdPath'
       - $ref: '#/components/parameters/PaymentIdPath'
+    get:
+      summary: Read a validated payment (saga register-payment, unclear outcome of its step 2)
+      description: |
+        **PROPOSED** (x-proposed, gap G-WF2-7 of HU-WFL-002, criterion AC-WF2-12). Called by the saga `register-payment` with its
+        `SERVICE_TOKEN` when `recordValidatedPayment` ended with an unclear outcome (network failure, `5xx`, `429`): the saga
+        reads whether the payment was recorded as validated before it completes or reverses the income. A read: no
+        `Idempotency-Key`, nothing changes. `200` with the stored result when the payment of the tenant of the path is
+        validated; `404 NOT_FOUND` with the common error envelope when that tenant has no validated payment with that id
+        (not validated, or unknown; a payment of another tenant is never seen). The gateway never routes it.
+        **Requires:** `SERVICE` role and nothing else. A person's token gets `403`; no token gets `401`.
+      operationId: getValidatedPayment
+      tags: [Internal]
+      security:
+        - bearerAuth: []
+      x-proposed: true
+      responses:
+        '200':
+          description: The payment is validated; the stored result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentProofDecision'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
     post:
       summary: Record a payment as validated (step 2 of the saga register-payment)
       description: |
