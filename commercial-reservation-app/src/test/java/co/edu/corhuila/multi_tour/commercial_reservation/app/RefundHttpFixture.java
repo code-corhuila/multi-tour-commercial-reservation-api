@@ -5,8 +5,9 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RefundPage;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundQueries;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationReader;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationSnapshot;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundBasisReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RefundBasis;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundOrigin;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKind;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ExecutionState;
@@ -68,11 +69,12 @@ class RefundHttpFixture {
         }
     }
 
-    static final class MemorySnapshots implements ReservationReader {
-        final Map<UUID, ReservationSnapshot> snapshots = new LinkedHashMap<>();
+    static final class MemorySnapshots implements RefundBasisReader {
+        final Map<UUID, Planted> snapshots = new LinkedHashMap<>();
+        record Planted(UUID tenantId, RefundBasis basis) {}
 
-        public Optional<ReservationSnapshot> findByTenantAndId(UUID tenantId, UUID reservationId) {
-            return Optional.ofNullable(snapshots.get(reservationId)).filter(s -> s.tenantId().equals(tenantId));
+        public Optional<RefundBasis> find(UUID tenantId, UUID reservationId) {
+            return Optional.ofNullable(snapshots.get(reservationId)).filter(s -> s.tenantId().equals(tenantId)).map(Planted::basis);
         }
     }
 
@@ -102,6 +104,9 @@ class RefundHttpFixture {
         }
         public Optional<RefundAuthorization> findByDecision(UUID tenantId, UUID decisionId) {
             return refunds.values().stream().filter(r -> r.tenantId().equals(tenantId) && decisionId.equals(r.financialDecisionId())).findFirst();
+        }
+        public Optional<RefundAuthorization> findByReservationAndOrigin(UUID tenantId, UUID reservationId, RefundOrigin origin) {
+            return refunds.values().stream().filter(r -> r.tenantId().equals(tenantId) && r.reservationId().equals(reservationId) && r.origin() == origin).findFirst();
         }
         public void save(RefundAuthorization refund) { refunds.put(refund.id(), refund); }
         public void append(RefundAuthorization refund) { events.add(refund); }
