@@ -4813,13 +4813,14 @@ paths:
     post:
       summary: Receive a refund determined by the domain of operations
       description: |
-        **PROPOSED.** A 100 percent refund determined for a cause not attributable to the customer, or for a personal
-        emergency whose policy gives an amount above zero, is authorized at once with the mode `AUTOMATIC_DETERMINATION`
-        and no decision (AC-16.7, DP-05, DP-15). For `NOT_ATTRIBUTABLE_TO_CUSTOMER` the service computes the amount from
-        the paid and validated values and an `amountCents` in the body is `400`; for
-        `PERSONAL_EMERGENCY_DURING_EXECUTION` the amount is the one of the policy of operations and is required. A
-        repeat with the same `Idempotency-Key` answers `200`. **Requires:** `SERVICE` role and nothing else. A person's
-        token gets `403` and the tenant comes from the path (AC-16.13).
+        **PROPOSED.** A 100 percent refund determined for a cause not attributable to the customer is authorized at once
+        with the mode `AUTOMATIC_DETERMINATION` and no decision (AC-16.7, DP-05, DP-15). The service computes the amount
+        from the paid and validated values; the body carries no amount and an `amountCents` in it is `400` (spec 026,
+        AC-26.2). The personal emergency is not determined by this route: its own consumer of the event does it, because only
+        that consumer knows the affected travelers (spec 026, DP-26.1), so the origin is `NOT_ATTRIBUTABLE_TO_CUSTOMER`.
+        A repeat with the same `Idempotency-Key` answers `200`, and so does a new key for a reservation that already has a
+        refund of that origin: the stored refund is returned and no second one is created (AC-26.8).
+        **Requires:** `SERVICE` role and nothing else. A person's token gets `403` and the tenant comes from the path (AC-16.13).
       operationId: determineRefund
       tags: [Internal]
       security:
@@ -4852,7 +4853,7 @@ paths:
         '404':
           $ref: './_shared.yaml#/components/responses/NotFound'
         '422':
-          description: The reservation has nothing to refund or already has a refund of that origin (`BUSINESS_RULE_VIOLATION`); nothing changes
+          description: The reservation has nothing paid and validated to refund (`BUSINESS_RULE_VIOLATION`); nothing changes
           content:
             application/json:
               schema: {$ref: './_shared.yaml#/components/schemas/ErrorResponse'}
@@ -7419,8 +7420,7 @@ components:
       required: [reservationId, origin]
       properties:
         reservationId: {$ref: './_shared.yaml#/components/schemas/UUID'}
-        origin: {type: string, enum: [NOT_ATTRIBUTABLE_TO_CUSTOMER, PERSONAL_EMERGENCY_DURING_EXECUTION], x-proposed: true}
-        amountCents: {type: integer, format: int64, minimum: 1, description: "Required for `PERSONAL_EMERGENCY_DURING_EXECUTION` only; the service computes it for the other origin", x-proposed: true}
+        origin: {type: string, enum: [NOT_ATTRIBUTABLE_TO_CUSTOMER], x-proposed: true}
 
 
     # ── Credit balances (HU-COM-017) ──────────────────────────────────────────

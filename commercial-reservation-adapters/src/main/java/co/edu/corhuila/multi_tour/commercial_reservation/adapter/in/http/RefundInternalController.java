@@ -27,7 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 public final class RefundInternalController {
     public record StartRequest(UUID executedBy, String outflowMethod) {}
     public record CompletionRequest(UUID cashMovementId) {}
-    public record DeterminationRequest(UUID reservationId, String origin, Long amountCents) {}
+    public record DeterminationRequest(UUID reservationId, String origin) {}
 
     private final ExecuteRefund execute;
     private final RefundAutomation automation;
@@ -83,7 +83,7 @@ public final class RefundInternalController {
         requireService(principal);
         if (key == null || key.length() < 8 || key.length() > 128) throw new DomainException("Idempotency-Key", "header required, 8 to 128 characters");
         if (body.reservationId() == null) throw new DomainException("reservationId", "reservationId is required");
-        var outcome = determination.determine(tenantId, key, body.reservationId(), origin(body.origin()), body.amountCents());
+        var outcome = determination.determine(tenantId, key, body.reservationId(), determinedOrigin(body.origin()));
         return ResponseEntity.status(outcome.created() ? HttpStatus.CREATED : HttpStatus.OK).body(RefundResponse.of(outcome.refund()));
     }
 
@@ -93,6 +93,14 @@ public final class RefundInternalController {
         } catch (IllegalArgumentException | NullPointerException e) {
             throw new DomainException("outflowMethod", "outflowMethod is required: TRANSFER or CASH");
         }
+    }
+
+    // Spec 026, DP-26.1 default: this route determines only the cause not attributable; the personal emergency is determined by its own consumer, the only one
+    // that knows the affected travelers. The body carries no amount for either origin (the strict mapper answers 400 for the field).
+    private static RefundOrigin determinedOrigin(String code) {
+        RefundOrigin origin = origin(code);
+        if (origin != RefundOrigin.NOT_ATTRIBUTABLE_TO_CUSTOMER) throw new DomainException("origin", "origin must be NOT_ATTRIBUTABLE_TO_CUSTOMER");
+        return origin;
     }
 
     private static RefundOrigin origin(String code) {
