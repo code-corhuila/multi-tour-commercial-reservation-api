@@ -39,7 +39,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @SpringBootTest
 @AutoConfigureMockMvc
 @ContextConfiguration(initializers = TestJwtKeys.class)
-@Import({CatalogHttpFixture.class, TenantEventHttpFixture.class, DepartureEventHttpFixture.class})
+@Import({CatalogHttpFixture.class, TenantEventHttpFixture.class, DepartureEventHttpFixture.class, ReschedulingHttpFixture.class, CancelledDepartureHttpTest.Alive.class})
 class DepartureEventsHttpTest {
     static final UUID TENANT = UUID.fromString("0b6f2c3d-5e41-4a97-8d20-1f7a9c3e6b84");
     static final String ROUTE = "/api/v1/commercial-reservation/internal/tenants/" + TENANT + "/events";
