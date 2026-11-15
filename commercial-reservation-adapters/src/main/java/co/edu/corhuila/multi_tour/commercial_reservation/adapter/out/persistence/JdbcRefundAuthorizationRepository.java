@@ -46,6 +46,12 @@ public final class JdbcRefundAuthorizationRepository implements RefundAuthorizat
     }
 
     @Override
+    public Optional<RefundAuthorization> findByReservationAndOrigin(UUID tenantId, UUID reservationId, RefundOrigin origin) {
+        return jdbc.query("SELECT " + COLUMNS + " FROM commercial_reservation.refund_authorization WHERE tenant_id = ? AND reservation_id = ? AND refund_origin = ? "
+                + "ORDER BY authorized_at, refund_authorization_id LIMIT 1", (row, index) -> map(row), tenantId, reservationId, origin.name()).stream().findFirst();
+    }
+
+    @Override
     public void save(RefundAuthorization r) {
         int updated = jdbc.update("UPDATE commercial_reservation.refund_authorization SET execution_state = ?, executing_at = ?, executed_by = ?, "
                 + "outflow_method = ?, executed_at = ?, cash_movement_id = ?, overdue_marked_at = ? WHERE tenant_id = ? AND refund_authorization_id = ?",

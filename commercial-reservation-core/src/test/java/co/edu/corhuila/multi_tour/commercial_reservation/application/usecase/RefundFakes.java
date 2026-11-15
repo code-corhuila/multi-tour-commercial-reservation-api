@@ -11,6 +11,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DecisionKind;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.FinancialDecision;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundAuthorization;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.RefundOrigin;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -53,6 +54,9 @@ final class RefundFakes {
         }
         @Override public Optional<RefundAuthorization> findByDecision(UUID tenantId, UUID decisionId) {
             return refunds.values().stream().filter(r -> r.tenantId().equals(tenantId) && decisionId.equals(r.financialDecisionId())).findFirst();
+        }
+        @Override public Optional<RefundAuthorization> findByReservationAndOrigin(UUID tenantId, UUID reservationId, RefundOrigin origin) {
+            return refunds.values().stream().filter(r -> r.tenantId().equals(tenantId) && r.reservationId().equals(reservationId) && r.origin() == origin).findFirst();
         }
         @Override public void save(RefundAuthorization refund) { refunds.put(refund.id(), refund); }
     };
