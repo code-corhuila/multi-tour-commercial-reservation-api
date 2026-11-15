@@ -241,6 +241,20 @@ public final class Reservation {
         if (reservationStatus == ReservationStatus.IN_EXECUTION) reservationStatus = ReservationStatus.CONFIRMED;
     }
 
+    // RN-EJE-001, CA-029: the start of the departure moves a confirmed and fully paid reservation into execution; any other keeps its state. True when it moved.
+    public boolean startExecution() {
+        if (reservationStatus != ReservationStatus.CONFIRMED || paymentStatus != PaymentStatus.FULLY_PAID) return false;
+        reservationStatus = ReservationStatus.IN_EXECUTION;
+        return true;
+    }
+
+    // RN-EJE-001, CA-029: the end of the departure completes a reservation that was in execution; any other keeps its state. True when it moved.
+    public boolean completeExecution() {
+        if (reservationStatus != ReservationStatus.IN_EXECUTION) return false;
+        reservationStatus = ReservationStatus.COMPLETED;
+        return true;
+    }
+
     // The stored cause of a cancelled reservation, for the persistence adapter that reads it back (HU-COM-014 AC-14.9).
     public Reservation restoredCancellation(CancellationCause cause) {
         cancellationCause = cause;
