@@ -1,10 +1,12 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.AccountLinkOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CancelledDepartureOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.MirrorOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.SalidaEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantEventOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyTenantEvent;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.HandleCancelledDeparture;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.LinkAccountOnEmailVerified;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.MirrorSalidaState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AccountEmailVerified;
@@ -38,13 +40,15 @@ public final class TenantEventController {
     private final ApplyTenantEvent apply;
     private final LinkAccountOnEmailVerified link;
     private final MirrorSalidaState mirror;
+    private final HandleCancelledDeparture cancelledDeparture;
     private final ObjectMapper json;
 
     public TenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link, MirrorSalidaState mirror,
-            ObjectMapper json) {
+            HandleCancelledDeparture cancelledDeparture, ObjectMapper json) {
         this.apply = apply;
         this.link = link;
         this.mirror = mirror;
+        this.cancelledDeparture = cancelledDeparture;
         this.json = json;
     }
 
@@ -73,7 +77,13 @@ public final class TenantEventController {
         if (type != null && type.startsWith("Salida")) {
             SalidaEvent salida = toSalidaEvent(body, type, tenantId);
             sameKey(key, salida.eventId());
-            return departureAnswer(mirror.apply(salida), salida.eventId());
+            MirrorOutcome applied = mirror.apply(salida);
+            // Spec 023: a cancelled departure also opens the episodes of its alive reservations; the mark of the event waits for them (the mirror leaves it unmarked).
+            if (salida instanceof SalidaEvent.Cancelled cancelled && (applied == MirrorOutcome.APPLIED || applied == MirrorOutcome.IGNORED_OUT_OF_ORDER)
+                    && cancelledDeparture.handle(cancelled) == CancelledDepartureOutcome.RETRY_LATER) {
+                throw new RetryLaterException(salida.eventId());
+            }
+            return departureAnswer(applied, salida.eventId());
         }
         TenantEvent event = toEvent(body, tenantId);
         sameKey(key, event.eventId());
