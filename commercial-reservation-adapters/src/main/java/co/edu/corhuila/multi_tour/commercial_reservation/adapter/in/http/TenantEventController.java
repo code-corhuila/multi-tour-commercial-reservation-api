@@ -1,16 +1,19 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.AccountLinkOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ExtraordinaryOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.EmergencyOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.MirrorOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.SalidaEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantEventOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyExtraordinaryCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyPersonalEmergency;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyTenantEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.LinkAccountOnEmailVerified;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.MirrorSalidaState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AccountEmailVerified;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ExtraordinaryCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PersonalEmergency;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantEventType;
@@ -43,14 +46,16 @@ public final class TenantEventController {
     private final MirrorSalidaState mirror;
     private final ApplyPersonalEmergency personalEmergency;
     private final ObjectMapper json;
+    private final ApplyExtraordinaryCancellation extraordinaryCancellation;
 
     public TenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link, MirrorSalidaState mirror, ApplyPersonalEmergency personalEmergency,
-            ObjectMapper json) {
+            ObjectMapper json, ApplyExtraordinaryCancellation extraordinaryCancellation) {
         this.apply = apply;
         this.link = link;
         this.mirror = mirror;
         this.personalEmergency = personalEmergency;
         this.json = json;
+        this.extraordinaryCancellation = extraordinaryCancellation;
     }
 
     @PostMapping("/api/v1/commercial-reservation/internal/tenants/{tenantId}/events")
@@ -85,6 +90,11 @@ public final class TenantEventController {
             sameKey(key, emergency.eventId());
             return emergencyAnswer(personalEmergency.apply(emergency));
         }
+        if ("ExtraordinaryCancellationRecorded".equals(type)) {
+            ExtraordinaryCancellation cancellation = toExtraordinaryCancellation(body, tenantId);
+            sameKey(key, cancellation.eventId());
+            return extraordinaryAnswer(extraordinaryCancellation.apply(cancellation));
+        }
         TenantEvent event = toEvent(body, tenantId);
         sameKey(key, event.eventId());
         return ResponseEntity.status(apply.apply(event) == TenantEventOutcome.APPLIED ? HttpStatus.CREATED : HttpStatus.OK).build();
@@ -108,6 +118,33 @@ public final class TenantEventController {
             case DUPLICATE, ALREADY_DETERMINED, IGNORED_CANCELLED -> ResponseEntity.ok().build();
             case UNKNOWN_RESERVATION -> throw new DomainException("reservationId", "does not exist for the tenant");
         };
+    }
+
+    // Spec 025: a reservation that does not exist for the tenant, or is not on the departure of the event, is 400 and the event stays unmarked.
+    private static ResponseEntity<Void> extraordinaryAnswer(ExtraordinaryOutcome outcome) {
+        return switch (outcome) {
+            case EPISODE_OPENED -> ResponseEntity.status(HttpStatus.CREATED).build();
+            case DUPLICATE, ALREADY_OPEN, IGNORED_FINAL -> ResponseEntity.ok().build();
+            case UNKNOWN_RESERVATION -> throw new DomainException("reservationId", "does not exist for the tenant on the departure of the event");
+        };
+    }
+
+    // The aggregate of ExtraordinaryCancellationRecorded is the departure, as operations writes it. The justification is free text: it is read only to check its length
+    // (1 to 500 characters) and is dropped here, so it is never stored, logged or copied (spec 025, DP-25.4 default).
+    private static ExtraordinaryCancellation toExtraordinaryCancellation(JsonNode body, UUID pathTenant) {
+        UUID eventId = uuid(body, "eventId");
+        JsonNode version = body.path("eventVersion");
+        if (!version.isIntegralNumber() || version.asInt() < 1) throw new DomainException("eventVersion", "must be an integer of 1 or more");
+        UUID tenantId = uuid(body, "tenantId");
+        JsonNode payload = body.path("payload");
+        if (!tenantId.equals(pathTenant) || !payload.isObject() || !uuid(payload, "tenantId").equals(tenantId)) {
+            throw new DomainException("tenantId", "must be the tenant of the path");
+        }
+        UUID salidaId = uuid(payload, "salidaId");
+        if (!uuid(body, "aggregateId").equals(salidaId)) throw new DomainException("aggregateId", "must be the salidaId of the payload");
+        int length = text(payload, "justification").length();
+        if (length < 1 || length > 500) throw new DomainException("justification", "must have 1 to 500 characters");
+        return new ExtraordinaryCancellation(eventId, tenantId, salidaId, uuid(payload, "reservationId"), instant(body, "occurredAt"));
     }
 
     // The aggregate of PersonalEmergencyRecorded is the departure, as operations writes it; the payload carries ids, the travelers affected (`affected`) and who and
