@@ -3886,6 +3886,89 @@ paths:
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
+  # ─── Internal: the reservations of a departure that starts or ends (asked by `operations-cost`, G-API4-1) ─
+  # PROPOSED (x-proposed). `SERVICE` role only; the gateway never routes `/internal/`.
+
+  /internal/tenants/{tenantId}/departures/{departureId}/execution-start:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdPath'
+      - $ref: '#/components/parameters/DepartureIdPath'
+    post:
+      summary: Move the reservations of a departure into execution
+      description: |
+        **PROPOSED (2026-11-15).** The departure started (RN-EJE-001, CA-029). Every `CONFIRMED` reservation of the departure that is
+        fully paid (`FULLY_PAID`) becomes `IN_EXECUTION`, in one transaction. Cancelled reservations, and the ones not fully paid,
+        keep their status. The answer counts the reservations moved (`changed`) and the ones left as they were (`unchanged`). The
+        tenant comes from the path, as a service token has none. A replay of the same `Idempotency-Key` answers the original
+        counts and changes nothing; a key reused for another departure or for `execution-end` answers `422 BUSINESS_RULE_VIOLATION`.
+        A departure that is `FINALIZED` or `CANCELLED` answers `422 BUSINESS_RULE_VIOLATION`. A departure of another tenant, or
+        one that does not exist, answers `404`. No personal data is read, logged or carried by an event.
+        **Requires:** `SERVICE` role and nothing else. A person's token gets `403`.
+      operationId: startDepartureExecution
+      tags: [Internal]
+      security:
+        - bearerAuth: []
+      x-proposed: true
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The reservations moved and the ones left as they were (or the original answer of a replay)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepartureExecutionChange'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/BusinessRuleViolation'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  /internal/tenants/{tenantId}/departures/{departureId}/execution-end:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdPath'
+      - $ref: '#/components/parameters/DepartureIdPath'
+    post:
+      summary: Complete the reservations of a departure that ended
+      description: |
+        **PROPOSED (2026-11-15).** The departure ended (RN-EJE-001, CA-029). Every `IN_EXECUTION` reservation of the departure becomes
+        `COMPLETED`, in one transaction; the others keep their status. Same answer, idempotency, `404`, `403` and "no personal data"
+        rules as `startDepartureExecution`. A departure that is `CANCELLED` answers `422 BUSINESS_RULE_VIOLATION`.
+        **Requires:** `SERVICE` role and nothing else. A person's token gets `403`.
+      operationId: endDepartureExecution
+      tags: [Internal]
+      security:
+        - bearerAuth: []
+      x-proposed: true
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The reservations moved and the ones left as they were (or the original answer of a replay)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepartureExecutionChange'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/BusinessRuleViolation'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
   # ─── Internal: outbox relay and client notices (HU-COM-015) ─────────────────
   # PROPOSED (x-proposed): plan section 2 of HU-COM-015 (G-A). The outbox routes are the ones every publisher of the
   # system offers to job 7 (ADR-004 D4), as in `identity-audit.yaml`; they read across tenants, so they have no
@@ -6517,6 +6600,14 @@ components:
       required: [ceiling]
       properties:
         ceiling: {type: integer, minimum: 0, maximum: 100000, description: "The new effective capacity of the departure, in seats (PROPOSED 2026-11-10)", x-proposed: true}
+
+    DepartureExecutionChange:
+      type: object
+      required: [departureId, changed, unchanged]
+      properties:
+        departureId: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        changed: {type: integer, minimum: 0, description: "Reservations that moved: to `IN_EXECUTION` at the start, to `COMPLETED` at the end", x-proposed: true}
+        unchanged: {type: integer, minimum: 0, description: Reservations of the departure that kept their status, x-proposed: true}
 
     CapacityCeiling:
       type: object
