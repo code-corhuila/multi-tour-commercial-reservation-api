@@ -13,6 +13,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcFinancialDecisionRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundAuthorizationRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundAuthorizedOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundBasisReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcRefundQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.DetermineRefund;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExecuteRefund;
@@ -28,7 +29,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundAuthorizedOutbox;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
-import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CancellationPolicyReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundBasisReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DetermineRefundUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExecuteRefundUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.FinancialDecisionOpening;
@@ -128,13 +130,20 @@ class RefundConfiguration {
     }
 
     @Bean
-    DetermineRefund determineRefund(@Lazy ReservationReader reservations, RefundAutomation automation) {
-        return new DetermineRefundUseCase(reservations, automation);
+    RefundBasisReader refundBasisReader(JdbcTemplate jdbc) {
+        return new JdbcRefundBasisReader(jdbc);
     }
 
     @Bean
-    IdempotentRefundDetermination idempotentRefundDetermination(DetermineRefund determine, ExecuteRefund reads, IdempotentWrites writes) {
-        return new IdempotentRefundDetermination(determine, reads, writes);
+    DetermineRefund determineRefund(RefundBasisReader basis, @Lazy CancellationPolicyReader policy, RefundAuthorizationRepository refunds, RefundAutomation automation,
+            Clock clock) {
+        return new DetermineRefundUseCase(basis, policy, refunds, automation, clock);
+    }
+
+    @Bean
+    IdempotentRefundDetermination idempotentRefundDetermination(DetermineRefund determine, ExecuteRefund reads, IdempotentWrites writes,
+            RefundAuthorizationRepository refunds) {
+        return new IdempotentRefundDetermination(determine, reads, writes, refunds);
     }
 
     @Bean
