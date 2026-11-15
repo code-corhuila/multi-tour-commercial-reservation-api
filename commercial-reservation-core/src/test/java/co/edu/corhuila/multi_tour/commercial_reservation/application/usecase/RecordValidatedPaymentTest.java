@@ -114,4 +114,27 @@ class RecordValidatedPaymentTest {
         assertThatThrownBy(() -> record(OTHER_TENANT, 100_000L, null)).isInstanceOf(PaymentProofNotFoundException.class);
         assertThat(fakes.saved).isEmpty();
     }
+
+    // G-WF2-7 (HU-WFL-002, AC-WF2-12): the saga reads whether the payment is validated, with the tenant of the path, and writes nothing.
+    @Test
+    void theReadAnswersTheStoredResultOfAValidatedPaymentAndWritesNothing() {
+        DecidedProof recorded = record(TENANT, 100_000L, null);
+        fakes.saved.clear();
+        fakes.events.clear();
+
+        DecidedProof found = record.find(TENANT, FIRST);
+
+        assertThat(found.attempt()).isEqualTo(recorded.attempt());
+        assertThat(found.applied()).isEqualTo(recorded.applied());
+        assertThat(fakes.saved).isEmpty();
+        assertThat(fakes.events).isEmpty();
+    }
+
+    @Test
+    void theReadOfAProofNotYetValidatedARejectedOneOrAnotherTenantsLooksMissing() {
+        assertThatThrownBy(() -> record.find(TENANT, FIRST)).isInstanceOf(PaymentProofNotFoundException.class);
+        assertThatThrownBy(() -> record.find(TENANT, new UUID(11, 0xff))).isInstanceOf(PaymentProofNotFoundException.class);
+        record(TENANT, 100_000L, null);
+        assertThatThrownBy(() -> record.find(OTHER_TENANT, FIRST)).isInstanceOf(PaymentProofNotFoundException.class);
+    }
 }
