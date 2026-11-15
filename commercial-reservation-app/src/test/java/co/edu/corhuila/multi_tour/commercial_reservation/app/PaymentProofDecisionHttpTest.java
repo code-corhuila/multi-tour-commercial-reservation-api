@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
@@ -215,6 +216,54 @@ class PaymentProofDecisionHttpTest extends ReservationHttpBase {
         exchange(step2(otherTenant, body, service), 404);
         assertThat(payments.events).isEmpty();
     }
+
+    private MockHttpServletRequestBuilder readValidated(UUID forTenant, String bearer) {
+        return get(BASE + "/internal/tenants/" + forTenant + "/payment-proofs/" + proof + "/validated-payment")
+                .header("Authorization", "Bearer " + bearer).header("X-Correlation-Id", TRACE);
+    }
+
+    // G-WF2-7 (HU-WFL-002, AC-WF2-12): the saga reads whether step 2 recorded the payment. Before it did, the answer is 404; after, the
+    // stored result; for the token of a person it is 403; another tenant never sees the payment; the read writes nothing.
+    @Test void theSagaReadsAValidatedPaymentAndNothingElse() throws Exception {
+        String service = CustomerHttpTest.token(null, "SERVICE", List.of());
+        var missing = CatalogHttpTest.json(exchange(readValidated(tenant, service), 404));
+        assertThat(missing.get("error").asText()).isEqualTo("NOT_FOUND");
+
+        var recorded = CatalogHttpTest.json(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 200));
+        payments.events.clear();
+        var read = CatalogHttpTest.json(exchange(readValidated(tenant, service), 200));
+
+        assertThat(read).isEqualTo(recorded);
+        assertThat(read.get("validationStatus").asText()).isEqualTo("APPROVED");
+        assertThat(read.get("validatedValueCents").asLong()).isEqualTo(90_000L);
+        exchange(readValidated(tenant, token(ADMIN)), 403);
+        exchange(readValidated(otherTenant, service), 404);
+        assertThat(payments.events).isEmpty();
+    }
+
+    @Test void aRejectedProofIsNotAValidatedPaymentForTheRead() throws Exception {
+        exchange(decide("reject", Map.of("reason", "The proof is illegible"), "decision-key-040", token(ADMIN)), 200);
+
+        exchange(readValidated(tenant, CustomerHttpTest.token(null, "SERVICE", List.of())), 404);
+    }
+
+    @Test void theReadOfAValidatedPaymentLogsNoPersonalData(CapturedOutput output) throws Exception {
+        String service = CustomerHttpTest.token(null, "SERVICE", List.of());
+        exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 200);
+
+        withApplicationTrace(() -> {
+            try {
+                exchange(readValidated(tenant, service), 200);
+                exchange(readValidated(otherTenant, service), 404);
+                return null;
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertThat(output.getAll()).doesNotContain(PERSONAL.toArray(String[]::new));
+    }
+
 
     private static final List<String> PERSONAL = List.of("Persona Ficticia", "CC12345", "persona@example.invalid", "3000000000");
 
