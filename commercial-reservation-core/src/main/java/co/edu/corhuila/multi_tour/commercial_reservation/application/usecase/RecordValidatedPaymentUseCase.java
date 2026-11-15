@@ -12,6 +12,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservatio
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ValidationStatus;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 // The caller is the saga, trusted by the SERVICE role of its token (checked by the adapter); the permission of the reviewer was
 // checked where the human approved. Applying the amount is the same work as an approval, so it is delegated, not copied.
@@ -38,6 +39,17 @@ public class RecordValidatedPaymentUseCase implements RecordValidatedPayment {
         }
         return decisions.recordApproval(command.tenantId(), command.approvedBy(), command.attemptId(), command.verifiedAmountCents(),
                 command.reason());
+    }
+
+    @Override
+    public DecidedProof find(UUID tenantId, UUID paymentId) {
+        Reservation reservation = reservations.findByTenantAndAttempt(tenantId, paymentId)
+                .filter(found -> found.tenantId().equals(tenantId))
+                .orElseThrow(() -> new PaymentProofNotFoundException(paymentId));
+        PaymentAttempt attempt = reservation.attempts().stream()
+                .filter(found -> found.attemptId().equals(paymentId) && found.validationStatus() == ValidationStatus.APPROVED)
+                .findFirst().orElseThrow(() -> new PaymentProofNotFoundException(paymentId));
+        return new DecidedProof(reservation, attempt, attempt.appliedAmount(), attempt.excessAmount());
     }
 
     private static boolean sameDecision(PaymentAttempt attempt, RecordValidatedPaymentCommand command) {

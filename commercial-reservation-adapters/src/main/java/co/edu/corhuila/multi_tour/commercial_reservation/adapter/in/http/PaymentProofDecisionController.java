@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
@@ -69,6 +70,14 @@ public final class PaymentProofDecisionController {
         if (request.approvedBy() == null) throw new DomainException("approvedBy", "approvedBy is required");
         return answer(validated.record(new RecordValidatedPaymentCommand(tenantId, request.approvedBy(), paymentId,
                 request.verifiedAmountCents(), request.reason())));
+    }
+
+    // G-WF2-7 (HU-WFL-002, AC-WF2-12): the saga reads whether step 2 recorded the payment after an unclear outcome; the read changes nothing.
+    @GetMapping("/internal/tenants/{tenantId}/payment-proofs/{paymentId}/validated-payment")
+    public ProofDecisionResponse validatedPayment(@RequestAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE) AuthenticatedPrincipal principal,
+            @PathVariable("tenantId") UUID tenantId, @PathVariable("paymentId") UUID paymentId) {
+        if (!principal.roles().contains("SERVICE")) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        return answer(validated.find(tenantId, paymentId));
     }
 
     private ProofDecisionResponse answer(DecidedProof decided) {
