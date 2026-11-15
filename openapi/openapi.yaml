@@ -5514,6 +5514,57 @@ paths:
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
+  # ─── Internal: reservations of a departure, for a service (asked by `operations-cost`, G-API6-1) ─
+  # PROPOSED (x-proposed). `SERVICE` role only; the gateway never routes `/internal/`.
+
+  /internal/tenants/{tenantId}/departures/{departureId}/reservations:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdPath'
+      - $ref: '#/components/parameters/DepartureIdPath'
+    get:
+      summary: List the reservations of a departure, for a service
+      description: |
+        **PROPOSED (2026-11-15).** For every reservation of the departure: its id, status, number of travelers, the id of
+        the lead customer and the amount validated so far, in cents. Nothing else about the customer travels: no name,
+        document or contact. Ordered by creation time, then id; paginated as every list. The tenant comes from the path, as a
+        service token has none. The identifier of the departure is its `salidaId`; this service stores no `SAL-NNN` code
+        (the same decision as `setDepartureCapacityCeiling`). A departure that does not exist, or that belongs to another
+        tenant, answers `404`; one with no reservations answers `200` with an empty `data`.
+        **Requires:** `SERVICE` role and nothing else. A person's token gets `403`.
+      operationId: listInternalDepartureReservations
+      tags: [Internal]
+      security:
+        - bearerAuth: []
+      x-proposed: true
+      parameters:
+        - $ref: './_shared.yaml#/components/parameters/PageParam'
+        - $ref: './_shared.yaml#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated reservations of the departure
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InternalDepartureReservation'
+                  meta:
+                    $ref: './_shared.yaml#/components/schemas/PaginatedMeta'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
   # ─── Internal: sensitive-data retention (HU-COM-019) ───────────────────────────
   # PROPOSED (x-proposed): plan section 2 of HU-COM-019 (G-A). Internal only, `SERVICE` role only (job 6); no public
   # route and no screen. A reservation that is not due is an answer, not an error: no `409`, no `422`.
@@ -6525,6 +6576,17 @@ components:
         previousCeiling: {type: integer, minimum: 0, description: The ceiling before the call (the original one on a replay), x-proposed: true}
         ceiling: {type: integer, minimum: 0, description: The ceiling now, x-proposed: true}
         seatsHeld: {type: integer, minimum: 0, description: Seats held on the departure now; never above `ceiling`, x-proposed: true}
+
+    InternalDepartureReservation:
+      type: object
+      description: PROPOSED (2026-11-15). A reservation of a departure as a service reads it. No personal data beyond the id of the lead customer.
+      required: [reservationId, status, travelers, customerId, validatedAmountCents]
+      properties:
+        reservationId: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        status: {$ref: '#/components/schemas/ReservationStatus'}
+        travelers: {type: integer, minimum: 1, description: People of the reservation (the lead customer and the companions), x-proposed: true}
+        customerId: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        validatedAmountCents: {type: integer, minimum: 0, description: "What was validated so far, in cents: the final value less the pending balance", x-proposed: true}
 
     # ── Modification before execution (HU-COM-012) ────────────────────────────
     # PROPOSED: all names. Money as cents. Wire codes: English. The fields follow the names of the creation
