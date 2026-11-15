@@ -1,0 +1,204 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
+
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CreateReservationCommand;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationQuote;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantRef;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateReservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByAccount;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerByEmail;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRegisteredOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EnabledPaymentOptions;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialWaitPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantDirectory;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Companion;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Customer;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.HighRiskData;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingReservationDataException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+// The core of the creation (plan D-06): every check runs before the only write, so a refusal stores nothing.
+// The tenant must be active (RN-16) and the group is checked as one (RN-08).
+public class CreateReservationUseCase implements CreateReservation {
+
+    private final ActiveTenant activeTenant;
+    private final CustomerRepository customers;
+    private final CustomerByAccount accounts;
+    private final CatalogServiceRepository catalog;
+    private final ReservableDeparture departures;
+    private final ReservationPricing pricing;
+    private final EnabledPaymentOptions options;
+    private final ReservationRepository reservations;
+    private final IdGenerator ids;
+    private final Clock clock;
+    private final ReservationHolder holders; // null when the inline holder is not wired: a holder is then refused
+    private final InitialWaitPolicy waits; // null when the initial deadline is not wired: none is written
+    private final InitialDeadlineRecorder initialDeadlines;
+
+    public CreateReservationUseCase(TenantDirectory tenants, CustomerRepository customers, CatalogServiceRepository catalog, ReservableDeparture departures,
+            ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
+            Clock clock) {
+        this(tenants, customers, (tenant, account) -> Optional.empty(), catalog, departures, pricing, options, reservations, ids, clock);
+    }
+
+    public CreateReservationUseCase(TenantDirectory tenants, CustomerRepository customers, CustomerByAccount accounts,
+            CatalogServiceRepository catalog, ReservableDeparture departures,
+            ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
+            Clock clock) {
+        this(tenants, customers, accounts, catalog, departures, pricing, options, reservations, ids, clock, null, null);
+    }
+
+    // With the outbox and the e-mail lookup the inline holder is registered with the reservation (HU-COM-005, contract holder).
+    public CreateReservationUseCase(TenantDirectory tenants, CustomerRepository customers, CustomerByAccount accounts,
+            CatalogServiceRepository catalog, ReservableDeparture departures,
+            ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
+            Clock clock, CustomerRegisteredOutbox customerEvents, CustomerByEmail emails) {
+        this(tenants, customers, accounts, catalog, departures, pricing, options, reservations, ids, clock, customerEvents, emails, null, null);
+    }
+
+    // HU-COM-011 RN-01: with the wait policy and the recorder the initial payment deadline is written with the reservation.
+    public CreateReservationUseCase(TenantDirectory tenants, CustomerRepository customers, CustomerByAccount accounts,
+            CatalogServiceRepository catalog, ReservableDeparture departures,
+            ReservationPricing pricing, EnabledPaymentOptions options, ReservationRepository reservations, IdGenerator ids,
+            Clock clock, CustomerRegisteredOutbox customerEvents, CustomerByEmail emails, InitialWaitPolicy waits,
+            InitialDeadlineRecorder initialDeadlines) {
+        this.holders = customerEvents == null ? null : new ReservationHolder(customers, customerEvents, emails, clock);
+        this.activeTenant = new ActiveTenant(tenants);
+        this.customers = customers;
+        this.accounts = accounts;
+        this.catalog = catalog;
+        this.departures = departures;
+        this.pricing = pricing;
+        this.options = options;
+        this.reservations = reservations;
+        this.ids = ids;
+        this.clock = clock;
+        this.waits = waits;
+        this.initialDeadlines = initialDeadlines;
+    }
+
+    @Override
+    public Reservation create(CreateReservationCommand command) {
+        requireMandatoryData(command);
+        activeTenant.require(command.tenantId());
+        PaymentType type = PaymentType.fromCode(command.paymentType());
+        PaymentMethod method = PaymentMethod.fromCode(command.paymentMethod());
+        ReservationHolder.Lead registration = command.holder() == null ? null : prepareHolder(command);
+        Customer lead = registration != null ? registration.customer() : resolveLead(command);
+        CatalogService tour = CatalogLookup.require(catalog, command.tenantId(), command.serviceId());
+        requireDataTheTourNeeds(lead, tour);
+        requireValidGroup(lead, tour, command.companions());
+        departures.require(command.tenantId(), command.departureId(), command.serviceId(), command.people());
+        requireEnabled(command, type, method);
+        ReservationQuote quote = pricing.quote(command.tenantId(), tour, command.departureId(), command.people(),
+                LocalDate.now(clock));
+        Reservation reservation = Reservation.create(ids.newId(), command.tenantId(), lead.customerId(), command.departureId(),
+                command.actorId(), command.people(), quote.service(), quote.projectedValue(), quote.finalValue(),
+                quote.discounts(), type, method, Instant.now(clock), command.companions());
+        if (registration != null) holders.write(registration, command.actorId());
+        reservations.save(reservation);
+        recordInitialDeadline(reservation);
+        return reservation;
+    }
+
+    // RN-01 (RN-RES-006): the initial deadline is the creation instant plus the initial wait of the payment condition of the type. No wait
+    // configured, no deadline: the number is not invented. It runs in the transaction of the creation, after the reservation is stored.
+    private void recordInitialDeadline(Reservation reservation) {
+        if (waits == null || initialDeadlines == null) return;
+        waits.initialWaitHours(reservation.tenantId(), reservation).ifPresent(hours -> initialDeadlines.record(reservation.tenantId(),
+                reservation.reservationId(), reservation.createdAt().plus(java.time.Duration.ofHours(hours))));
+    }
+
+    // AC-08.4: the refusal names the field: the type when no medium is enabled for it, the medium otherwise.
+    private void requireEnabled(CreateReservationCommand command, PaymentType type, PaymentMethod method) {
+        if (options.isEnabled(command.tenantId(), command.serviceId(), type, method)) return;
+        boolean typeOffered = Arrays.stream(PaymentMethod.values())
+                .anyMatch(each -> options.isEnabled(command.tenantId(), command.serviceId(), type, each));
+        throw typeOffered ? new DomainException("paymentMethod", "the payment method is not enabled")
+                : new DomainException("paymentType", "the payment type is not enabled");
+    }
+
+    // Exactly one of customerId and holder (contract oneOf); a Final Customer whose account has a record sends neither (AC-08.13).
+    private ReservationHolder.Lead prepareHolder(CreateReservationCommand command) {
+        if (holders == null) throw new DomainException("holder", "an inline holder is not supported");
+        if (command.customerId() != null) {
+            throw new DomainException(command.ownerAccountId() == null ? "holder" : "customerId",
+                    command.ownerAccountId() == null ? "send exactly one of customerId and holder"
+                            : "a customer cannot be named; it is the one of the account");
+        }
+        if (command.ownerAccountId() != null && accounts.findByTenantAndAccount(command.tenantId(), command.ownerAccountId()).isPresent()) {
+            throw new DomainException("holder", "the account already has a customer record; send neither customerId nor holder");
+        }
+        CatalogService tour = CatalogLookup.require(catalog, command.tenantId(), command.serviceId());
+        return holders.prepare(command, tour, ids.newId());
+    }
+
+    // RN-01 (AC-08.1, AC-08.9): a Final Customer reserves for the customer linked to their account, never for one they name.
+    // An account with no record still needs the holder block (AC-08.13); until that block exists the field is named.
+    private Customer resolveLead(CreateReservationCommand command) {
+        if (command.ownerAccountId() == null) {
+            return customers.findByTenantAndId(command.tenantId(), command.customerId())
+                    .filter(found -> found.tenantId().equals(command.tenantId()))
+                    .orElseThrow(() -> new CustomerNotFoundException(command.customerId()));
+        }
+        if (command.customerId() != null) throw new DomainException("customerId", "a customer cannot be named; it is the one of the account");
+        return accounts.findByTenantAndAccount(command.tenantId(), command.ownerAccountId())
+                .filter(found -> found.tenantId().equals(command.tenantId()))
+                .orElseThrow(() -> new MissingReservationDataException(List.of("holder")));
+    }
+
+    // AC-07.2: each missing field is named at once.
+    private static void requireMandatoryData(CreateReservationCommand command) {
+        List<String> missing = new ArrayList<>();
+        if (command.customerId() == null && command.ownerAccountId() == null && command.holder() == null) missing.add("customerId");
+        if (command.departureId() == null) missing.add("salidaId");
+        if (command.serviceId() == null) missing.add("serviceId");
+        if (command.people() < 1) missing.add("people");
+        if (command.paymentType() == null) missing.add("paymentType");
+        if (command.paymentMethod() == null) missing.add("paymentMethod");
+        if (!missing.isEmpty()) throw new MissingReservationDataException(missing);
+    }
+
+    // AC-07.21 (RN-17): a high-risk tour needs the extra data of the lead; the names are returned, never the values.
+    private static void requireDataTheTourNeeds(Customer lead, CatalogService tour) {
+        if (!tour.terms().highRisk()) return;
+        List<String> missing = lead.highRiskData() == null ? new HighRiskData(null, null, null, false).missingFields()
+                : lead.highRiskData().missingFields();
+        if (!missing.isEmpty()) throw new IncompleteLeadCustomerException(missing);
+    }
+
+    // AC-07.11 (RN-08): no document twice, the lead's included and compared normalized; the extra data of a high-risk tour.
+    private static void requireValidGroup(Customer lead, CatalogService tour, List<Companion> companions) {
+        Set<String> seen = new HashSet<>();
+        seen.add(lead.documentNumber().comparable());
+        for (int i = 0; i < companions.size(); i++) {
+            Companion companion = companions.get(i);
+            if (!seen.add(companion.documentNumber().comparable())) {
+                throw new BusinessRuleViolation("a document is already in the group");
+            }
+            if (tour.terms().highRisk()) {
+                List<String> missing = companion.highRiskData() == null
+                        ? new HighRiskData(null, null, null, false).missingFields() : companion.highRiskData().missingFields();
+                if (!missing.isEmpty()) throw new IncompleteCompanionException(i + 1, missing);
+            }
+        }
+    }
+}

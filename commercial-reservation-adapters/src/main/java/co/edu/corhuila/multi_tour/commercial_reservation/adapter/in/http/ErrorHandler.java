@@ -1,20 +1,48 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PublicOfferNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceNotFoundException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AssociatedEstablishmentNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerAccessDeniedException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CustomerNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ClientNoticeNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.OutboxEventNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteCompanionException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IncompleteLeadCustomerException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReservationAccessDeniedException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CashUnavailableException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingReservationDataException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingHighRiskDataException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AuthorizableReasonNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ApprovalThroughSagaRequiredException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReasonRuleViolation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.DiscountRuleAccessDeniedException;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.EstablishmentAccessDeniedException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.RefundNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReschedulingNotFoundException;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.PaymentAccessDeniedException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.InvalidStatusTransitionException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.MissingPaymentDataException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.SeatsUnavailableException;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import jakarta.servlet.http.HttpServletRequest;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import java.util.List;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -33,14 +61,73 @@ public class ErrorHandler {
         ApiError.Code code = ApiError.Code.INTERNAL_ERROR;
         String message = "an unexpected error occurred";
         List<ApiError.Detail> details = null;
-        if (ex instanceof BusinessRuleViolation) {
+        HttpHeaders headers = new HttpHeaders();
+        if (ex instanceof RetryLaterException held) {
+            // DP-16, DD-8: not a failure of this service. A warning by event id and trace, never the payload.
+            code = ApiError.Code.SERVICE_UNAVAILABLE;
+            message = held.getMessage();
+            headers.set(HttpHeaders.RETRY_AFTER, "5");
+            LoggerFactory.getLogger(ErrorHandler.class).warn("Departure event held back until its departure exists, eventId={}, traceId={}",
+                    held.eventId(), request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE));
+        } else if (ex instanceof CashUnavailableException) {
+            // HU-COM-009: the cash did not answer, so the income is unknown and nothing was stored; the same request can be repeated.
+            code = ApiError.Code.SERVICE_UNAVAILABLE;
+            message = "the cash is not available; repeat the request with the same Idempotency-Key";
+            headers.set(HttpHeaders.RETRY_AFTER, "5");
+            LoggerFactory.getLogger(ErrorHandler.class).warn("Cash unavailable for a cash payment, traceId={}", request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE));
+        } else if (ex instanceof SeatsUnavailableException) {
+            // AC-07.8: the departure is full or too small; the client can tell the customer (PROPOSED code of the contract).
+            code = ApiError.Code.SEATS_UNAVAILABLE;
+            message = ex.getMessage();
+        } else if (ex instanceof BusinessRuleViolation) {
             code = ApiError.Code.BUSINESS_RULE_VIOLATION;
             message = "PATCH".equals(request.getMethod())
                     ? "The capacity cannot be lower than the seats already held in a scheduled departure"
                     : "The item cannot be reactivated while a restriction applies";
+            // The quote, the creation and the additional discount say which rule refused them (the seats left, the group, the tenant), never a value.
+            if (reservationRule(request)) message = ex.getMessage();
+        } else if (ex instanceof IncompleteLeadCustomerException lead) {
+            // AC-07.21: the fields the lead customer lacks, never their values.
+            code = ApiError.Code.BUSINESS_RULE_VIOLATION;
+            message = "the lead customer is incomplete";
+            details = lead.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
+        } else if (ex instanceof IncompleteCompanionException companion) {
+            code = ApiError.Code.BUSINESS_RULE_VIOLATION;
+            message = "a companion is incomplete";
+            details = companion.fields().stream()
+                    .map(field -> new ApiError.Detail("companions[" + (companion.position() - 1) + "]." + field, field + " is required")).toList();
+        } else if (ex instanceof MissingReservationDataException missing) {
+            // AC-07.2: every missing datum named at once.
+            code = ApiError.Code.VALIDATION_ERROR;
+            message = "the request has invalid fields";
+            details = missing.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
+        } else if (ex instanceof MissingPaymentDataException missing) {
+            // AC-09.11: every missing datum of a payment named at once.
+            code = ApiError.Code.VALIDATION_ERROR;
+            message = "the request has invalid fields";
+            details = missing.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
+        } else if (ex instanceof InvalidStatusTransitionException) {
+            code = ApiError.Code.INVALID_STATUS_TRANSITION;
+            message = ex.getMessage();
+        } else if (ex instanceof MissingServletRequestPartException part) {
+            code = ApiError.Code.VALIDATION_ERROR;
+            message = "the request has invalid fields";
+            details = List.of(new ApiError.Detail(part.getRequestPartName(), part.getRequestPartName() + " is required"));
         } else if (ex instanceof InvalidTokenException) {
             code = ApiError.Code.UNAUTHORIZED;
             message = "authentication is required";
+        } else if (ex instanceof MissingHighRiskDataException missing) {
+            // AC-05.2: one entry per missing field, so the screen can point at each.
+            code = ApiError.Code.VALIDATION_ERROR;
+            message = "the request has invalid fields";
+            details = missing.fields().stream().map(field -> new ApiError.Detail(field, field + " is required")).toList();
+        } else if (ex instanceof ApprovalThroughSagaRequiredException closed) {
+            // HU-COM-010 DP-11: the human route of approval is closed; the saga register-payment is the approval.
+            code = ApiError.Code.BUSINESS_RULE_VIOLATION;
+            message = closed.getMessage();
+        } else if (ex instanceof ReasonRuleViolation violation) {
+            code = ApiError.Code.BUSINESS_RULE_VIOLATION;
+            message = violation.getMessage();
         } else if (ex instanceof DomainException domain) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
@@ -48,7 +135,9 @@ public class ErrorHandler {
         } else if (ex instanceof org.springframework.web.multipart.MultipartException) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
-            details = List.of(new ApiError.Detail("image", "must be a valid image within the multipart size limit"));
+            details = request.getRequestURI().contains("/payments")
+                    ? List.of(new ApiError.Detail("proof", "must be a valid file within the multipart size limit"))
+                    : List.of(new ApiError.Detail("image", "must be a valid image within the multipart size limit"));
         } else if (ex instanceof HttpMediaTypeNotSupportedException) {
             code = ApiError.Code.VALIDATION_ERROR;
             message = "the request has invalid fields";
@@ -64,12 +153,19 @@ public class ErrorHandler {
             message = "the request has invalid fields";
             details = List.of(new ApiError.Detail(mismatch.getName(), "has an invalid format"));
         } else if (ex instanceof CatalogServiceNotFoundException || ex instanceof AssociatedEstablishmentNotFoundException
+                || ex instanceof PublicOfferNotFoundException
+                || ex instanceof DiscountRuleNotFoundException || ex instanceof CustomerNotFoundException || ex instanceof AuthorizableReasonNotFoundException
+                || ex instanceof DepartureNotFoundException || ex instanceof ReservationNotFoundException || ex instanceof PaymentProofNotFoundException
+                || ex instanceof RefundNotFoundException || ex instanceof ReschedulingNotFoundException || ex instanceof CreditBalanceNotFoundException || ex instanceof ClientNoticeNotFoundException
+                || ex instanceof OutboxEventNotFoundException
                 || ex instanceof NoResourceFoundException
                 || ex instanceof NoHandlerFoundException || ex instanceof HttpRequestMethodNotSupportedException) {
             // Annex C has no method-not-allowed code; use the agreed missing-resource response.
             code = ApiError.Code.NOT_FOUND;
             message = "resource not found";
-        } else if (ex instanceof EstablishmentAccessDeniedException
+        } else if (ex instanceof EstablishmentAccessDeniedException || ex instanceof DiscountRuleAccessDeniedException
+                || ex instanceof CustomerAccessDeniedException || ex instanceof ReservationAccessDeniedException
+                || ex instanceof PaymentAccessDeniedException
                 || ex instanceof ResponseStatusException status && status.getStatusCode().value() == 403) {
             code = ApiError.Code.FORBIDDEN;
             message = "access is forbidden";
@@ -77,9 +173,18 @@ public class ErrorHandler {
             LoggerFactory.getLogger(ErrorHandler.class).error("Unexpected request failure, traceId={}",
                     request.getAttribute(CorrelationFilter.TRACE_ATTRIBUTE), ex);
         }
-        int status = ex instanceof EstablishmentImageContent.Rejected image ? image.status : code.status();
-        if (ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException) status = 413;
-        return ResponseEntity.status(status).body(errors.body(request, code, message, details));
+        int status = ex instanceof EstablishmentImageContent.Rejected image ? image.status
+                : ex instanceof RejectedRequest rejected ? rejected.status() : code.status();
+        if (ex instanceof org.springframework.web.multipart.MaxUploadSizeExceededException || ex instanceof co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ProofTooLargeException) status = 413;
+        return ResponseEntity.status(status).headers(headers).body(errors.body(request, code, message, details));
+    }
+
+    private static boolean reservationRule(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && (path.endsWith("/reservations") || path.endsWith("/customers"))
+                || path.contains("/additional-discount") || path.contains("/payments") || path.contains("/payment-proofs") || path.endsWith("/cancellation")
+                || path.contains("/refund-authorizations/") || path.contains("/financial-decisions/") || path.endsWith("/refund-determinations")
+                || path.contains("/reschedulings") || path.endsWith("/modifications") || path.endsWith("/modification-quote");
     }
 
     private static String jsonField(Throwable error) {

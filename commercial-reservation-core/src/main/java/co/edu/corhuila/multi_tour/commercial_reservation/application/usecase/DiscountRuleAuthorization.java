@@ -1,0 +1,29 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
+
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.DiscountRuleActor;
+
+public final class DiscountRuleAuthorization {
+    private DiscountRuleAuthorization() {}
+
+    // All or nothing (plan D-08): only the Tenant Administrator writes. Decision (spec 003 DP-09,
+    // proposed default pending the Project Lead): reads for Manager, Accountant and Analyst are not granted, so no read policy exists here.
+    public static void requireWrite(DiscountRuleActor actor) {
+        if (actor == null || actor.tenantId() == null || actor.actorId() == null
+                || actor.role() != DiscountRuleActor.Role.TENANT_ADMINISTRATOR)
+            throw new DiscountRuleAccessDeniedException();
+    }
+
+    // DP-09 default: only the Tenant Administrator reads a rule.
+    public static void requireRead(DiscountRuleActor actor) {
+        // HU-SEC-007: the read only platform support actor reads the rules too.
+        if (actor != null && actor.role() == DiscountRuleActor.Role.PLATFORM_SUPPORT && actor.tenantId() != null && actor.actorId() != null) return;
+        requireWrite(actor);
+    }
+
+    // Row "Discount rules" of authentication.md (quote): everyone but the Operational Collaborator (HU-COM-004 DP-08).
+    public static void requireQuote(DiscountRuleActor actor) {
+        if (actor == null || actor.tenantId() == null || actor.actorId() == null
+                || actor.role() == DiscountRuleActor.Role.OPERATIONAL_COLLABORATOR)
+            throw new DiscountRuleAccessDeniedException();
+    }
+}

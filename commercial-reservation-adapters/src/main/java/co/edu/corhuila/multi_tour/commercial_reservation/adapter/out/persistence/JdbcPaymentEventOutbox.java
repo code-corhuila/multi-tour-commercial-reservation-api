@@ -1,0 +1,171 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence;
+
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ActionMarker;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ClientNoticeOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityAllocated;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CapacityReleased;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalanceApplied;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CreditBalanceRecorded;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.NoticePolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationCancelled;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationChanged;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvidenceRegistered;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentRejected;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentValidated;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationConfirmed;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservationRescheduled;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+// The outbox of the payment family, written inside the transaction of the change. The payload keys are the closed lists of the
+// database (-db 015 and 017): references, amounts and codes, never a file, a file name, bank data or a person. The events carry no
+// actor, but the outbox requires one: it is the user of the latest attempt of the reservation (who decided it, else who registered it).
+public final class JdbcPaymentEventOutbox implements PaymentEventOutbox {
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private final JdbcTemplate jdbc;
+    private final ClientNoticeOutbox notices;
+    private final ActionMarker marker;
+
+    public JdbcPaymentEventOutbox(JdbcTemplate jdbc) {
+        this(jdbc, (tenantId, reservationId, type, triggeringEventType, triggeringEventId, occurredAt) -> { });
+    }
+
+    // The notices of RF-019 are written right after the event that triggers them, in the same transaction (HU-COM-015 plan D-03).
+    public JdbcPaymentEventOutbox(JdbcTemplate jdbc, ClientNoticeOutbox notices) {
+        this(jdbc, notices, ActionMarker.NONE);
+    }
+
+    // HU-COM-020 AC-20.13 (DP-05 default): the event of a restricted action carries the marker in the reason of the envelope; the payload gets no key.
+    public JdbcPaymentEventOutbox(JdbcTemplate jdbc, ClientNoticeOutbox notices, ActionMarker marker) {
+        this.jdbc = jdbc;
+        this.notices = notices;
+        this.marker = marker;
+    }
+
+    private static String type(PaymentEvent event) {
+        return event instanceof ReservationChanged ? "ReservationModified" : event.getClass().getSimpleName();
+    }
+
+    // The credit events name the person who decided or applied; the rest take the person of the latest attempt (null here).
+    private static UUID actor(PaymentEvent event) {
+        return switch (event) {
+            case CreditBalanceRecorded e -> e.actorId();
+            case CreditBalanceApplied e -> e.actorId();
+            case ReservationRescheduled e -> e.approvedBy();
+            default -> null;
+        };
+    }
+
+    @Override
+    public void append(PaymentEvent event) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("reservationId", event.reservationId().toString());
+        switch (event) {
+            case PaymentEvidenceRegistered e -> {
+                payload.put("attemptId", e.attemptId().toString());
+                payload.put("modality", e.modality().name());
+                payload.put("registeredAmountCents", e.registeredAmount().amount());
+                payload.put("validationStatus", e.validationStatus() == null ? null : e.validationStatus().name());
+            }
+            case CapacityAllocated e -> {
+                payload.put("serviceId", e.serviceId().toString());
+                payload.put("salidaId", e.salidaId().toString());
+                payload.put("allocationKind", e.allocationKind());
+            }
+            case PaymentValidated e -> {
+                if (e.attemptId() != null) payload.put("attemptId", e.attemptId().toString());
+                payload.put("amountCents", e.amount().amount());
+                payload.put("paymentStatus", e.paymentStatus().name());
+                payload.put("pendingBalanceCents", e.pendingBalance().amount());
+                payload.put("validatorId", e.validatorId().toString());
+            }
+            case PaymentRejected e -> {
+                payload.put("attemptId", e.attemptId().toString());
+                payload.put("pendingBalanceCents", e.pendingBalance().amount());
+                payload.put("validatorId", e.validatorId().toString());
+            }
+            case ReservationConfirmed e -> {
+                payload.put("paymentStatus", e.paymentStatus().name());
+                payload.put("allocatedCapacity", e.allocatedCapacity());
+                // HU-CSH-003 DP-RM-B3: the final value of the reservation at the confirmation, in cents (key admitted by -db 043).
+                payload.put("commercialValueCents", e.commercialValue().amount());
+            }
+            case CapacityReleased e -> {
+                payload.put("serviceId", e.serviceId().toString());
+                payload.put("salidaId", e.salidaId().toString());
+                payload.put("reason", e.reason());
+            }
+            case ReservationCancelled e -> {
+                payload.put("cause", e.cause().name());
+                payload.put("releasedSeats", e.releasedSeats());
+            }
+            case ReservationChanged e -> {
+                // The modification shape of ReservationModified: the nine keys of the closed list of the db, never the reason (DP-D12-3).
+                payload.put("changeType", e.changeType().name());
+                payload.put("previousFinalValueCents", e.previousFinalValue().amount());
+                payload.put("newFinalValueCents", e.newFinalValue().amount());
+                payload.put("previousPendingBalanceCents", e.previousPendingBalance().amount());
+                payload.put("newPendingBalanceCents", e.newPendingBalance().amount());
+                payload.put("partySize", e.partySize());
+                payload.put("departureChanged", e.departureChanged());
+                payload.put("reasonCode", e.reasonCode());
+            }
+            case CreditBalanceRecorded e -> {
+                // The closed list of the db (-db 031): identifiers, the amount and the origin; the customer is the one of the source reservation.
+                payload.put("creditBalanceId", e.creditBalanceId().toString());
+                payload.put("customerId", jdbc.queryForObject("SELECT customer_id FROM commercial_reservation.reservation WHERE reservation_id = ?", UUID.class,
+                        e.reservationId()).toString());
+                payload.put("amountCents", e.amount().amount());
+                payload.put("origin", e.origin().name());
+            }
+            case CreditBalanceApplied e -> {
+                payload.remove("reservationId");
+                payload.put("creditBalanceId", e.creditBalanceId().toString());
+                payload.put("sourceReservationId", e.sourceReservationId().toString());
+                payload.put("targetReservationId", e.reservationId().toString());
+                payload.put("appliedAmountCents", e.appliedAmount().amount());
+                payload.put("appliedByKind", e.appliedBy().name());
+            }
+            case ReservationRescheduled e -> {
+                // HU-COM-018 plan D-08: the seven keys of the closed list of the db; the evidence and the channel of an outside answer never travel.
+                payload.put("reschedulingRecordId", e.reschedulingRecordId().toString());
+                payload.put("linkedReservationId", e.linkedReservationId() == null ? null : e.linkedReservationId().toString());
+                payload.put("originalSalidaId", e.originalSalidaId().toString());
+                payload.put("agreedSalidaId", e.agreedSalidaId().toString());
+                payload.put("agreedStartAt", e.agreedStartAt().toString());
+                payload.put("approvedBy", e.approvedBy().toString());
+            }
+            default -> throw new IllegalArgumentException("not a payment event: " + event.getClass().getSimpleName());
+        }
+        try {
+            UUID eventId = UUID.randomUUID();
+            jdbc.update("INSERT INTO commercial_reservation.outbox_event (outbox_event_id, tenant_id, event_type, reservation_id, actor_id, occurred_at, "
+                    + "payload, reason) VALUES (?, ?, ?, ?, COALESCE(?, (SELECT COALESCE(decided_by, registered_by) FROM "
+                    + "commercial_reservation.payment_attempt WHERE reservation_id = ? ORDER BY COALESCE(decided_at, registered_at) DESC "
+                    + "LIMIT 1), (SELECT created_by FROM commercial_reservation.reservation WHERE reservation_id = ?)), ?, ?::jsonb, ?)",
+                    eventId, event.tenantId(), type(event), event.reservationId(), actor(event), event.reservationId(),
+                    event.reservationId(), event.occurredAt().truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC),
+                    JSON.writeValueAsString(payload), marker.reason().orElse(null));
+            notice(event, eventId);
+        } catch (JsonProcessingException failure) {
+            throw new IllegalStateException("the event payload cannot be written", failure);
+        }
+    }
+
+    // A validated payment notifies only when the latest attempt of the reservation is a transfer, which a person reviewed; cash recorded by staff does not (DP-15-03).
+    private void notice(PaymentEvent event, UUID eventId) {
+        boolean reviewedProof = event instanceof PaymentValidated && Boolean.TRUE.equals(jdbc.queryForObject("SELECT COALESCE((SELECT payment_method = 'TRANSFER' "
+                + "FROM commercial_reservation.payment_attempt WHERE reservation_id = ? ORDER BY COALESCE(decided_at, registered_at) DESC LIMIT 1), false)",
+                Boolean.class, event.reservationId()));
+        NoticePolicy.of(event, reviewedProof).ifPresent(type -> notices.append(event.tenantId(), event.reservationId(), type,
+                event.getClass().getSimpleName(), eventId, event.occurredAt()));
+    }
+}

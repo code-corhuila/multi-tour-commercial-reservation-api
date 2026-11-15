@@ -1,5 +1,6 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CollaboratorEditingPolicy;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -7,14 +8,31 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 public final class CatalogAuthorization implements HandlerInterceptor {
+    private final CollaboratorEditingPolicy collaboratorEditing;
+
+    public CatalogAuthorization(CollaboratorEditingPolicy collaboratorEditing) {
+        this.collaboratorEditing = collaboratorEditing;
+    }
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         var principal = (AuthenticatedPrincipal) request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE);
         if (principal.tenantId() == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        // HU-SEC-007: the mark of an exceptional or emergency access reads the catalog; the gate of the filter already refused any write and any area outside its scope.
+        if (principal.exceptional() != null && "GET".equals(request.getMethod())) return true;
+        if (principal.roles().contains("TENANT_ADMINISTRATOR")) return true;
+        // The settings of the catalog, with the collaborator-editing flag, are read and set by the Administrator only (RF-004).
+        if (request.getRequestURI().endsWith("/catalog/settings")) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        boolean collaborator = principal.roles().contains("OPERATIONAL_COLLABORATOR");
         boolean read = "GET".equals(request.getMethod());
+        // Manager and Analyst only consult the catalog; the Accountant is denied (AC-01.11, RN-07).
+        boolean readOnlyRole = principal.roles().contains("MANAGER") || principal.roles().contains("ANALYST");
+        if (read && readOnlyRole) return true;
+        // The enabled Collaborator may update an item (RF-004); which fields is checked once the body is bound (RN-04).
+        boolean enabledUpdate = "PATCH".equals(request.getMethod())
+                && collaboratorEditing.allowsDescriptiveUpdates(principal.tenantId());
         // Deny access before argument resolution so malformed bodies cannot disclose validation to other roles.
-        if (!principal.roles().contains("TENANT_ADMINISTRATOR")
-                && !(read && principal.roles().contains("OPERATIONAL_COLLABORATOR"))) {
+        if (!(collaborator && (read || enabledUpdate))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
         return true;

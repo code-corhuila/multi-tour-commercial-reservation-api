@@ -36,7 +36,7 @@ import org.springframework.web.bind.annotation.*;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ContextConfiguration(initializers = TestJwtKeys.class)
-@Import(HttpFoundationTest.Support.class)
+@Import({HttpFoundationTest.Support.class, AccountSessionCutoffHttpFixture.class})
 class HttpFoundationTest {
     private static final String PATH = "/test-support/protected";
     private static final String TRACE = "request-123_test.safe";
@@ -49,6 +49,12 @@ class HttpFoundationTest {
         @Bean @Primary
         Clock fixedClock() {
             return Clock.fixed(TestJwtKeys.NOW, ZoneOffset.UTC);
+        }
+
+        // The status lookup is not under test here: no copy of any tenant, so every token passes.
+        @Bean @Primary
+        co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader noTenantCopy() {
+            return tenantId -> java.util.Optional.empty();
         }
 
         @Bean

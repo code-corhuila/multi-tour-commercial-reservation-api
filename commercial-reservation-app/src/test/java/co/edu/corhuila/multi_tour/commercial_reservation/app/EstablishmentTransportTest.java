@@ -28,7 +28,7 @@ class EstablishmentTransportTest {
         String boundary = "establishment-transport-boundary";
         var bytes = new ByteArrayOutputStream();
         for (String[] field : new String[][] {{"establishmentType", "HOTEL"}, {"commercialName", "Hotel"},
-                {"commercialInformation", "Contact"}}) {
+                {"commercialInformation", "Contact"}, {"contactEmail", "info@hotel.example"}}) {
             bytes.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + field[0]
                     + "\"\r\n\r\n" + field[1] + "\r\n").getBytes(StandardCharsets.UTF_8));
         }
@@ -55,7 +55,7 @@ class EstablishmentTransportTest {
             servletResponse.setContentType(response.headers().firstValue("Content-Type").orElseThrow());
             servletResponse.getWriter().write(response.body());
             var report = com.atlassian.oai.validator.OpenApiInteractionValidator
-                    .createForSpecificationUrl(EstablishmentHttpTest.SPEC).withBasePathOverride("/api/v1").build()
+                    .createForSpecificationUrl(EstablishmentHttpTest.SPEC).withBasePathOverride("/api/v1/commercial-reservation").build()
                     .validateResponse("/associated-establishments", com.atlassian.oai.validator.model.Request.Method.POST,
                             com.atlassian.oai.validator.mockmvc.MockMvcResponse.of(servletResponse));
             assertThat(report.hasErrors()).as("response contract: %s", report).isFalse();

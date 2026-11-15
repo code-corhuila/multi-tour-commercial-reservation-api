@@ -224,6 +224,22 @@ class CatalogPersistenceTest {
         assertThat(repository.findByTenantAndId(tenant, service.serviceId())).isPresent();
     }
 
+    @Test
+    void transportRatePerPersonRoundTripsAndNullStaysNull() {
+        CatalogService withRate = CatalogService.register(UUID.randomUUID(), tenant, CatalogServiceType.TOUR, "Rated",
+                CommercialTerms.of(100_000L, 60_000L, 12, true, false, 25_000L), CREATED);
+        CatalogService withoutRate = item(UUID.randomUUID(), tenant, CREATED);
+        repository.save(withRate);
+        repository.save(withoutRate);
+
+        assertThat(repository.findByTenantAndId(tenant, withRate.serviceId()).orElseThrow().terms()
+                .transportRatePerPerson().amount()).isEqualTo(25_000L);
+        assertThat(repository.findByTenantAndId(tenant, withoutRate.serviceId()).orElseThrow().terms()
+                .transportRatePerPerson()).isNull();
+        assertThat(jdbc.queryForObject("SELECT transport_rate_per_person_cents FROM commercial_reservation.catalog_service "
+                + "WHERE service_id = ?", Long.class, withRate.serviceId())).isEqualTo(25_000L);
+    }
+
     private CatalogService item(UUID id, UUID owner, Instant created) {
         return CatalogService.register(id, owner, CatalogServiceType.TOUR, "Generated item",
                 CommercialTerms.of(100_000L, 60_000L, 12, true, false), created);

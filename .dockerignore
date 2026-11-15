@@ -1,0 +1,7 @@
+# Only what the build needs enters the image build: no git history, no worktrees, no .env, no keys.
+**
+!pom.xml
+!commercial-reservation-core
+!commercial-reservation-adapters
+!commercial-reservation-app
+**/target

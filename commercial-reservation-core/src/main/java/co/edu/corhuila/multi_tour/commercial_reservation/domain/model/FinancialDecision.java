@@ -1,0 +1,134 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
+
+// HU-COM-016 RN-01, RN-02, RN-06, RN-08; plan D-02, D-04: one financial decision of 24 running hours. The outcome is recorded once with the person (or the
+// system) and the instant; the amount is the base amount recognized and is never typed; a frozen decision and a credit-balance refund request are never
+// defaulted; only a credit-balance refund request can be rejected. Immutable: every change returns a new value. The 24 hours are not parametrizable (PDR section 15).
+public record FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID creditBalanceId, DecisionKind kind, Cents baseAmount, Cents penalty,
+        Instant recognizedAt, Instant frozenAt, Long remainingAtFreezeMinutes, DecisionOutcome outcome, boolean decidedBySystem, UUID decidedBy,
+        Instant decidedAt, String rejectionJustification, Instant resumedDueAt) {
+
+    public FinancialDecision(UUID id, UUID tenantId, UUID reservationId, UUID creditBalanceId, DecisionKind kind, Cents baseAmount, Cents penalty, Instant recognizedAt, Instant frozenAt,
+            Long remainingAtFreezeMinutes, DecisionOutcome outcome, boolean decidedBySystem, UUID decidedBy, Instant decidedAt, String rejectionJustification) {
+        this(id, tenantId, reservationId, creditBalanceId, kind, baseAmount, penalty, recognizedAt, frozenAt, remainingAtFreezeMinutes, outcome, decidedBySystem, decidedBy, decidedAt,
+                rejectionJustification, null);
+    }
+
+    public static final Duration WINDOW = Duration.ofHours(24);
+    public static final int MAX_JUSTIFICATION = 500;
+
+    public FinancialDecision {
+        if (id == null || tenantId == null || reservationId == null || kind == null || baseAmount == null || recognizedAt == null)
+            throw new DomainException("financialDecision", "the decision data is incomplete");
+        if (baseAmount.amount() <= 0) throw new DomainException("baseAmount", "the base amount must be above zero");
+        if (penalty != null && kind != DecisionKind.CUSTOMER_CANCELLATION)
+            throw new DomainException("penalty", "only a customer cancellation carries a penalty");
+        if ((creditBalanceId != null) != (kind == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST))
+            throw new DomainException("creditBalanceId", "the credit balance is for a refund request and only for it");
+    }
+
+    public static FinancialDecision open(UUID id, UUID tenantId, UUID reservationId, DecisionKind kind, Cents base, Cents penalty, UUID creditBalanceId,
+            Instant recognizedAt) {
+        return new FinancialDecision(id, tenantId, reservationId, creditBalanceId, kind, base, penalty, recognizedAt, null, null, null, false, null, null,
+                null);
+    }
+
+    public boolean isDecided() {
+        return outcome != null;
+    }
+
+    public boolean isFrozen() {
+        return frozenAt != null;
+    }
+
+    public Instant dueAt() {
+        return resumedDueAt != null ? resumedDueAt : recognizedAt.plus(WINDOW);
+    }
+
+    // Open, not frozen, the 24 running hours have passed, and not a credit-balance refund request (DP-13 out: it has no default).
+    public boolean isDue(Instant now) {
+        return !isDecided() && !isFrozen() && kind != DecisionKind.CREDIT_BALANCE_REFUND_REQUEST && !now.isBefore(dueAt());
+    }
+
+    public FinancialDecision recordRefundFull(UUID by, Instant at) {
+        requireOpen();
+        if (kind == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST)
+            throw new BusinessRuleViolation("a credit-balance refund request is authorized, not refunded in full");
+        if (by == null) throw new DomainException("decidedBy", "the person is required");
+        return decide(DecisionOutcome.REFUND_FULL, false, by, at, null);
+    }
+
+    // HU-COM-017 RN-02: the Administrator decides the 100 % credit instead of the refund, for the three decision kinds that are not a credit request.
+    public FinancialDecision recordCreditFull(UUID by, Instant at) {
+        requireOpen();
+        if (kind == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST)
+            throw new BusinessRuleViolation("a credit-balance refund request is authorized, not credited");
+        if (by == null) throw new DomainException("decidedBy", "the person is required");
+        return decide(DecisionOutcome.CREDIT_FULL, false, by, at, null);
+    }
+
+    public FinancialDecision reject(UUID by, String justification, Instant at) {
+        requireOpen();
+        if (kind != DecisionKind.CREDIT_BALANCE_REFUND_REQUEST)
+            throw new BusinessRuleViolation("only a credit-balance refund request can be rejected");
+        if (by == null) throw new DomainException("decidedBy", "the person is required");
+        if (justification == null || justification.isBlank()) throw new DomainException("justification", "justification is required");
+        String text = justification.strip();
+        if (text.length() > MAX_JUSTIFICATION) throw new DomainException("justification", "justification is longer than " + MAX_JUSTIFICATION + " characters");
+        return decide(DecisionOutcome.REJECTED, false, by, at, text);
+    }
+
+    // HU-COM-016 DP-17 (RN-RES-009, GAP-014): the Administrator authorizes an open credit-balance refund request inside its 24 hours; the amount is the requested one.
+    public FinancialDecision authorizeRequest(UUID by, Instant at) {
+        requireOpen();
+        if (kind != DecisionKind.CREDIT_BALANCE_REFUND_REQUEST)
+            throw new BusinessRuleViolation("only a credit-balance refund request is authorized without a refund outcome");
+        if (by == null) throw new DomainException("decidedBy", "the person is required");
+        return decide(DecisionOutcome.AUTHORIZED, false, by, at, null);
+    }
+
+    // RN-06: 24 running hours without a decision are the 100 % refund, counted as authorized. DP-13 out (Project Lead, 2026-11-12): a credit-balance refund
+    // request has no default; it stays open until a person authorizes or rejects it.
+    public FinancialDecision applyDefault(Instant at) {
+        requireOpen();
+        if (kind == DecisionKind.CREDIT_BALANCE_REFUND_REQUEST) throw new BusinessRuleViolation("a credit-balance refund request is not defaulted: a person decides it");
+        if (isFrozen()) throw new BusinessRuleViolation("a frozen decision is not defaulted");
+        if (at.isBefore(dueAt())) throw new BusinessRuleViolation("the 24 hours have not passed");
+        return decide(DecisionOutcome.REFUND_FULL, true, null, at, null);
+    }
+
+    // GAP-003: a value recognized again for an open decision takes the updated amount, without a second decision.
+    public FinancialDecision withLateValue(Cents increase) {
+        requireOpen();
+        return new FinancialDecision(id, tenantId, reservationId, creditBalanceId, kind, new Cents(baseAmount.amount() + increase.amount()), penalty,
+                recognizedAt, frozenAt, remainingAtFreezeMinutes, null, false, null, null, null, resumedDueAt);
+    }
+
+    // The writer of the freeze is HU-COM-020; the decision keeps the minutes it had left.
+    public FinancialDecision freeze(Instant at) {
+        requireOpen();
+        long left = Math.max(0, Duration.between(at, dueAt()).toMinutes());
+        return new FinancialDecision(id, tenantId, reservationId, creditBalanceId, kind, baseAmount, penalty, recognizedAt, at, left, null, false, null,
+                null, null, resumedDueAt);
+    }
+
+    // HU-COM-020 AC-20.5, AC-20.7: a decision frozen by the inactivation resumes with the time it had left: it ends at the instant of the resume plus the remaining time (the recognition
+    // instant never changes, so the shifted due instant is kept apart). A decision that is not frozen, or is already decided, does not move.
+    public FinancialDecision resumed(Instant at) {
+        if (isDecided() || !isFrozen()) return this;
+        return new FinancialDecision(id, tenantId, reservationId, creditBalanceId, kind, baseAmount, penalty, recognizedAt, null, null, null, false, null, null, null,
+                at.plus(Duration.ofMinutes(remainingAtFreezeMinutes)));
+    }
+
+    private void requireOpen() {
+        if (isDecided()) throw new InvalidStatusTransitionException("the decision is already decided");
+    }
+
+    private FinancialDecision decide(DecisionOutcome result, boolean bySystem, UUID by, Instant at, String justification) {
+        return new FinancialDecision(id, tenantId, reservationId, creditBalanceId, kind, baseAmount, penalty, recognizedAt, frozenAt,
+                remainingAtFreezeMinutes, result, bySystem, by, at, justification, resumedDueAt);
+    }
+}

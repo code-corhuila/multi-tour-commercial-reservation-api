@@ -1,0 +1,27 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.domain.model;
+
+import java.time.Instant;
+import java.util.UUID;
+
+// Immutable: one per reservation, applied after the current discounts, on their subtotal (RN-04, RN-06).
+// The reason is kept as text (DP-06); the order is its place in the breakdown.
+public record AdditionalDiscount(UUID tenantId, UUID reservationId, BasisPoints rate, DiscountLine line,
+        String reason, UUID authorizerId, int order, Instant registeredAt) {
+
+    // 1 % (the mockup minimum, RN-05).
+    public static final int MIN_BASIS_POINTS = 100;
+
+    // Used by both the preview and the registration, so they cannot disagree (AC-04.13).
+    // No cap, by decision (closing decision 2026-10-28, DP-03; prd.md RF-005B): only the minimum and "never below zero" rule.
+    public static DiscountLine preview(Cents subtotalAfterCurrentDiscounts, BasisPoints rate) {
+        if (rate.value() < MIN_BASIS_POINTS) {
+            throw new DomainException("percentage", "the additional discount must be at least 1 %");
+        }
+        DiscountLine line = DiscountLine.percentage(subtotalAfterCurrentDiscounts, rate);
+        // The stored amount must be above zero (db amount_cents > 0): a discount that takes nothing is a rule, not a failure.
+        if (line.amount().amount() == 0) {
+            throw new BusinessRuleViolation("the additional discount must take at least one cent off the subtotal");
+        }
+        return line;
+    }
+}

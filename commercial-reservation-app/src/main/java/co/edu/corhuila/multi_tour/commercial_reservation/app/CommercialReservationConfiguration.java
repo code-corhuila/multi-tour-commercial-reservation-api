@@ -2,19 +2,26 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.HealthController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ApiErrorWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcExceptionalAccessAudit;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ExceptionalAccessAudit;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.LoggingExceptionalAccessAudit;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.AuthFilter;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.AccountSessionCutoffs;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogAuthorization;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.TransactionalCatalogUpdate;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CorrelationFilter;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ErrorHandler;
-import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.IdempotentCatalogRegistration;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentCatalogRegistration;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.JwtPublicKeyLoader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.Rs256Verifier;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.IdempotencyKeys;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyKeys;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcIdempotencyStore;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.SpringRequestTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.UuidGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetCatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateCatalogService;
@@ -25,7 +32,16 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.Upd
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.UpdateDescriptiveInformation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.CatalogSettingsController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCatalogSettingsRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.policy.RepositoryCollaboratorEditing;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ManageCatalogSettings;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogSettingsRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ManageCatalogSettingsUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CollaboratorEditingPolicy;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ServiceDepartures;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetCatalogServiceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.InactivateCatalogServiceUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListCatalogServicesForManagementUseCase;
@@ -65,8 +81,8 @@ class CommercialReservationConfiguration {
 
     @Bean
     IdempotentCatalogRegistration catalogRegistration(RegisterCatalogService register, GetCatalogService get,
-            IdempotencyKeys keys, PlatformTransactionManager manager) {
-        return new IdempotentCatalogRegistration(register, get, keys, new TransactionTemplate(manager));
+            IdempotentWrites writes) {
+        return new IdempotentCatalogRegistration(register, get, writes);
     }
 
     @Bean
@@ -77,11 +93,34 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    WebMvcConfigurer catalogAuthorization() {
+    CatalogSettingsRepository catalogSettingsRepository(JdbcTemplate jdbc) {
+        return new JdbcCatalogSettingsRepository(jdbc);
+    }
+
+    @Bean
+    ManageCatalogSettingsUseCase manageCatalogSettings(CatalogSettingsRepository repository, Clock clock) {
+        return new ManageCatalogSettingsUseCase(repository, clock);
+    }
+
+    @Bean
+    CatalogSettingsController catalogSettingsController(ManageCatalogSettings settings) {
+        return new CatalogSettingsController(settings);
+    }
+
+    @Bean
+    CollaboratorEditingPolicy collaboratorEditingPolicy(CatalogSettingsRepository settings) {
+        return new RepositoryCollaboratorEditing(settings);
+    }
+
+    @Bean
+    WebMvcConfigurer catalogAuthorization(CollaboratorEditingPolicy collaboratorEditing) {
         return new WebMvcConfigurer() {
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                registry.addInterceptor(new CatalogAuthorization()).addPathPatterns("/api/v1/catalog/**");
+                // The departures of a tour are a Reservations route with its own roles (ReservationHttpAccess); the reservations of a departure decide theirs in the use case.
+                registry.addInterceptor(new CatalogAuthorization(collaboratorEditing)).addPathPatterns("/api/v1/commercial-reservation/catalog/**")
+                        .excludePathPatterns("/api/v1/commercial-reservation/catalog/services/*/departures",
+                                "/api/v1/commercial-reservation/catalog/services/*/departures/*/reservations");
             }
         };
     }
@@ -89,7 +128,7 @@ class CommercialReservationConfiguration {
     @Bean
     TransactionalCatalogUpdate catalogUpdate(UpdateDescriptiveInformation description, UpdateCommercialTerms terms,
             PlatformTransactionManager manager) {
-        return new TransactionalCatalogUpdate(description, terms, new TransactionTemplate(manager));
+        return new TransactionalCatalogUpdate(description, terms, new SpringRequestTransaction(new TransactionTemplate(manager)));
     }
 
     @Bean
@@ -113,6 +152,11 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
+    IdempotentWrites idempotentWrites(IdempotencyKeys keys, PlatformTransactionManager manager) {
+        return new IdempotentWrites(new JdbcIdempotencyStore(keys), new SpringRequestTransaction(new TransactionTemplate(manager)));
+    }
+
+    @Bean
     JdbcIdempotencyKeys idempotencyKeys(JdbcTemplate jdbc) {
         return new JdbcIdempotencyKeys(jdbc);
     }
@@ -124,8 +168,8 @@ class CommercialReservationConfiguration {
 
     @Bean
     UpdateCommercialTermsUseCase updateCommercialTerms(CatalogServiceRepository repository, Clock clock,
-            SalidaCapacityReader capacity) {
-        return new UpdateCommercialTermsUseCase(repository, clock, capacity);
+            SalidaCapacityReader capacity, ServiceDepartures departures) {
+        return new UpdateCommercialTermsUseCase(repository, clock, capacity, departures);
     }
 
     @Bean
@@ -192,8 +236,20 @@ class CommercialReservationConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors) {
-        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors));
+    ExceptionalAccessAudit exceptionalAccessAudit(JdbcTemplate jdbc) {
+        // HU-SEC-007 G-SEC9-1: the use is written to the outbox (the audit) and also logged; if the outbox cannot be written the use is not served.
+        var outbox = new JdbcExceptionalAccessAudit(jdbc);
+        var log = new LoggingExceptionalAccessAudit();
+        return use -> {
+            outbox.used(use);
+            log.used(use);
+        };
+    }
+
+    @Bean
+    FilterRegistrationBean<AuthFilter> authFilter(Rs256Verifier verifier, ApiErrorWriter errors, ExceptionalAccessAudit audit,
+            TenantStatusReader statuses, Clock clock, AccountSessionCutoffs cutoffs) {
+        FilterRegistrationBean<AuthFilter> registration = new FilterRegistrationBean<>(new AuthFilter(verifier, errors, statuses, audit, clock, cutoffs));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }

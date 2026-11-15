@@ -1,0 +1,191 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.app;
+
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CashReportingIncome;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CashReportingSessionStatus;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.CurrentRequestToken;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashIncome;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.cash.UnverifiedCashSession;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashIncomeRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CashSessionStatus;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDuePaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcInitialWaitPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentConditionReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcClientNoticeOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.RestrictedActionMarker;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentEventOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentParameterRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentParametersChangeOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentProofReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentProofStore;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcSalidaCapacityHolder;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcCreditBalanceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CreditBalanceRecording;
+import java.time.Clock;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CreditBalanceRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DuePaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialDeadlineRecorder;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.InitialWaitPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentConditionReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParameterRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentParametersChangeOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentProofStore;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentExtensionPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentFollowupRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPendingPaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReservationCancellation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentDeadlineWriter;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CustomerProfileReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentExtensionPolicy;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentFollowupRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PendingPaymentQueries;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReservationCancellation;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+// HU-COM-009 and HU-COM-010: the JDBC adapters of the payment ports. Only this class knows which adapter backs each port, so a route
+// family never answers 500 for a missing bean: every port the payment use cases read has a bean here or in the rest of this stack.
+@Configuration
+class PaymentPersistenceConfiguration {
+
+    @Bean
+    PaymentTransaction paymentTransaction(PlatformTransactionManager manager) {
+        return new JdbcPaymentTransaction(new TransactionTemplate(manager));
+    }
+
+    @Bean
+    PaymentEventOutbox paymentEventOutbox(JdbcTemplate jdbc, @Lazy CustomerProfileReader customers) {
+        // HU-COM-020 AC-20.13: the event of a restricted action carries the marker in the reason of its envelope.
+        return new JdbcPaymentEventOutbox(jdbc, new JdbcClientNoticeOutbox(jdbc, customers), new RestrictedActionMarker());
+    }
+
+    @Bean
+    SalidaCapacityHolder salidaCapacityHolder(JdbcTemplate jdbc) {
+        return new JdbcSalidaCapacityHolder(jdbc);
+    }
+
+    @Bean
+    PaymentProofStore paymentProofStore(JdbcTemplate jdbc) {
+        return new JdbcPaymentProofStore(jdbc);
+    }
+
+    @Bean
+    PaymentProofReader paymentProofReader(JdbcTemplate jdbc, JdbcReservationRepository reservations) {
+        return new JdbcPaymentProofReader(jdbc, reservations);
+    }
+
+    @Bean
+    PaymentParameterRepository paymentParameterRepository(JdbcTemplate jdbc) {
+        return new JdbcPaymentParameterRepository(jdbc);
+    }
+
+    @Bean
+    PaymentParametersChangeOutbox paymentParametersChangeOutbox(JdbcTemplate jdbc) {
+        return new JdbcPaymentParametersChangeOutbox(jdbc);
+    }
+
+    @Bean
+    PaymentConditionReader paymentConditionReader(JdbcTemplate jdbc) {
+        return new JdbcPaymentConditionReader(jdbc);
+    }
+
+    @Bean
+    PaymentDeadlineReader paymentDeadlineReader(JdbcTemplate jdbc) {
+        return new JdbcPaymentDeadlineReader(jdbc);
+    }
+
+    // HU-COM-011: the adapters of the deadline, the follow-up, the pending list and the cancellation; their routes are in PaymentDeadlineController and PaymentExpiryController.
+    @Bean
+    PaymentDeadlineWriter paymentDeadlineWriter(JdbcTemplate jdbc) {
+        return new JdbcPaymentDeadlineWriter(jdbc);
+    }
+
+    @Bean
+    PaymentExtensionPolicy paymentExtensionPolicy(JdbcTemplate jdbc) {
+        return new JdbcPaymentExtensionPolicy(jdbc);
+    }
+
+    @Bean
+    PaymentFollowupRepository paymentFollowupRepository(JdbcTemplate jdbc) {
+        return new JdbcPaymentFollowupRepository(jdbc);
+    }
+
+    @Bean
+    PendingPaymentQueries pendingPaymentQueries(JdbcTemplate jdbc) {
+        return new JdbcPendingPaymentQueries(jdbc);
+    }
+
+    @Bean
+    DuePaymentQueries duePaymentQueries(JdbcTemplate jdbc) {
+        return new JdbcDuePaymentQueries(jdbc);
+    }
+
+    // HU-COM-011 RN-01: the creation writes the initial deadline from the initial wait of the payment condition.
+    @Bean
+    InitialWaitPolicy initialWaitPolicy(JdbcTemplate jdbc) {
+        return new JdbcInitialWaitPolicy(jdbc);
+    }
+
+    @Bean
+    InitialDeadlineRecorder initialDeadlineRecorder(JdbcTemplate jdbc) {
+        return new JdbcInitialDeadlineRecorder(jdbc);
+    }
+
+    @Bean
+    ReservationCancellation reservationCancellation(JdbcTemplate jdbc, @Lazy CustomerProfileReader customers) {
+        return new JdbcReservationCancellation(jdbc, customers);
+    }
+
+    // "Is the cash open?" is read from the cash api with the token of the person who pays (P1, ADR-004 D4 and D5). With no base url
+    // configured the answer is always "not verified", so no cash payment is accepted (fail closed).
+    @Bean
+    CashSessionStatus cashSessionStatus(@Value("${cash.reporting.base-url:}") String baseUrl,
+            @Value("${cash.reporting.timeout-millis:2000}") long timeoutMillis) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return new UnverifiedCashSession();
+        }
+        return new CashReportingSessionStatus(baseUrl, CurrentRequestToken::bearer, Duration.ofMillis(timeoutMillis));
+    }
+
+    // HU-COM-009 (decided 2026-11-12, PROPOSED): the income and its reversal are written directly in the cash with the service token
+    // (CASH_REPORTING_SERVICE_TOKEN, never in the repository), because the saga register-payment cannot start a cash payment. With no
+    // base url the stand-in refuses (fail closed); with no token the adapter answers "cash unavailable" and sends nothing.
+    @Bean
+    CashIncomeRecorder cashIncomeRecorder(@Value("${cash.reporting.base-url:}") String baseUrl,
+            @Value("${cash.reporting.service-token:}") String serviceToken,
+            @Value("${cash.reporting.timeout-millis:2000}") long timeoutMillis) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return new UnverifiedCashIncome();
+        }
+        Duration timeout = Duration.ofMillis(timeoutMillis);
+        return new CashReportingIncome(baseUrl, serviceToken, new CashReportingSessionStatus(baseUrl, CurrentRequestToken::bearer, timeout), timeout);
+    }
+
+    // HU-COM-017: the credit balance is real (rows of the db, available value derived); the excess of a validated payment is recorded as one credit per attempt.
+    @Bean
+    JdbcCreditBalanceRepository creditBalanceRepository(JdbcTemplate jdbc) {
+        return new JdbcCreditBalanceRepository(jdbc);
+    }
+
+    @Bean
+    CreditBalanceRecorder creditBalanceRecorder(CreditBalanceRepository credits, IdGenerator ids, @Lazy PaymentEventOutbox outbox, Clock clock) {
+        return new CreditBalanceRecording(credits, ids, outbox, clock);
+    }
+}

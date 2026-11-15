@@ -18,7 +18,7 @@ final class CatalogContract {
     private static final String SPEC = Path.of("../openapi/openapi.yaml").toAbsolutePath().toUri().toString();
     private static final OpenAPI API = new OpenAPIV3Parser().read(SPEC);
     private static final OpenApiInteractionValidator CATALOG = OpenApiInteractionValidator
-            .createForSpecificationUrl(SPEC).withBasePathOverride("/api/v1").build();
+            .createForSpecificationUrl(SPEC).withBasePathOverride("/api/v1/commercial-reservation").build();
     private static final OpenApiInteractionValidator HEALTH = OpenApiInteractionValidator
             .createForSpecificationUrl(SPEC).withBasePathOverride("").build();
     private final Set<String> exercised = new HashSet<>();
@@ -31,7 +31,7 @@ final class CatalogContract {
         var responseReport = validator.validateResponse(request.getPath(), request.getMethod(),
                 MockMvcResponse.of(result.getResponse()));
         assertThat(responseReport.hasErrors()).as("response contract: %s", responseReport).isFalse();
-        String path = request.getPath().replaceFirst("^/api/v1", "")
+        String path = request.getPath().replaceFirst("^/api/v1/commercial-reservation", "")
                 .replaceFirst("^(/catalog/services)/[^/]+(?=/|$)", "$1/{serviceId}");
         var operation = API.getPaths().get(path).readOperationsMap()
                 .get(PathItem.HttpMethod.valueOf(request.getMethod().name()));
@@ -40,14 +40,24 @@ final class CatalogContract {
     }
 
     static void assertNoDeletion() {
-        API.getPaths().values().forEach(path -> assertThat(path.readOperationsMap())
-                .doesNotContainKeys(PathItem.HttpMethod.DELETE, PathItem.HttpMethod.PUT));
+        // The contract holds every operation of the service now; RN-06 is about the catalog services (the settings of the catalog are set with a PUT) and the associated establishments.
+        API.getPaths().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith("/catalog/services") || entry.getKey().equals("/associated-establishments")
+                        || entry.getKey().startsWith("/associated-establishments/"))
+                .forEach(entry -> assertThat(entry.getValue().readOperationsMap())
+                        .doesNotContainKeys(PathItem.HttpMethod.DELETE, PathItem.HttpMethod.PUT));
     }
 
     void assertCoverage() {
         Set<String> declared = new HashSet<>();
-        API.getPaths().values().forEach(path -> path.readOperations()
-                .forEach(operation -> declared.add(operation.getOperationId())));
+        // The contract holds every operation of the service now; the coverage of all of them is ContractCoverageTest.
+        // This gate keeps the scope it always had: the health check and the catalog services.
+        API.getPaths().forEach((template, path) -> {
+            if (template.equals("/health") || template.equals("/catalog/services") || template.startsWith("/catalog/services/{serviceId}")
+                    && !template.contains("departures")) {
+                path.readOperations().forEach(operation -> declared.add(operation.getOperationId()));
+            }
+        });
         assertThat(PENDING).isEmpty();
         // EstablishmentHttpTest has its own gate for all six establishment operations.
         declared.removeIf(operation -> operation.contains("AssociatedEstablishment"));

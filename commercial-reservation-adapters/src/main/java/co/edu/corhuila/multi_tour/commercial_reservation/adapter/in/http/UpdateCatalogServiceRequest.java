@@ -11,9 +11,10 @@ public final class UpdateCatalogServiceRequest {
     @JsonSetter(nulls = Nulls.FAIL) public Integer configuredCapacity;
     @JsonSetter(nulls = Nulls.FAIL) public Boolean transportRequired;
     @JsonSetter(nulls = Nulls.FAIL) public Boolean highRisk;
+    @JsonSetter(nulls = Nulls.FAIL) public Long transportRatePerPersonCents;
 
     boolean hasTerms() {
         return baseRateCents != null || baseOperationalCostCents != null || configuredCapacity != null
-                || transportRequired != null || highRisk != null;
+                || transportRequired != null || highRisk != null || transportRatePerPersonCents != null;
     }
 }

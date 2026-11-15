@@ -26,10 +26,10 @@ class ExplicitLimitsTest {
     }
 
     @Test
-    void multipartLimitsAreDeclaredAtTheCompositionRoot() {
-        assertEquals(819200L, env.getRequiredProperty("spring.servlet.multipart.max-file-size",
+    void multipartLimitsAreDeclaredAtTheCompositionRoot() { // 5 MB proof of a transfer, 6 MB request as the gateway caps it
+        assertEquals(5242880L, env.getRequiredProperty("spring.servlet.multipart.max-file-size",
                 org.springframework.util.unit.DataSize.class).toBytes());
-        assertEquals(1048576L, env.getRequiredProperty("spring.servlet.multipart.max-request-size",
+        assertEquals(6291456L, env.getRequiredProperty("spring.servlet.multipart.max-request-size",
                 org.springframework.util.unit.DataSize.class).toBytes());
     }
 

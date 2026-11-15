@@ -16,11 +16,12 @@ import org.junit.jupiter.params.provider.ValueSource;
 class AssociatedEstablishmentTest {
     private static final UUID ID = new UUID(0, 1), TENANT = new UUID(0, 2), ACTOR = new UUID(0, 3);
     private static final Instant NOW = Instant.parse("2026-10-11T10:00:00Z");
+    private static final EstablishmentContact CONTACT = EstablishmentContact.of("info@hotel.example", null, null);
 
     @ParameterizedTest @EnumSource(EstablishmentType.class)
     void registersAndPublishesAnEstablishmentWithAnOpaqueImageReference(EstablishmentType type) {
         var item = AssociatedEstablishment.register(ID, TENANT, type, "Sample establishment",
-                "Contact the establishment directly", "opaque-image-reference", ACTOR, NOW);
+                "Contact the establishment directly", "opaque-image-reference", CONTACT, ACTOR, NOW);
         assertThat(item.associationId()).isEqualTo(ID);
         assertThat(item.tenantId()).isEqualTo(TENANT);
         assertThat(item.establishmentType()).isEqualTo(type);
@@ -54,6 +55,7 @@ class AssociatedEstablishmentTest {
                 field.equals("commercialName") ? (String) invalid : "Sample establishment",
                 field.equals("commercialInformation") ? (String) invalid : "Contact details",
                 field.equals("imageReference") ? (String) invalid : "opaque-reference",
+                CONTACT,
                 field.equals("actorId") ? (UUID) invalid : ACTOR,
                 field.equals("occurredAt") ? (Instant) invalid : NOW))
                 .isInstanceOfSatisfying(DomainException.class, error -> assertThat(error.field()).isEqualTo(field));
@@ -71,23 +73,23 @@ class AssociatedEstablishmentTest {
     @Test void commercialNameAcceptsBothLengthBoundaries() {
         for (String name : new String[]{"x", "x".repeat(255)}) {
             assertThat(AssociatedEstablishment.register(ID, TENANT, EstablishmentType.HOTEL, name,
-                    "Contact details", "opaque-reference", ACTOR, NOW).commercialName()).isEqualTo(name);
+                    "Contact details", "opaque-reference", CONTACT, ACTOR, NOW).commercialName()).isEqualTo(name);
         }
     }
 
     @Test void repeatedTransitionsChangeNeitherTimeNorEvents() {
         var item = registered();
         item.pullEvents();
-        item.inactivate(ACTOR, NOW.plusSeconds(1));
+        item.inactivate(ACTOR, "Closed for works", NOW.plusSeconds(1));
         assertThat(item.pullEvents()).containsExactly(
                 new EstablishmentAssociationInactivated(TENANT, ID, ACTOR, NOW.plusSeconds(1)));
-        item.inactivate(new UUID(0, 4), NOW.plusSeconds(2));
+        item.inactivate(new UUID(0, 4), "Closed for works", NOW.plusSeconds(2));
         assertThat(item.updatedAt()).isEqualTo(NOW.plusSeconds(1));
         assertThat(item.pullEvents()).isEmpty();
-        item.reactivate(ACTOR, NOW.plusSeconds(3));
+        item.reactivate(ACTOR, "Closed for works", NOW.plusSeconds(3));
         assertThat(item.pullEvents()).containsExactly(
                 new EstablishmentAssociationReactivated(TENANT, ID, ACTOR, NOW.plusSeconds(3)));
-        item.reactivate(new UUID(0, 4), NOW.plusSeconds(4));
+        item.reactivate(new UUID(0, 4), "Closed for works", NOW.plusSeconds(4));
         assertThat(item.updatedAt()).isEqualTo(NOW.plusSeconds(3));
         assertThat(item.pullEvents()).isEmpty();
         assertThat(item.createdAt()).isEqualTo(NOW);
@@ -95,17 +97,17 @@ class AssociatedEstablishmentTest {
 
     @Test void invalidTransitionMetadataLeavesTheStateAndEventsUntouched() {
         var item = registered(); item.pullEvents();
-        assertThatThrownBy(() -> item.inactivate(null, NOW)).isInstanceOf(DomainException.class);
+        assertThatThrownBy(() -> item.inactivate(null, "Closed for works", NOW)).isInstanceOf(DomainException.class);
         assertThat(item.associationStatus()).isEqualTo(AssociationStatus.ACTIVE);
         assertThat(item.pullEvents()).isEmpty();
-        item.inactivate(ACTOR, NOW); item.pullEvents();
-        assertThatThrownBy(() -> item.reactivate(ACTOR, null)).isInstanceOf(DomainException.class);
+        item.inactivate(ACTOR, "Closed for works", NOW); item.pullEvents();
+        assertThatThrownBy(() -> item.reactivate(ACTOR, "Closed for works", null)).isInstanceOf(DomainException.class);
         assertThat(item.associationStatus()).isEqualTo(AssociationStatus.INACTIVE);
         assertThat(item.pullEvents()).isEmpty();
     }
 
     private AssociatedEstablishment registered() {
         return AssociatedEstablishment.register(ID, TENANT, EstablishmentType.HOTEL,
-                "Sample establishment", "Contact details", "opaque-reference", ACTOR, NOW);
+                "Sample establishment", "Contact details", "opaque-reference", CONTACT, ACTOR, NOW);
     }
 }

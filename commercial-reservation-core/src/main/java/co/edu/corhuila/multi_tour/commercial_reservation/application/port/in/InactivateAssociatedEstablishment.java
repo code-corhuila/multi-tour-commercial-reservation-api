@@ -5,5 +5,5 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Associated
 import java.util.UUID;
 
 public interface InactivateAssociatedEstablishment {
-    AssociatedEstablishment inactivate(EstablishmentActor actor, UUID associationId);
+    AssociatedEstablishment inactivate(EstablishmentActor actor, UUID associationId, String reason);
 }

@@ -1,5 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ResolvePublicTenant;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ResolvePublicTenantUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.*;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.memory.InMemoryEstablishments;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcAssociatedEstablishmentKeys;
@@ -24,12 +26,12 @@ class EstablishmentConfiguration {
         JdbcTemplate jdbc = templates.getIfAvailable();
         if (jdbc == null) {
             var memory = new InMemoryEstablishments();
-            return new EstablishmentStores(memory, memory, memory);
+            return new EstablishmentStores(memory, memory, memory, memory);
         }
         var transactions = new TransactionTemplate(managers.getObject());
         var repository = new JdbcAssociatedEstablishmentRepository(jdbc, transactions);
         var keys = new JdbcAssociatedEstablishmentKeys(jdbc, new JdbcIdempotencyKeys(jdbc), repository, transactions);
-        return new EstablishmentStores(repository, keys, new JdbcEstablishmentImages(jdbc, transactions));
+        return new EstablishmentStores(repository, keys, new JdbcEstablishmentImages(jdbc, transactions), repository);
     }
     @Bean AssociatedEstablishmentRepository establishmentRepository(EstablishmentStores stores) {
         return stores.repository();
@@ -56,20 +58,25 @@ class EstablishmentConfiguration {
     @Bean ReactivateAssociatedEstablishment reactivateEstablishment(AssociatedEstablishmentRepository repository, Clock clock) {
         return new ReactivateAssociatedEstablishmentUseCase(repository, clock);
     }
+    // The JDBC adapter is the repository and the change log at once, so a lookup by type can find it twice: the unique (or primary) log wins, otherwise the one of the stores.
+    @Bean ListEstablishmentChanges listEstablishmentChanges(ObjectProvider<EstablishmentChangeLog> logs, EstablishmentStores stores) {
+        return new ListEstablishmentChangesUseCase(logs.getIfUnique(stores::changes));
+    }
     @Bean EstablishmentController establishmentController(RegisterAssociatedEstablishment register,
             GetAssociatedEstablishment get, ListAssociatedEstablishments list, InactivateAssociatedEstablishment inactivate,
-            ReactivateAssociatedEstablishment reactivate, AssociatedEstablishmentRepository repository,
-            EstablishmentImages images) {
-        return new EstablishmentController(register, get, list, inactivate, reactivate, repository, images);
+            ReactivateAssociatedEstablishment reactivate, ListEstablishmentChanges changes, AssociatedEstablishmentRepository repository,
+            EstablishmentImages images, ResolvePublicTenant tenants) {
+        return new EstablishmentController(register, get, list, inactivate, reactivate, changes, repository, images, tenants);
     }
+    @Bean ResolvePublicTenant resolvePublicTenant(TenantDirectory directory) { return new ResolvePublicTenantUseCase(directory); }
     @Bean WebMvcConfigurer establishmentAccess() {
         return new WebMvcConfigurer() {
             @Override public void addInterceptors(InterceptorRegistry registry) {
-                registry.addInterceptor(new EstablishmentHttpAccess()).addPathPatterns("/api/v1/associated-establishments/**");
+                registry.addInterceptor(new EstablishmentHttpAccess()).addPathPatterns("/api/v1/commercial-reservation/associated-establishments/**");
             }
         };
     }
 
     record EstablishmentStores(AssociatedEstablishmentRepository repository, AssociatedEstablishmentKeys keys,
-            EstablishmentImages images) { }
+            EstablishmentImages images, EstablishmentChangeLog changes) { }
 }

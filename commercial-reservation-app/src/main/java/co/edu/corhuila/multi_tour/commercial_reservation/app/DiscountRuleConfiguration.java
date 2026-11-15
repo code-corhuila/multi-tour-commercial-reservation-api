@@ -1,0 +1,86 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.app;
+
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.DiscountRuleHttpAccess;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentDiscountRuleCreation;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDiscountRules;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.IdempotentWrites;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.CreateDiscountRule;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.GetDiscountRule;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.InactivateDiscountRule;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReactivateDiscountRule;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.UpdateDiscountRule;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ListDiscountRules;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleChangeOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DiscountRuleTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.CreateDiscountRuleUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.GetDiscountRuleUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.InactivateDiscountRuleUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ListDiscountRulesUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReactivateDiscountRuleUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.UpdateDiscountRuleUseCase;
+import java.time.Clock;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+class DiscountRuleConfiguration {
+    @Bean JdbcDiscountRules discountRules(JdbcTemplate jdbc, PlatformTransactionManager manager) {
+        return new JdbcDiscountRules(jdbc, new TransactionTemplate(manager));
+    }
+
+    @Bean CreateDiscountRule createDiscountRule(DiscountRuleRepository repository, DiscountRuleChangeOutbox outbox,
+            DiscountRuleTransaction transaction, IdGenerator ids, Clock clock) {
+        return new CreateDiscountRuleUseCase(repository, outbox, transaction, ids, clock);
+    }
+
+    @Bean GetDiscountRule getDiscountRule(DiscountRuleRepository repository) {
+        return new GetDiscountRuleUseCase(repository);
+    }
+
+    @Bean InactivateDiscountRule inactivateDiscountRule(DiscountRuleRepository repository,
+            DiscountRuleChangeOutbox outbox, DiscountRuleTransaction transaction, Clock clock) {
+        return new InactivateDiscountRuleUseCase(repository, outbox, transaction, clock);
+    }
+
+    @Bean UpdateDiscountRule updateDiscountRule(DiscountRuleRepository repository, DiscountRuleChangeOutbox outbox,
+            DiscountRuleTransaction transaction, Clock clock) {
+        return new UpdateDiscountRuleUseCase(repository, outbox, transaction, clock);
+    }
+
+    @Bean ReactivateDiscountRule reactivateDiscountRule(DiscountRuleRepository repository,
+            DiscountRuleChangeOutbox outbox, DiscountRuleTransaction transaction, Clock clock) {
+        return new ReactivateDiscountRuleUseCase(repository, outbox, transaction, clock);
+    }
+
+    @Bean ListDiscountRules listDiscountRules(DiscountRuleRepository repository) {
+        return new ListDiscountRulesUseCase(repository);
+    }
+
+    @Bean IdempotentDiscountRuleCreation idempotentDiscountRuleCreation(CreateDiscountRule create, GetDiscountRule get,
+            IdempotentWrites writes) {
+        return new IdempotentDiscountRuleCreation(create, get, writes);
+    }
+
+    @Bean DiscountRuleController discountRuleController(IdempotentDiscountRuleCreation creation, GetDiscountRule get,
+            InactivateDiscountRule inactivate, UpdateDiscountRule update, ReactivateDiscountRule reactivate,
+            ListDiscountRules list) {
+        return new DiscountRuleController(creation, get, inactivate, update, reactivate, list);
+    }
+
+    @Bean WebMvcConfigurer discountRuleAccess() {
+        return new WebMvcConfigurer() {
+            @Override public void addInterceptors(InterceptorRegistry registry) {
+                registry.addInterceptor(new DiscountRuleHttpAccess())
+                        .addPathPatterns("/api/v1/commercial-reservation/discount-rules/**");
+            }
+        };
+    }
+}

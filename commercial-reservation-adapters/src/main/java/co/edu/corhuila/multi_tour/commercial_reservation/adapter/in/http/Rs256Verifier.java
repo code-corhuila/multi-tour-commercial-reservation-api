@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.Set;
@@ -17,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 public class Rs256Verifier {
     private static final Logger LOG = LoggerFactory.getLogger(Rs256Verifier.class);
+    private static final Set<String> AREAS = Set.of("RESERVATIONS", "CATALOG", "OPERATIONS", "CASH", "CUSTOMERS", "SENSITIVE");
     private final PublicKey key;
     private final Clock clock;
     private final ObjectMapper json;
@@ -60,12 +62,47 @@ public class Rs256Verifier {
                     names.add(role.textValue());
                 }
             }
-            return new AuthenticatedPrincipal(sub.textValue(), tenantId, names);
+            Set<String> granted = new HashSet<>();
+            JsonNode permissions = claims.path("permissions");
+            if (!permissions.isMissingNode()) {
+                require(permissions.isArray(), "permissions must be an array");
+                for (JsonNode permission : permissions) {
+                    require(permission.isTextual(), "permissions must contain strings");
+                    granted.add(permission.textValue());
+                }
+            }
+            JsonNode iat = claims.path("iat");
+            require(iat.isMissingNode() || iat.isIntegralNumber() && iat.canConvertToLong(), "invalid issued-at");
+            Instant issuedAt = iat.isMissingNode() ? null : Instant.ofEpochSecond(iat.longValue());
+            ExceptionalAccess exceptionalAccess = exceptional(claims, tenantId);
+            if (exceptionalAccess != null) require(UUID.fromString(sub.textValue()).toString().equalsIgnoreCase(sub.textValue()), "an exceptional access needs the administrator identifier as subject");
+            return new AuthenticatedPrincipal(sub.textValue(), tenantId, names, granted,
+                    "restricted".equals(claims.path("access").textValue()), exceptionalAccess, issuedAt);
         } catch (Exception failure) {
-            LOG.warn("Access token rejected: {}", failure instanceof IllegalArgumentException
+            // Only the reason written by this class is logged: the message of a library (a UUID or a base64 decoder) repeats the value it failed on.
+            LOG.warn("Access token rejected: {}", failure instanceof Rejection
                     ? failure.getMessage() : failure.getClass().getSimpleName());
             throw new InvalidTokenException();
         }
+    }
+
+    // HU-SEC-007, ADR-004 D5: access=exceptional or emergency needs a tenant, a non-empty scope of known areas and the authorizationId; anything else is not a valid token.
+    private ExceptionalAccess exceptional(JsonNode claims, UUID tenantId) {
+        String access = claims.path("access").textValue();
+        if (!"exceptional".equals(access) && !"emergency".equals(access)) return null;
+        require(tenantId != null, "an exceptional access needs a tenant");
+        JsonNode areas = claims.path("scope");
+        require(areas.isArray() && !areas.isEmpty(), "scope must be a non-empty array");
+        Set<String> scope = new HashSet<>();
+        for (JsonNode area : areas) {
+            require(area.isTextual() && AREAS.contains(area.textValue()), "unknown area in scope");
+            scope.add(area.textValue());
+        }
+        JsonNode authorization = claims.path("authorizationId");
+        require(authorization.isTextual(), "missing authorizationId");
+        UUID authorizationId = UUID.fromString(authorization.textValue());
+        require(authorizationId.toString().equalsIgnoreCase(authorization.textValue()), "invalid authorizationId");
+        return new ExceptionalAccess(access, scope, authorizationId);
     }
 
     private JsonNode parse(String segment) throws Exception {
@@ -76,7 +113,13 @@ public class Rs256Verifier {
         return node;
     }
 
+    private static final class Rejection extends IllegalArgumentException {
+        Rejection(String reason) {
+            super(reason);
+        }
+    }
+
     private static void require(boolean condition, String reason) {
-        if (!condition) throw new IllegalArgumentException(reason);
+        if (!condition) throw new Rejection(reason);
     }
 }

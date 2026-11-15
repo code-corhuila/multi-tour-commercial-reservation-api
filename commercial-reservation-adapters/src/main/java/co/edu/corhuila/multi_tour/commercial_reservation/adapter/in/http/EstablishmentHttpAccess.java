@@ -14,8 +14,9 @@ public final class EstablishmentHttpAccess implements HandlerInterceptor {
             account = UUID.fromString(principal.sub());
             if (!account.toString().equalsIgnoreCase(principal.sub())) throw new IllegalArgumentException();
         } catch (IllegalArgumentException invalid) { throw new InvalidTokenException(); }
+        if (principal.exceptional() != null) return new EstablishmentActor(principal.tenantId(), account, EstablishmentActor.Role.PLATFORM_SUPPORT);
         for (var role : EstablishmentActor.Role.values()) {
-            if (principal.roles().contains(role.name())) return new EstablishmentActor(principal.tenantId(), account, role);
+            if (role != EstablishmentActor.Role.PLATFORM_SUPPORT && principal.roles().contains(role.name())) return new EstablishmentActor(principal.tenantId(), account, role);
         }
         throw new EstablishmentAccessDeniedException();
     }

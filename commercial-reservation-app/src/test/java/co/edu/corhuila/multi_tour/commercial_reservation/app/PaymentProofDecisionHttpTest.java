@@ -1,0 +1,327 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.app;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SuspensionReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Cents;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentEvent;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentMethod;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PaymentType;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.Reservation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ReservedService;
+import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+
+// HU-COM-010 over HTTP, the decisions (api spec T-03, T-04, T-06; AC-10.1 to AC-10.3, AC-10.8, AC-10.10, AC-10.13) and the step 2 of the
+// saga register-payment that records the validated payment (DP-11, answered 2026-10-30; PROPOSED internal route).
+@ExtendWith(OutputCaptureExtension.class)
+// A class-level @Import replaces the one of the base, so the fixtures of the base are listed again.
+@Import({CatalogHttpFixture.class, CustomerHttpFixture.class, DiscountRuleHttpFixture.class, ReservationHttpFixture.class, PaymentHttpFixture.class,
+        PaymentProofHttpFixture.class, PaymentDeadlineHttpFixture.class, PaymentProofDecisionHttpTest.NoSuspendedTenant.class})
+class PaymentProofDecisionHttpTest extends ReservationHttpBase {
+
+    // The decision reads whether the tenant is suspended (HU-COM-020); these routes run over the memory fakes, so no tenant is, instead of the JDBC reader that
+    // would open the fictitious database of the HTTP tests.
+    @TestConfiguration
+    static class NoSuspendedTenant {
+        @Bean @Primary SuspensionReader noSuspension() { return tenantId -> Optional.empty(); }
+    }
+
+    private final UUID proof = new UUID(21, 1), reservationId = new UUID(21, 2);
+
+    @BeforeEach void plant() {
+        Reservation reservation = Reservation.create(reservationId, tenant, customer, departure, customer, 3,
+                new ReservedService(tour, new Cents(100_000), new Cents(0)), new Cents(300_000), new Cents(300_000), List.of(),
+                PaymentType.DEPOSIT, PaymentMethod.TRANSFER, NOW.minus(Duration.ofHours(2)));
+        reservation.registerTransfer(proof, new Cents(90_000), new Cents(90_000), customer, NOW.minus(Duration.ofHours(2)));
+        reservation.allocateSeat(NOW.minus(Duration.ofHours(2)));
+        reservation.pullEvents();
+        store.reservations.put(reservationId, reservation);
+    }
+
+    private MockHttpServletRequestBuilder decide(String action, Map<String, Object> body, String key, String bearer) throws Exception {
+        var request = post(BASE + "/payment-proofs/" + proof + "/" + action).header("Authorization", "Bearer " + bearer)
+                .header("X-Correlation-Id", TRACE).contentType(MediaType.APPLICATION_JSON).content(TestJwtKeys.JSON.writeValueAsBytes(body));
+        return key == null ? request : request.header("Idempotency-Key", key);
+    }
+
+    private MockHttpServletRequestBuilder step2(UUID forTenant, Map<String, Object> body, String bearer) throws Exception {
+        return post(BASE + "/internal/tenants/" + forTenant + "/payment-proofs/" + proof + "/validated-payment")
+                .header("Authorization", "Bearer " + bearer).header("X-Correlation-Id", TRACE).contentType(MediaType.APPLICATION_JSON)
+                .content(TestJwtKeys.JSON.writeValueAsBytes(body));
+    }
+
+    // The only way to approve (DP-11): step 2 of the saga, which acts for the person who clicked and carries the service token.
+    private MockHttpServletRequestBuilder approveAsAdministrator(Map<String, Object> amount) throws Exception {
+        var body = new LinkedHashMap<String, Object>(amount);
+        body.put("approvedBy", TestJwtKeys.ACCOUNT);
+        return step2(tenant, body, CustomerHttpTest.token(null, "SERVICE", List.of()));
+    }
+
+    private static List<String> names(List<PaymentEvent> events) {
+        return events.stream().map(e -> e.getClass().getSimpleName()).toList();
+    }
+
+    @Test void theAdministratorApprovesTheProofAndTheReservationIsConfirmedWithTheStoredDecisionOnARepeat() throws Exception {
+        var decision = CatalogHttpTest.json(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 200));
+
+        assertThat(decision.get("validationStatus").asText()).isEqualTo("APPROVED");
+        assertThat(decision.get("appliedAmountCents").asLong()).isEqualTo(90_000L);
+        assertThat(decision.get("decidedBy").asText()).isEqualTo(TestJwtKeys.ACCOUNT);
+        assertThat(decision.get("reservationStatus").asText()).isEqualTo("CONFIRMED");
+        assertThat(decision.get("validatedValueCents").asLong()).isEqualTo(90_000L);
+        assertThat(names(payments.events)).containsExactly("PaymentValidated", "ReservationConfirmed");
+
+        var again = CatalogHttpTest.json(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 200));
+        assertThat(again).isEqualTo(decision);
+        assertThat(payments.events).hasSize(2);
+        var other = CatalogHttpTest.json(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 80_000L, "reason", "Another amount")), 422));
+        assertThat(other.get("error").asText()).isEqualTo("INVALID_STATUS_TRANSITION");
+        assertThat(payments.events).hasSize(2);
+    }
+
+    @Test void aDifferentVerifiedAmountNeedsAReasonAndTheExcessIsHandedToTheCreditBalance() throws Exception {
+        CatalogHttpTest.assertField(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 80_000L)), 400), "reason");
+        CatalogHttpTest.assertField(exchange(approveAsAdministrator(Map.of()), 400), "verifiedAmountCents");
+        CatalogHttpTest.assertField(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 0L)), 400), "verifiedAmountCents");
+        assertThat(payments.events).isEmpty();
+
+        var body = new LinkedHashMap<String, Object>();
+        body.put("verifiedAmountCents", 350_000L); body.put("reason", "The customer paid the whole value");
+        var decision = CatalogHttpTest.json(exchange(approveAsAdministrator(body), 200));
+
+        assertThat(decision.get("appliedAmountCents").asLong()).isEqualTo(300_000L);
+        assertThat(decision.get("excessAmountCents").asLong()).isEqualTo(50_000L);
+        assertThat(payments.income).contains("excess:50000");
+    }
+
+    @Test void onlyWhoHoldsThePermissionDecidesAndNothingChangesForTheOthers() throws Exception {
+        for (String role : List.of(COLLABORATOR, MANAGER, ACCOUNTANT, ANALYST, FINAL_CUSTOMER)) {
+            exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-007", token(role)), 403);
+            exchange(decide("reject", Map.of("reason", "illegible"), "decision-key-008", token(role)), 403);
+        }
+        assertThat(payments.events).isEmpty();
+        String granted = CustomerHttpTest.token(tenant.toString(), COLLABORATOR, List.of("VALIDATE_PAYMENT_PROOFS"));
+        exchange(decide("reject", Map.of("reason", "illegible"), "decision-key-009", granted), 200);
+    }
+
+    @Test void aRejectionKeepsTheReasonAndTheDecisionIsFinal() throws Exception {
+        CatalogHttpTest.assertField(exchange(decide("reject", Map.of(), "decision-key-010", token(ADMIN)), 400), "reason");
+
+        var decision = CatalogHttpTest.json(exchange(decide("reject", Map.of("reason", "The proof is illegible"), "decision-key-011", token(ADMIN)), 200));
+
+        assertThat(decision.get("validationStatus").asText()).isEqualTo("REJECTED");
+        assertThat(decision.get("decisionReason").asText()).isEqualTo("The proof is illegible");
+        assertThat(decision.has("verifiedAmountCents")).isFalse();
+        assertThat(names(payments.events)).containsExactly("PaymentRejected");
+        assertThat(CatalogHttpTest.json(exchange(decide("reject", Map.of("reason", "The proof is illegible"), "decision-key-011", token(ADMIN)), 200)))
+                .isEqualTo(decision);
+        exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 422);
+    }
+
+    // AC-10.20: a decision after the deadline cancels the reservation; while that cancellation is not built the refusal says so, not
+    // a sentence about reactivating an item.
+    @Test void aDecisionAfterTheDeadlineSaysWhyItIsRefused() throws Exception {
+        payments.deadline = new co.edu.corhuila.multi_tour.commercial_reservation.application.model.PaymentDeadline(
+                co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DeadlineKind.INITIAL_PAYMENT, NOW.minus(Duration.ofHours(1)));
+        payments.cancellationAvailable = false;
+
+        var refused = CatalogHttpTest.json(exchange(decide("reject", Map.of("reason", "Late"), "decision-key-020", token(ADMIN)), 422));
+
+        assertThat(refused.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+        assertThat(refused.get("message").asText()).contains("cancellation for non-payment").doesNotContain("reactivated");
+        assertThat(payments.cancelled).isEmpty();
+    }
+
+    @Test void anUnknownProofLooksMissingToStep2() throws Exception {
+        String service = CustomerHttpTest.token(null, "SERVICE", List.of());
+        exchange(post(BASE + "/internal/tenants/" + tenant + "/payment-proofs/" + new UUID(21, 99) + "/validated-payment")
+                .header("Authorization", "Bearer " + service).header("X-Correlation-Id", TRACE).contentType(MediaType.APPLICATION_JSON)
+                .content(TestJwtKeys.JSON.writeValueAsBytes(Map.of("approvedBy", new UUID(21, 7).toString(), "verifiedAmountCents", 90_000L))), 404);
+    }
+
+    // DP-11 (Jhon, 2026-10-30): the income reaches the cash box before the payment is applied, and only the saga does it. The human route no
+    // longer applies the amount for anybody: it answers 422 and the proof stays under validation, so no payment is registered without Cash.
+    @Test void theHumanApproveRouteIsClosedAndRecordsNothingWithoutCash() throws Exception {
+        String granted = CustomerHttpTest.token(tenant.toString(), COLLABORATOR, List.of("VALIDATE_PAYMENT_PROOFS"));
+        for (String bearer : List.of(token(ADMIN), granted)) {
+            var refused = CatalogHttpTest.json(exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-030", bearer), 422));
+            assertThat(refused.get("error").asText()).isEqualTo("BUSINESS_RULE_VIOLATION");
+            assertThat(refused.get("message").asText()).contains("saga register-payment");
+        }
+        exchange(decide("approve", Map.of("verifiedAmountCents", 90_000L), "decision-key-031", token(MANAGER)), 403);
+
+        assertThat(payments.events).isEmpty();
+        assertThat(payments.income).isEmpty();
+        assertThat(store.reservations.get(reservationId).reservationStatus().name()).isNotEqualTo("CONFIRMED");
+    }
+
+    // The step 2 that the saga calls after Cash recorded the income applies the amount with the reason, confirms and emits the events once.
+    @Test void step2WithAReasonAppliesTheAmountDifferenceAndConfirmsOnce() throws Exception {
+        var body = new LinkedHashMap<String, Object>();
+        body.put("verifiedAmountCents", 100_000L); body.put("reason", "The bank statement shows a higher amount");
+
+        var first = CatalogHttpTest.json(exchange(approveAsAdministrator(body), 200));
+        var again = CatalogHttpTest.json(exchange(approveAsAdministrator(body), 200));
+
+        assertThat(first.get("validationStatus").asText()).isEqualTo("APPROVED");
+        assertThat(first.get("verifiedAmountCents").asLong()).isEqualTo(100_000L);
+        assertThat(first.get("decisionReason").asText()).isEqualTo("The bank statement shows a higher amount");
+        assertThat(first.get("reservationStatus").asText()).isEqualTo("CONFIRMED");
+        assertThat(again).isEqualTo(first);
+        assertThat(names(payments.events)).containsExactly("PaymentValidated", "ReservationConfirmed");
+    }
+
+    @Test void step2OfTheSagaRecordsTheValidatedPaymentForTheForwardedUserAndRepeatsIdempotently() throws Exception {
+        String service = CustomerHttpTest.token(null, "SERVICE", List.of());
+        UUID approver = new UUID(21, 7);
+        var body = new LinkedHashMap<String, Object>();
+        body.put("approvedBy", approver.toString()); body.put("verifiedAmountCents", 90_000L);
+
+        var first = CatalogHttpTest.json(exchange(step2(tenant, body, service), 200));
+        var again = CatalogHttpTest.json(exchange(step2(tenant, body, service), 200));
+
+        assertThat(first.get("validationStatus").asText()).isEqualTo("APPROVED");
+        assertThat(first.get("decidedBy").asText()).isEqualTo(approver.toString());
+        assertThat(first.get("reservationStatus").asText()).isEqualTo("CONFIRMED");
+        assertThat(again).isEqualTo(first);
+        assertThat(names(payments.events)).containsExactly("PaymentValidated", "ReservationConfirmed");
+    }
+
+    @Test void step2IsForTheServiceTokenOnlyAndNamesWhatIsMissing() throws Exception {
+        String service = CustomerHttpTest.token(null, "SERVICE", List.of());
+        var body = new LinkedHashMap<String, Object>();
+        body.put("approvedBy", new UUID(21, 7).toString()); body.put("verifiedAmountCents", 90_000L);
+
+        exchange(step2(tenant, body, token(ADMIN)), 403);
+        CatalogHttpTest.assertField(exchange(step2(tenant, Map.of("verifiedAmountCents", 90_000L), service), 400), "approvedBy");
+        CatalogHttpTest.assertField(exchange(step2(tenant, Map.of("approvedBy", new UUID(21, 7).toString()), service), 400), "verifiedAmountCents");
+        exchange(step2(otherTenant, body, service), 404);
+        assertThat(payments.events).isEmpty();
+    }
+
+    private MockHttpServletRequestBuilder readValidated(UUID forTenant, String bearer) {
+        return get(BASE + "/internal/tenants/" + forTenant + "/payment-proofs/" + proof + "/validated-payment")
+                .header("Authorization", "Bearer " + bearer).header("X-Correlation-Id", TRACE);
+    }
+
+    // G-WF2-7 (HU-WFL-002, AC-WF2-12): the saga reads whether step 2 recorded the payment. Before it did, the answer is 404; after, the
+    // stored result; for the token of a person it is 403; another tenant never sees the payment; the read writes nothing.
+    @Test void theSagaReadsAValidatedPaymentAndNothingElse() throws Exception {
+        String service = CustomerHttpTest.token(null, "SERVICE", List.of());
+        var missing = CatalogHttpTest.json(exchange(readValidated(tenant, service), 404));
+        assertThat(missing.get("error").asText()).isEqualTo("NOT_FOUND");
+
+        var recorded = CatalogHttpTest.json(exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 200));
+        payments.events.clear();
+        var read = CatalogHttpTest.json(exchange(readValidated(tenant, service), 200));
+
+        assertThat(read).isEqualTo(recorded);
+        assertThat(read.get("validationStatus").asText()).isEqualTo("APPROVED");
+        assertThat(read.get("validatedValueCents").asLong()).isEqualTo(90_000L);
+        exchange(readValidated(tenant, token(ADMIN)), 403);
+        exchange(readValidated(otherTenant, service), 404);
+        assertThat(payments.events).isEmpty();
+    }
+
+    @Test void aRejectedProofIsNotAValidatedPaymentForTheRead() throws Exception {
+        exchange(decide("reject", Map.of("reason", "The proof is illegible"), "decision-key-040", token(ADMIN)), 200);
+
+        exchange(readValidated(tenant, CustomerHttpTest.token(null, "SERVICE", List.of())), 404);
+    }
+
+    @Test void theReadOfAValidatedPaymentLogsNoPersonalData(CapturedOutput output) throws Exception {
+        String service = CustomerHttpTest.token(null, "SERVICE", List.of());
+        exchange(approveAsAdministrator(Map.of("verifiedAmountCents", 90_000L)), 200);
+
+        withApplicationTrace(() -> {
+            try {
+                exchange(readValidated(tenant, service), 200);
+                exchange(readValidated(otherTenant, service), 404);
+                return null;
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertThat(output.getAll()).doesNotContain(PERSONAL.toArray(String[]::new));
+    }
+
+
+    private static final List<String> PERSONAL = List.of("Persona Ficticia", "CC12345", "persona@example.invalid", "3000000000");
+
+    private static <T> T withApplicationTrace(java.util.function.Supplier<T> run) {
+        ch.qos.logback.classic.Logger own = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("co.edu.corhuila");
+        ch.qos.logback.classic.Level before = own.getLevel();
+        // The deployed profiles keep the framework at INFO; another HTTP test class opens it to DEBUG for its own context and the
+        // level stays in the JVM, so the framework would log the free text of the request as a line of its own.
+        ch.qos.logback.classic.Logger web = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger("org.springframework.web");
+        ch.qos.logback.classic.Level webBefore = web.getLevel();
+        own.setLevel(ch.qos.logback.classic.Level.TRACE);
+        web.setLevel(ch.qos.logback.classic.Level.INFO);
+        try {
+            return run.get();
+        } finally {
+            own.setLevel(before);
+            web.setLevel(webBefore);
+        }
+    }
+
+    // AC-10.18 (RN-15, RNF-03): an approval that confirms writes its two events in the outbox with no personal field and no log line of
+    // the route, the repeat or the refusal carries a name, a document, an e-mail, a phone or the free text of the reason.
+    @Test void theEventsAndTheLogsCarryNoPersonalData(CapturedOutput output) throws Exception {
+        String reason = "Motivo-reservado-del-monto-4417";
+        var body = new LinkedHashMap<String, Object>();
+        body.put("verifiedAmountCents", 95_000L); body.put("reason", reason);
+
+        withApplicationTrace(() -> {
+            try {
+                exchange(approveAsAdministrator(body), 200);
+                exchange(approveAsAdministrator(body), 200);
+                exchange(decide("approve", body, "decision-key-019", token(ADMIN)), 422);
+                return null;
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertThat(names(payments.events)).containsExactly("PaymentValidated", "ReservationConfirmed");
+        assertThat(payments.events.toString()).doesNotContain(PERSONAL.toArray(String[]::new)).doesNotContain(reason);
+        assertThat(output.getAll()).doesNotContain(PERSONAL.toArray(String[]::new)).doesNotContain(reason);
+    }
+
+    @Test void theEventAndTheLogsOfARejectionCarryNeitherPersonalDataNorTheFreeTextOfTheReason(CapturedOutput output) throws Exception {
+        String reason = "Motivo-reservado-del-rechazo-9023";
+
+        withApplicationTrace(() -> {
+            try {
+                exchange(decide("reject", Map.of("reason", reason), "decision-key-020", token(ADMIN)), 200);
+                exchange(decide("reject", Map.of("reason", reason), "decision-key-020", token(ADMIN)), 200);
+                return null;
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertThat(names(payments.events)).containsExactly("PaymentRejected");
+        assertThat(payments.events.toString()).doesNotContain(PERSONAL.toArray(String[]::new)).doesNotContain(reason);
+        assertThat(output.getAll()).doesNotContain(PERSONAL.toArray(String[]::new)).doesNotContain(reason);
+    }
+}

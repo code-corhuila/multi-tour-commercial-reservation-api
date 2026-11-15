@@ -5,5 +5,6 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Estab
 
 public interface RegisterAssociatedEstablishment {
     EstablishmentRegistration register(EstablishmentActor actor, String key, Command command);
-    record Command(String establishmentType, String commercialName, String commercialInformation, String imageReference) {}
+    record Command(String establishmentType, String commercialName, String commercialInformation, String imageReference,
+            String contactEmail, String contactPhone, String contactAddress) {}
 }

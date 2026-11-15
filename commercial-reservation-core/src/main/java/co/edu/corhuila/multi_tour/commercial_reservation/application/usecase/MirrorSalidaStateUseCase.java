@@ -1,0 +1,119 @@
+package co.edu.corhuila.multi_tour.commercial_reservation.application.usecase;
+
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.MirrorOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.SalidaEvent;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.MirrorSalidaState;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.CatalogServiceRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureStateRepository;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ProcessedEvents;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaMirrorTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceType;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureStatus;
+import java.util.Optional;
+import java.util.UUID;
+
+// Mirrors the departure events into the capacity rows (plan D-08, RN-11). One effect per event id, the status only
+// moves forward, and the row and the processed id commit together. The row keeps the occurredAt of the last event applied
+// (DP-16, DD-8): a capacity event older than that never overwrites a newer one, and the status stays protected by the
+// forward-only matrix, so a cancellation always reaches an open departure. An event with no row yet is not marked, and
+// no provisional row is created: the consumer route answers retry later until SalidaScheduled arrives.
+public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
+
+    private final DepartureStateRepository departures;
+    private final ProcessedEvents processed;
+    private final SalidaMirrorTransaction transaction;
+    private final CatalogServiceRepository catalog;
+
+    public MirrorSalidaStateUseCase(DepartureStateRepository departures, ProcessedEvents processed,
+            SalidaMirrorTransaction transaction, CatalogServiceRepository catalog) {
+        this.departures = departures;
+        this.processed = processed;
+        this.transaction = transaction;
+        this.catalog = catalog;
+    }
+
+    @Override
+    public MirrorOutcome apply(SalidaEvent event) {
+        return transaction.inTransaction(() -> {
+            if (processed.wasProcessed(event.eventId())) {
+                return MirrorOutcome.DUPLICATE;
+            }
+            MirrorOutcome outcome = switch (event) {
+                case SalidaEvent.Scheduled scheduled -> schedule(scheduled);
+                case SalidaEvent.ExecutionStarted started -> advance(event, DepartureStatus.IN_EXECUTION);
+                case SalidaEvent.Finalized finalized -> advance(event, DepartureStatus.FINALIZED);
+                case SalidaEvent.Cancelled cancelled -> advance(event, DepartureStatus.CANCELLED);
+                case SalidaEvent.VehiclesChanged changed -> changeVehicles(changed);
+            };
+            // An event with no row yet stays unmarked so its redelivery can still apply it (DP-16, DD-8).
+            if (outcome != MirrorOutcome.IGNORED_UNKNOWN && outcome != MirrorOutcome.AWAITING_DEPARTURE) {
+                processed.record(event.eventId());
+            }
+            return outcome;
+        });
+    }
+
+    private MirrorOutcome schedule(SalidaEvent.Scheduled event) {
+        if (departures.find(event.tenantId(), event.departureId()).isPresent()) {
+            return MirrorOutcome.IGNORED_OUT_OF_ORDER;
+        }
+        Optional<CatalogService> tour = tour(event.tenantId(), event.serviceId());
+        if (tour.isEmpty()) {
+            return MirrorOutcome.IGNORED_UNKNOWN;
+        }
+        // Mandatory transport: no seats until the first vehicle event (G-VEH, DP-08).
+        int initial = tour.get().terms().transportRequired() ? 0 : capacityOf(tour.get());
+        departures.save(new DepartureState(event.departureId(), event.tenantId(), event.serviceId(),
+                event.startsAt(), DepartureStatus.SCHEDULED, initial, 0, event.occurredAt()));
+        return MirrorOutcome.APPLIED;
+    }
+
+    private MirrorOutcome advance(SalidaEvent event, DepartureStatus next) {
+        Optional<DepartureState> row = departures.find(event.tenantId(), event.departureId());
+        if (row.isEmpty()) {
+            return MirrorOutcome.AWAITING_DEPARTURE;
+        }
+        if (!row.get().status().canMoveTo(next)) {
+            return MirrorOutcome.IGNORED_OUT_OF_ORDER;
+        }
+        departures.save(row.get().withStatus(next).appliedAt(event.occurredAt()));
+        return MirrorOutcome.APPLIED;
+    }
+
+    private MirrorOutcome changeVehicles(SalidaEvent.VehiclesChanged event) {
+        Optional<DepartureState> row = departures.find(event.tenantId(), event.departureId());
+        if (row.isEmpty()) {
+            return MirrorOutcome.AWAITING_DEPARTURE;
+        }
+        // A final departure keeps its capacity: the event is ignored and still marked processed (ADR-004 D4).
+        if (row.get().status() == DepartureStatus.FINALIZED || row.get().status() == DepartureStatus.CANCELLED) {
+            return MirrorOutcome.IGNORED_OUT_OF_ORDER;
+        }
+        // An older capacity must not overwrite a newer one (DP-16, DD-8); the same instant still applies.
+        if (row.get().isNewerThan(event.occurredAt())) {
+            return MirrorOutcome.IGNORED_OUT_OF_ORDER;
+        }
+        Optional<CatalogService> tour = tour(row.get().tenantId(), row.get().serviceId());
+        if (tour.isEmpty()) {
+            return MirrorOutcome.IGNORED_UNKNOWN;
+        }
+        // The lower of the tour capacity and the vehicle total, never below the seats already held (H8). The total is kept, so a later
+        // change of the tour capacity can recompute the effective capacity (ND-08, DP-D6-8).
+        int effective = DepartureState.effectiveCapacityOf(capacityOf(tour.get()), event.vehicleTotalCapacity(), row.get().heldSeats());
+        departures.save(row.get().withEffectiveCapacity(effective).withVehicleCapacityCeiling(event.vehicleTotalCapacity())
+                .appliedAt(event.occurredAt()));
+        return MirrorOutcome.APPLIED;
+    }
+
+    private Optional<CatalogService> tour(UUID tenantId, UUID serviceId) {
+        return catalog.findByTenantAndId(tenantId, serviceId)
+                .filter(service -> service.tenantId().equals(tenantId) && service.serviceType() == CatalogServiceType.TOUR);
+    }
+
+    private static int capacityOf(CatalogService tour) {
+        Integer capacity = tour.terms().configuredCapacity();
+        return capacity == null ? 0 : capacity;
+    }
+}

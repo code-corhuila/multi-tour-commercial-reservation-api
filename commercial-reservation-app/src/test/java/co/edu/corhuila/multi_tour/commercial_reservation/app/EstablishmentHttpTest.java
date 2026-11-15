@@ -31,12 +31,12 @@ import org.springframework.test.web.servlet.request.*;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class EstablishmentHttpTest {
-    static final String BASE = "/api/v1/associated-establishments";
+    static final String BASE = "/api/v1/commercial-reservation/associated-establishments";
     static final byte[] PNG = Base64.getDecoder().decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=");
     static final String SPEC = Path.of("../openapi/openapi.yaml").toAbsolutePath().toUri().toString();
     final OpenApiInteractionValidator validator = OpenApiInteractionValidator
-            .createForSpecificationUrl(SPEC).withBasePathOverride("/api/v1").build();
+            .createForSpecificationUrl(SPEC).withBasePathOverride("/api/v1/commercial-reservation").build();
     final Set<String> exercised = new HashSet<>();
     @Autowired MockMvc mvc;
     String tenant;
@@ -73,6 +73,23 @@ class EstablishmentHttpTest {
         assertThat(json(exchange(get(BASE), 200, "TENANT_ADMINISTRATOR")).at("/meta/total").intValue()).isZero();
     }
 
+    // AC-02.12: the contact is stored with the association and read back, with the optional fields absent when not sent.
+    @Test void theContactIsStoredReadBackAndAbsentFieldsAreOmitted() throws Exception {
+        var body = json(exchange(upload(PNG, "image.png", "image/png"), 201, "TENANT_ADMINISTRATOR"));
+        assertThat(body.get("contactEmail").asText()).isEqualTo("info@hotel.example");
+        assertThat(body.get("contactPhone").asText()).isEqualTo("+57 8 8700000");
+        assertThat(body.get("contactAddress").asText()).isEqualTo("Calle 1 No. 2-3");
+        assertThat(json(exchange(get(path(body)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(body);
+        tenant = UUID.randomUUID().toString();
+        var phoneOnly = multipart(BASE).file(new MockMultipartFile("image", "image.png", "image/png", PNG))
+                .param("establishmentType", "HOTEL").param("commercialName", "Hotel").param("commercialInformation", "Info")
+                .param("contactPhone", "+57 8 8700000").header("Idempotency-Key", "test-phone-only-key");
+        var created = json(exchange(phoneOnly, 201, "TENANT_ADMINISTRATOR"));
+        assertThat(created.has("contactEmail")).isFalse();
+        assertThat(created.has("contactAddress")).isFalse();
+        assertThat(created.get("contactPhone").asText()).isEqualTo("+57 8 8700000");
+    }
+
     @ParameterizedTest @ValueSource(strings = {"png", "jpeg", "webp"})
     void imageSignatureOverridesTheFilenameAndContentType(String type) throws Exception {
         byte[] bytes = switch (type) {
@@ -98,10 +115,18 @@ class EstablishmentHttpTest {
 
     @Test void publicImageRouteServesWithoutTokenAndWithCacheHeader() throws Exception {
         var item = seed();
-        exchange(post(path(item) + "/inactivate"), 200, "TENANT_ADMINISTRATOR");
         var image = exchange(get(imagePath(tenant, item)), 200, null);
         assertThat(image.getResponse().getHeader("Cache-Control")).contains("public", "max-age=").doesNotContain("no-store");
         assertThat(image.getResponse().getContentAsByteArray()).isEqualTo(PNG);
+    }
+
+    // AC-06.17: an inactive association has no public image; the same not found as a missing one.
+    @Test void publicImageOfAnInactiveAssociationIsNotFound() throws Exception {
+        var item = seed();
+        exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR");
+        var inactive = exchange(get(imagePath(tenant, item)), 404, null);
+        var missing = exchange(operation("image", UUID.randomUUID().toString()), 404, null);
+        assertThat(json(inactive)).isEqualTo(json(missing));
     }
 
     @ParameterizedTest @ValueSource(strings = {"GET", "inactivate", "reactivate", "image"})
@@ -154,21 +179,19 @@ class EstablishmentHttpTest {
         status().isNotFound().match(result);
         CatalogHttpTest.assertError(result, "NOT_FOUND", "resource not found");
         var api = new OpenAPIV3Parser().read(SPEC);
-        api.getPaths().entrySet().stream().filter(entry -> entry.getKey().contains("associated-establishments"))
+        api.getPaths().entrySet().stream().filter(entry -> entry.getKey().startsWith("/associated-establishments"))
                 .forEach(entry -> assertThat(entry.getValue().readOperationsMap())
                         .doesNotContainKeys(PathItem.HttpMethod.DELETE, PathItem.HttpMethod.PATCH, PathItem.HttpMethod.PUT));
         assertThat(json(exchange(get(path(item)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(item);
     }
 
-    @ParameterizedTest @ValueSource(strings = {"list", "get", "register", "inactivate", "reactivate", "imagePost", "imageSuffix", "catalog"})
+    @ParameterizedTest @ValueSource(strings = {"list", "get", "register", "inactivate", "reactivate", "catalog"})
     void noOtherRouteIsPublic(String operation) throws Exception {
         var item = seed();
         MockHttpServletRequestBuilder request = switch (operation) {
             case "list" -> get(BASE);
             case "get" -> get(path(item));
             case "register" -> upload(PNG, "image.png", "image/png");
-            case "imagePost" -> post(imagePath(tenant, item));
-            case "imageSuffix" -> get(imagePath(tenant, item) + "/extra");
             case "catalog" -> get(CatalogHttpTest.BASE);
             default -> post(path(item) + "/" + operation);
         };
@@ -177,7 +200,7 @@ class EstablishmentHttpTest {
         CatalogHttpTest.assertError(result, "UNAUTHORIZED", "authentication is required");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"establishmentType", "commercialName", "commercialInformation", "image", "Idempotency-Key", "invalidType", "longName"})
+    @ParameterizedTest @ValueSource(strings = {"establishmentType", "commercialName", "commercialInformation", "image", "Idempotency-Key", "invalidType", "longName", "contact", "badEmail", "longPhone"})
     void invalidRegistrationNamesTheField(String field) throws Exception {
         var request = multipart(BASE);
         if (!field.equals("image")) request.file(new MockMultipartFile("image", "image.png", "image/png", PNG));
@@ -185,8 +208,11 @@ class EstablishmentHttpTest {
         if (!field.equals("commercialName")) request.param("commercialName", field.equals("longName") ? "x".repeat(256) : "Hotel");
         if (!field.equals("commercialInformation")) request.param("commercialInformation", "Contact");
         if (!field.equals("Idempotency-Key")) request.header("Idempotency-Key", "test-establishment-key");
+        if (!field.equals("contact")) request.param("contactEmail", field.equals("badEmail") ? "not-an-email" : "info@hotel.example");
+        if (field.equals("longPhone")) request.param("contactPhone", "7".repeat(31));
         assertField(exchange(request, 400, "TENANT_ADMINISTRATOR"),
-                field.equals("invalidType") ? "establishmentType" : field.equals("longName") ? "commercialName" : field);
+                field.equals("invalidType") ? "establishmentType" : field.equals("longName") ? "commercialName"
+                        : field.equals("contact") || field.equals("badEmail") ? "contactEmail" : field.equals("longPhone") ? "contactPhone" : field);
     }
 
     @ParameterizedTest @ValueSource(strings = {"rooms", "dishes", "menus", "seats", "rates", "availability", "tenantId"})
@@ -197,17 +223,55 @@ class EstablishmentHttpTest {
 
     @Test void transitionsAreIdempotentAndListingRetainsHistory() throws Exception {
         var item = seed();
-        var inactive = json(exchange(post(path(item) + "/inactivate"), 200, "TENANT_ADMINISTRATOR"));
+        var inactive = json(exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR"));
         assertThat(inactive.get("associationStatus").asText()).isEqualTo("INACTIVE");
         assertThat(json(exchange(get(path(item)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(inactive);
-        assertThat(json(exchange(post(path(item) + "/inactivate"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(inactive);
+        assertThat(json(exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed again\"}"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(inactive);
         assertThat(json(exchange(get(BASE).param("associationStatus", "ACTIVE"), 200,
                 "TENANT_ADMINISTRATOR")).get("data")).isEmpty();
         assertThat(json(exchange(get(BASE).param("associationStatus", "INACTIVE").param("establishmentType", "HOTEL"),
                 200, "TENANT_ADMINISTRATOR")).at("/meta/total").intValue()).isEqualTo(1);
-        var active = json(exchange(post(path(item) + "/reactivate"), 200, "TENANT_ADMINISTRATOR"));
+        var active = json(exchange(post(path(item) + "/reactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR"));
         assertThat(active).isEqualTo(item);
-        assertThat(json(exchange(post(path(item) + "/reactivate"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(active);
+        assertThat(json(exchange(post(path(item) + "/reactivate").contentType("application/json").content("{\"reason\":\"Works finished\"}"), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(active);
+    }
+
+    // AC-02.13: a transition without a reason names the field and changes nothing; AC-02.14: with one it is traced.
+    @ParameterizedTest @ValueSource(strings = {"missing", "blank", "long"})
+    void aTransitionWithoutAValidReasonIsRefused(String kind) throws Exception {
+        var item = seed();
+        var request = post(path(item) + "/inactivate");
+        if (!kind.equals("missing")) request.contentType("application/json").content("{\"reason\":\"" + (kind.equals("blank") ? "  " : "x".repeat(501)) + "\"}");
+        assertField(exchange(request, 400, "TENANT_ADMINISTRATOR"), "reason");
+        assertThat(json(exchange(get(path(item)), 200, "TENANT_ADMINISTRATOR"))).isEqualTo(item);
+    }
+
+    @Test void everyChangeIsListedNewestFirstWithItsReasonAndAuthor() throws Exception {
+        var item = seed();
+        exchange(post(path(item) + "/inactivate").contentType("application/json").content("{\"reason\":\"Closed for works\"}"), 200, "TENANT_ADMINISTRATOR");
+        exchange(post(path(item) + "/reactivate").contentType("application/json").content("{\"reason\":\"Works finished\"}"), 200, "TENANT_ADMINISTRATOR");
+        var log = json(exchange(get(BASE + "/changes"), 200, "TENANT_ADMINISTRATOR"));
+        assertThat(log.at("/meta/total").intValue()).isEqualTo(3);
+        assertThat(log.at("/data/0/eventType").asText()).isEqualTo("REACTIVATED");
+        assertThat(log.at("/data/0/reason").asText()).isEqualTo("Works finished");
+        assertThat(log.at("/data/1/eventType").asText()).isEqualTo("INACTIVATED");
+        assertThat(log.at("/data/2/eventType").asText()).isEqualTo("REGISTERED");
+        assertThat(log.at("/data/2/commercialName").asText()).isEqualTo("Hotel example");
+        assertThat(log.at("/data/0/actorId").asText()).isNotBlank();
+        assertThat(json(exchange(get(BASE + "/changes").param("establishmentType", "RESTAURANT"), 200, "TENANT_ADMINISTRATOR")).at("/meta/total").intValue()).isZero();
+        tenant = UUID.randomUUID().toString();
+        assertThat(json(exchange(get(BASE + "/changes"), 200, "TENANT_ADMINISTRATOR")).at("/meta/total").intValue()).isZero();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"MANAGER", "ANALYST", "ACCOUNTANT", "OPERATIONAL_COLLABORATOR"})
+    void onlyAdministratorManagerAndAnalystReadTheLog(String role) throws Exception {
+        seed();
+        exchange(get(BASE + "/changes"), role.equals("MANAGER") || role.equals("ANALYST") ? 200 : 403, role);
+    }
+
+    @ParameterizedTest @CsvSource({"page,0", "limit,101", "unknown,value", "establishmentType,OTHER"})
+    void aBadLogQueryNamesTheField(String field, String value) throws Exception {
+        assertField(exchange(get(BASE + "/changes").param(field, value), 400, "TENANT_ADMINISTRATOR"), field);
     }
 
     @ParameterizedTest @CsvSource({"page,0", "limit,0", "limit,101", "limit,invalid", "associationStatus,OTHER", "establishmentType,OTHER", "unknown,value"})
@@ -235,7 +299,7 @@ class EstablishmentHttpTest {
     @Test @Order(Integer.MAX_VALUE) void contractOperationsAreExercised() {
         var declared = new HashSet<String>();
         new OpenAPIV3Parser().read(SPEC).getPaths().entrySet().stream()
-                .filter(entry -> entry.getKey().contains("associated-establishments"))
+                .filter(entry -> entry.getKey().startsWith("/associated-establishments") || entry.getKey().endsWith("/associated-establishments/{associationId}/image"))
                 .forEach(entry -> entry.getValue().readOperations().forEach(operation -> declared.add(operation.getOperationId())));
         assertThat(exercised).containsExactlyInAnyOrderElementsOf(declared);
         assertThat(CatalogContract.PENDING).isEmpty();
@@ -245,14 +309,15 @@ class EstablishmentHttpTest {
     private MockMultipartHttpServletRequestBuilder upload(byte[] bytes, String filename, String type) {
         var request = multipart(BASE).file(new MockMultipartFile("image", filename, type, bytes));
         request.param("establishmentType", "HOTEL").param("commercialName", "Hotel example")
-                .param("commercialInformation", "Promotional contact information").header("Idempotency-Key", "test-establishment-key");
+                .param("commercialInformation", "Promotional contact information").param("contactEmail", "info@hotel.example")
+                .param("contactPhone", "+57 8 8700000").param("contactAddress", "Calle 1 No. 2-3").header("Idempotency-Key", "test-establishment-key");
         return request;
     }
     private String path(JsonNode item) { return BASE + "/" + item.get("associationId").asText(); }
-    private String imagePath(String owner, JsonNode item) { return "/api/v1/public/tenants/" + owner + path(item).substring(7) + "/image"; }
+    private String imagePath(String owner, JsonNode item) { return "/api/v1/commercial-reservation/public/tenants/" + owner + path(item).substring(30) + "/image"; }
     private MockHttpServletRequestBuilder operation(String operation, String id) {
         return operation.equals("GET") ? get(BASE + "/" + id) : operation.equals("image")
-                ? get("/api/v1/public/tenants/" + tenant + "/associated-establishments/" + id + "/image") : post(BASE + "/" + id + "/" + operation);
+                ? get("/api/v1/commercial-reservation/public/tenants/" + tenant + "/associated-establishments/" + id + "/image") : post(BASE + "/" + id + "/" + operation);
     }
     private JsonNode json(MvcResult result) throws Exception { return CatalogHttpTest.json(result); }
     private void assertField(MvcResult result, String field) throws Exception {
@@ -264,8 +329,8 @@ class EstablishmentHttpTest {
         if (role != null) request.header("Authorization", "Bearer " + CatalogHttpTest.token(tenant, role));
         var result = mvc.perform(request.header("X-Correlation-Id", CatalogHttpTest.TRACE)).andReturn();
         status().is(code).match(result);
-        String path = result.getRequest().getRequestURI().substring(7);
-        String template = path.replaceFirst("/associated-establishments/[^/]+(?=/|$)", "/associated-establishments/{associationId}")
+        String path = result.getRequest().getRequestURI().substring(30);
+        String template = path.replaceFirst("/associated-establishments/(?!changes(?:/|$))[^/]+(?=/|$)", "/associated-establishments/{associationId}")
                 .replaceFirst("/public/tenants/[^/]+", "/public/tenants/{identifier}");
         var method = PathItem.HttpMethod.valueOf(result.getRequest().getMethod());
         var response = validator.validateResponse(path, com.atlassian.oai.validator.model.Request.Method.valueOf(method.name()), MockMvcResponse.of(result.getResponse()));
