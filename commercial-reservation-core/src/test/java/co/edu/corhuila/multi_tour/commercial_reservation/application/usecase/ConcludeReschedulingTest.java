@@ -62,7 +62,7 @@ class ConcludeReschedulingTest {
         @Override public int release(UUID tenantId, UUID reservationId) { return fakes.release(tenantId, reservationId); }
         @Override public int releaseReschedulingHold(UUID tenantId, UUID reservationId) { journal.add("hold-released:" + reservationId); return 3; }
     };
-    private final DetermineRefund refunds = (tenantId, reservationId, origin, amountCents) -> { journal.add("refund:" + reservationId + "/" + origin + "/" + amountCents); return null; };
+    private final DetermineRefund refunds = (tenantId, reservationId, origin, affectedTravelers, occurredAt) -> { journal.add("refund:" + reservationId + "/" + origin + "/" + affectedTravelers); return null; };
     private final MutableClock clock = new MutableClock(NOW);
     private ConcludeReschedulingUseCase conclude = new ConcludeReschedulingUseCase(episodes, fakes, holder, refunds, fakes, fakes, clock);
 
