@@ -3,7 +3,7 @@ package co.edu.corhuila.multi_tour.commercial_reservation.application.model;
 import java.time.Instant;
 import java.util.UUID;
 
-// The five departure events this service consumes (ADR-004 D4). occurredAt is the instant of the envelope: the mirror
+// The six departure events this service consumes (ADR-004 D4). occurredAt is the instant of the envelope: the mirror
 // stores it as the marker of the last event applied (DP-16, DD-8).
 public sealed interface SalidaEvent {
 
@@ -26,6 +26,11 @@ public sealed interface SalidaEvent {
     }
 
     record Cancelled(UUID eventId, UUID tenantId, UUID departureId, Instant occurredAt) implements SalidaEvent {
+    }
+
+    // SalidaRescheduled (spec 027): the new start and estimated end, and the service of the departure as the producer sends it.
+    record Rescheduled(UUID eventId, UUID tenantId, UUID departureId, UUID serviceId, Instant startsAt, Instant estimatedEndsAt, Instant occurredAt)
+            implements SalidaEvent {
     }
 
     record VehiclesChanged(UUID eventId, UUID tenantId, UUID departureId, int vehicleTotalCapacity, Instant occurredAt)

@@ -187,6 +187,12 @@ public final class TenantEventController {
                 }
                 yield new SalidaEvent.VehiclesChanged(eventId, tenantId, salidaId, total.asInt(), occurredAt);
             }
+            case "SalidaRescheduled" -> {
+                Instant start = instant(payload, "startsAt");
+                Instant end = instant(payload, "estimatedEndsAt");
+                if (!end.isAfter(start)) throw new DomainException("estimatedEndsAt", "must be after startsAt");
+                yield new SalidaEvent.Rescheduled(eventId, tenantId, salidaId, uuid(payload, "serviceId"), start, end, occurredAt);
+            }
             case "SalidaExecutionStarted" -> new SalidaEvent.ExecutionStarted(eventId, tenantId, salidaId, occurredAt);
             case "SalidaFinalized" -> new SalidaEvent.Finalized(eventId, tenantId, salidaId, occurredAt);
             case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId, occurredAt);
