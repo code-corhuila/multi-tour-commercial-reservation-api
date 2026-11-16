@@ -120,6 +120,25 @@ class CancelledDepartureHttpTest {
         assertThat(episodes.episodes).hasSize(2);
     }
 
+    @Test void countsTheClocksFromTheCancelledAtOfThePayloadAndFallsBackToTheEnvelopeWhenItIsMissing() throws Exception {
+        Map<String, Object> withPayloadInstant = cancelled(UUID.randomUUID());
+        ((Map<String, Object>) withPayloadInstant.get("payload")).put("cancelledAt", "2026-11-12T14:00:00Z");
+
+        deliver(withPayloadInstant, 201);
+
+        assertThat(episodes.episodes.values()).hasSize(2).allSatisfy(e -> assertThat(e.cancelledAt()).isEqualTo(Instant.parse("2026-11-12T14:00:00Z")));
+
+        episodes.clear();
+        departures.save(new DepartureState(salida, TENANT, tour, Instant.parse("2027-03-01T13:00:00Z"), DepartureStatus.SCHEDULED, 12, 2));
+        Map<String, Object> withoutPayloadInstant = cancelled(UUID.randomUUID());
+        ((Map<String, Object>) withoutPayloadInstant.get("payload")).remove("cancelledAt");
+        for (int i = 1; i <= 2; i++) episodes.reservations.add(new UUID(230, i));
+
+        deliver(withoutPayloadInstant, 201);
+
+        assertThat(episodes.episodes.values()).hasSize(2).allSatisfy(e -> assertThat(e.cancelledAt()).isEqualTo(Instant.parse("2026-11-12T15:00:00Z")));
+    }
+
     @Test void aFailureAnswersRetryLaterLeavesTheEventUnmarkedAndTheRedeliveryContinues() throws Exception {
         UUID unknown = new UUID(230, 3);
         alive.ids.add(unknown);

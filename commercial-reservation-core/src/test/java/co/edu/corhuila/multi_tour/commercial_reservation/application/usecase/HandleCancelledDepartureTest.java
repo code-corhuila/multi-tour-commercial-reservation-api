@@ -98,6 +98,27 @@ class HandleCancelledDepartureTest {
     }
 
     @Test
+    void countsTheDeadlinesFromTheCancelledAtOfThePayloadWhenItComes() {
+        // The saga of operations opens the episodes from the same cancelledAt, so both paths give the same 24 h and 72 h clocks (DP-23.2).
+        reservations(2);
+        Instant cancelledAt = AT.minusSeconds(3_600);
+
+        useCase.handle(new SalidaEvent.Cancelled(UUID.randomUUID(), TENANT, SALIDA, cancelledAt, AT));
+
+        assertThat(attempts).hasSize(2).allSatisfy(command -> assertThat(command.cancelledAt()).isEqualTo(cancelledAt));
+        assertThat(voided).containsExactly(SALIDA + "@" + cancelledAt);
+    }
+
+    @Test
+    void fallsBackToTheEnvelopeInstantWhenThePayloadCarriesNoCancelledAt() {
+        reservations(1);
+
+        useCase.handle(new SalidaEvent.Cancelled(UUID.randomUUID(), TENANT, SALIDA, null, AT));
+
+        assertThat(attempts).allSatisfy(command -> assertThat(command.cancelledAt()).isEqualTo(AT));
+    }
+
+    @Test
     void marksTheEventOnlyAfterAllEpisodesExist() {
         reservations(3);
         failingReservation = new UUID(230, 2);
