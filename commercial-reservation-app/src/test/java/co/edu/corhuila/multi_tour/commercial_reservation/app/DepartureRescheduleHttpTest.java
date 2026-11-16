@@ -86,7 +86,7 @@ class DepartureRescheduleHttpTest {
         return body;
     }
 
-    private MockHttpServletRequestBuilder post(Map<String, Object> body) throws Exception {
+    private MockHttpServletRequestBuilder request(Map<String, Object> body) throws Exception {
         Map<String, Object> claims = TestJwtKeys.claims();
         claims.put("roles", List.of("SERVICE"));
         String token = TestJwtKeys.token(Map.of("alg", "RS256"), claims, TestJwtKeys.TRUSTED);
@@ -97,8 +97,8 @@ class DepartureRescheduleHttpTest {
 
     @Test void updatesTheStartAndTheEndOfTheRowAndAnswersOkOnARepeat() throws Exception {
         UUID id = UUID.randomUUID();
-        mvc.perform(post(rescheduled(id, tour, NEW_START, NEW_END))).andExpect(status().isCreated());
-        mvc.perform(post(rescheduled(id, tour, NEW_START, NEW_END))).andExpect(status().isOk());
+        mvc.perform(request(rescheduled(id, tour, NEW_START, NEW_END))).andExpect(status().isCreated());
+        mvc.perform(request(rescheduled(id, tour, NEW_START, NEW_END))).andExpect(status().isOk());
         assertThat(departures.rows.get(salida).startsAt()).isEqualTo(NEW_START);
         assertThat(departures.ends.get(salida)).isEqualTo(NEW_END);
         assertThat(departures.rows.get(salida).heldSeats()).isEqualTo(3);
@@ -107,26 +107,26 @@ class DepartureRescheduleHttpTest {
 
     @Test void waitsForTheScheduledEventBeforeARescheduleEvent() throws Exception {
         departures.clear();
-        mvc.perform(post(rescheduled(UUID.randomUUID(), tour, NEW_START, NEW_END))).andExpect(status().isServiceUnavailable());
+        mvc.perform(request(rescheduled(UUID.randomUUID(), tour, NEW_START, NEW_END))).andExpect(status().isServiceUnavailable());
         assertThat(departures.rows).isEmpty();
         assertThat(events.processed).isEmpty();
     }
 
     @Test void refusesAnEndThatIsNotAfterTheStartAndAnotherTenant() throws Exception {
-        mvc.perform(post(rescheduled(UUID.randomUUID(), tour, NEW_START, NEW_START))).andExpect(status().isBadRequest());
+        mvc.perform(request(rescheduled(UUID.randomUUID(), tour, NEW_START, NEW_START))).andExpect(status().isBadRequest());
         Map<String, Object> foreign = rescheduled(UUID.randomUUID(), tour, NEW_START, NEW_END);
         foreign.put("tenantId", UUID.randomUUID().toString());
-        mvc.perform(post(foreign)).andExpect(status().isBadRequest());
+        mvc.perform(request(foreign)).andExpect(status().isBadRequest());
         Map<String, Object> noService = rescheduled(UUID.randomUUID(), tour, NEW_START, NEW_END);
         ((Map<?, ?>) noService.get("payload")).remove("serviceId");
-        mvc.perform(post(noService)).andExpect(status().isBadRequest());
+        mvc.perform(request(noService)).andExpect(status().isBadRequest());
         assertThat(departures.rows.get(salida).startsAt()).isEqualTo(STARTS);
         assertThat(events.processed).isEmpty();
     }
 
     @Test void refusesARescheduleThatChangesTheServiceWithAnExplicitConflictAndNeverLogsIds() throws Exception {
         UUID other = UUID.randomUUID();
-        mvc.perform(post(rescheduled(UUID.randomUUID(), other, NEW_START, NEW_END)))
+        mvc.perform(request(rescheduled(UUID.randomUUID(), other, NEW_START, NEW_END)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("BUSINESS_RULE_VIOLATION"))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString(other.toString()))));

@@ -3760,6 +3760,12 @@ paths:
         to check its length (1 to 500 characters) and is never stored, logged or copied to an event. A reservation that is not of that
         departure, or does not exist for the tenant, is `400` and the event is not marked; one already `CANCELLED` or `COMPLETED`
         changes nothing and answers `200`.
+        **`SalidaRescheduled` (PROPOSED 2026-11-15, api spec 027):** `aggregateId` is the departure, equal to `payload.salidaId`; the payload
+        carries `tenantId`, `salidaId`, `serviceId`, `startsAt` and `estimatedEndsAt` (after the start). The row takes the new start and
+        estimated end under the same order rule and the same `503` as the other departure events; a final departure answers `200` and
+        changes nothing. The reservations on it stay the same and keep their seats and show the new date (alternative A). A `serviceId`
+        that is not the one of the row is a new main service (alternative B, not built): `422 BUSINESS_RULE_VIOLATION`, nothing is changed
+        and the event is not marked as received.
         Other stories widen `eventType` with the events they consume (`AccountSessionsRevoked`);
         this operation does not change for that.
         **Requires:** `SERVICE` role and nothing else. A person's token gets `403`; there is no token check
@@ -3812,6 +3818,12 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
+        '422':
+          description: A `SalidaRescheduled` whose `serviceId` is not the one of the departure row (alternative B of spec 027, not built); nothing is changed and the event is not marked as received
+          content:
+            application/json:
+              schema:
+                $ref: './_shared.yaml#/components/schemas/ErrorResponse'
         '503':
           description: A departure event whose departure has no row yet (`SERVICE_UNAVAILABLE`, DP-16); not marked as received, so the relay delivers it again after the wait of `Retry-After`
           headers:
