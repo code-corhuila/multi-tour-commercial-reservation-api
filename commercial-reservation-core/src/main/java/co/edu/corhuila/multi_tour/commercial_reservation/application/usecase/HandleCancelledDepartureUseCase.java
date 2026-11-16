@@ -14,7 +14,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureS
 import java.util.List;
 import java.util.UUID;
 
-// Spec 023 (RN-EJE-002, FINAL-010, FINAL-011): a cancelled departure starts one episode of rescheduling per affected reservation, counted from the instant of the event, and the
+// Spec 023 (RN-EJE-002, FINAL-010, FINAL-011): a cancelled departure starts one episode of rescheduling per affected reservation, counted from the cancelledAt of the payload (the envelope instant when it has none; the saga cancel-departure counts from the same one), and the
 // pending proposals that point to it are void. It composes OpenRescheduling and VoidReschedulingProposals (D-01), which are idempotent by reservation and departure, so the same
 // event twice, or the saga that opened the episodes first, creates nothing more. Each reservation is its own transaction (D-03; DP-23.3: pages of 100 by keyset). The event is marked
 // as received only after every reservation has its episode (D-02): one failure leaves it unmarked and answers RETRY_LATER, and the redelivery continues. A departure whose row is
@@ -45,7 +45,7 @@ public class HandleCancelledDepartureUseCase implements HandleCancelledDeparture
         if (cancelled) {
             try {
                 openEpisodes(event);
-                voiding.voidProposals(event.tenantId(), event.departureId(), event.occurredAt());
+                voiding.voidProposals(event.tenantId(), event.departureId(), event.cancellationInstant());
             } catch (RuntimeException failed) {
                 return CancelledDepartureOutcome.RETRY_LATER;
             }
@@ -62,7 +62,7 @@ public class HandleCancelledDepartureUseCase implements HandleCancelledDeparture
         while (true) {
             List<UUID> page = reservations.findAliveByDeparture(event.tenantId(), event.departureId(), after, PAGE);
             for (UUID reservationId : page) {
-                opening.open(new OpenReschedulingCommand(event.tenantId(), reservationId, event.departureId(), event.occurredAt()));
+                opening.open(new OpenReschedulingCommand(event.tenantId(), reservationId, event.departureId(), event.cancellationInstant()));
             }
             if (page.size() < PAGE) return;
             after = page.get(page.size() - 1);
