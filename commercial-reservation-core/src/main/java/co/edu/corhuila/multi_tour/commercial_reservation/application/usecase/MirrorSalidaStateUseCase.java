@@ -50,7 +50,9 @@ public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
                 case SalidaEvent.Rescheduled rescheduled -> reschedule(rescheduled);
             };
             // An event with no row yet stays unmarked so its redelivery can still apply it (DP-16, DD-8).
-            if (outcome != MirrorOutcome.IGNORED_UNKNOWN && outcome != MirrorOutcome.AWAITING_DEPARTURE) {
+            // A cancellation is marked at the end of the episodes of its reservations (spec 023, D-02), not here.
+            boolean markedLater = event instanceof SalidaEvent.Cancelled && (outcome == MirrorOutcome.APPLIED || outcome == MirrorOutcome.IGNORED_OUT_OF_ORDER);
+            if (outcome != MirrorOutcome.IGNORED_UNKNOWN && outcome != MirrorOutcome.AWAITING_DEPARTURE && !markedLater) {
                 processed.record(event.eventId());
             }
             return outcome;
