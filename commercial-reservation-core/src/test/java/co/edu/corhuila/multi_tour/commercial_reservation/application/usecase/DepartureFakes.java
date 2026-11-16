@@ -24,6 +24,7 @@ final class DepartureFakes implements DepartureReader, DepartureStateRepository,
     final Map<UUID, DepartureState> rows = new LinkedHashMap<>();
     final Set<UUID> processed = new HashSet<>();
     final List<String> journal = new ArrayList<>();
+    final Map<UUID, Instant> ends = new LinkedHashMap<>();
 
     @Override
     public List<DepartureState> findOpen(UUID tenantId, UUID serviceId, Instant now) {
@@ -41,6 +42,13 @@ final class DepartureFakes implements DepartureReader, DepartureStateRepository,
     public void save(DepartureState state) {
         journal.add("save " + state.departureId());
         rows.put(state.departureId(), state);
+    }
+
+    @Override
+    public void moveSchedule(UUID tenantId, UUID departureId, Instant startsAt, Instant estimatedEndsAt, Instant occurredAt) {
+        journal.add("move " + departureId);
+        rows.put(departureId, rows.get(departureId).withStartsAt(startsAt).appliedAt(occurredAt));
+        ends.put(departureId, estimatedEndsAt);
     }
 
     @Override
