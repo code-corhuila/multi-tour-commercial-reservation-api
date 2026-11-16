@@ -7,6 +7,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Ca
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureStateRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ProcessedEvents;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaMirrorTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.BusinessRuleViolation;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogService;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.CatalogServiceType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DepartureState;
@@ -46,6 +47,7 @@ public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
                 case SalidaEvent.Finalized finalized -> advance(event, DepartureStatus.FINALIZED);
                 case SalidaEvent.Cancelled cancelled -> advance(event, DepartureStatus.CANCELLED);
                 case SalidaEvent.VehiclesChanged changed -> changeVehicles(changed);
+                case SalidaEvent.Rescheduled rescheduled -> reschedule(rescheduled);
             };
             // An event with no row yet stays unmarked so its redelivery can still apply it (DP-16, DD-8).
             // A cancellation is marked at the end of the episodes of its reservations (spec 023, D-02), not here.
@@ -106,6 +108,23 @@ public final class MirrorSalidaStateUseCase implements MirrorSalidaState {
         int effective = DepartureState.effectiveCapacityOf(capacityOf(tour.get()), event.vehicleTotalCapacity(), row.get().heldSeats());
         departures.save(row.get().withEffectiveCapacity(effective).withVehicleCapacityCeiling(event.vehicleTotalCapacity())
                 .appliedAt(event.occurredAt()));
+        return MirrorOutcome.APPLIED;
+    }
+
+    // Spec 027, alternative A: only the date moved, so the reservations on the row stay the same and show the new date; the seats they hold are not touched.
+    // Alternative B (a different main service) is detected and refused: no linked reservation exists yet (DP-27.5), and nothing is written or marked.
+    private MirrorOutcome reschedule(SalidaEvent.Rescheduled event) {
+        Optional<DepartureState> row = departures.find(event.tenantId(), event.departureId());
+        if (row.isEmpty()) {
+            return MirrorOutcome.AWAITING_DEPARTURE;
+        }
+        if (!row.get().isOpen() || row.get().isNewerThan(event.occurredAt())) {
+            return MirrorOutcome.IGNORED_OUT_OF_ORDER;
+        }
+        if (!row.get().serviceId().equals(event.serviceId())) {
+            throw new BusinessRuleViolation("a rescheduled departure with another main service needs a linked reservation, which is not available yet");
+        }
+        departures.moveSchedule(event.tenantId(), event.departureId(), event.startsAt(), event.estimatedEndsAt(), event.occurredAt());
         return MirrorOutcome.APPLIED;
     }
 

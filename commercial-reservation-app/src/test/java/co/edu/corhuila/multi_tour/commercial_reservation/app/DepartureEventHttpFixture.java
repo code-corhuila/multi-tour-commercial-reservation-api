@@ -22,7 +22,13 @@ class DepartureEventHttpFixture {
     static final class MemoryDepartures implements DepartureStateRepository, DepartureReader {
         final Map<UUID, DepartureState> rows = new HashMap<>();
 
-        void clear() { rows.clear(); }
+        final Map<UUID, Instant> ends = new HashMap<>();
+
+        void clear() { rows.clear(); ends.clear(); }
+        public void moveSchedule(UUID tenantId, UUID departureId, Instant startsAt, Instant estimatedEndsAt, Instant occurredAt) {
+            rows.put(departureId, rows.get(departureId).withStartsAt(startsAt).appliedAt(occurredAt));
+            ends.put(departureId, estimatedEndsAt);
+        }
         public Optional<DepartureState> find(UUID tenantId, UUID departureId) {
             return Optional.ofNullable(rows.get(departureId)).filter(row -> row.tenantId().equals(tenantId));
         }
