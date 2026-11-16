@@ -548,7 +548,7 @@ paths:
           $ref: './_shared.yaml#/components/responses/InternalError'
 
   # ─── Internal: read of a catalog item by a service token (asked by `operations-cost`, G-API8-1) ─
-  # PROPOSED (x-proposed). A `SERVICE` token has no `tenantId` and is accepted only on `/internal/` routes (`authentication.md`),
+  # SIGNED (2026-11-15). A `SERVICE` token has no `tenantId` and is accepted only on `/internal/` routes (`authentication.md`),
   # so the read the saga `change-departure-vehicles` needs has the tenant in the path, as every internal route has.
 
   /internal/tenants/{tenantId}/catalog/services/{serviceId}:
@@ -558,7 +558,7 @@ paths:
     get:
       summary: Get a catalog item, for a service
       description: |
-        **PROPOSED (2026-11-15).** The same answer as `getCatalogService`, for the `SERVICE` token (the capacity of a tour, which the
+        **Signed by the Project Lead (2026-11-15).** The same answer as `getCatalogService`, for the `SERVICE` token (the capacity of a tour, which the
         saga `change-departure-vehicles` reads to lower the ceiling of a departure). The tenant comes from the path, as a service
         token has none, and never from the body. It reads only: no write is offered here. The item is returned whether it is active
         or inactive. An item that does not exist for that tenant, or that belongs to another, answers `404`.
@@ -567,7 +567,6 @@ paths:
       tags: [Internal]
       security:
         - bearerAuth: []
-      x-proposed: true
       responses:
         '200':
           description: The catalog item
@@ -2589,7 +2588,7 @@ paths:
     get:
       summary: Read a validated payment (saga register-payment, unclear outcome of its step 2)
       description: |
-        **PROPOSED** (x-proposed, gap G-WF2-7 of HU-WFL-002, criterion AC-WF2-12). Called by the saga `register-payment` with its
+        **Signed by the Project Lead (2026-11-14)** (gap G-WF2-7 of HU-WFL-002, criterion AC-WF2-12). Called by the saga `register-payment` with its
         `SERVICE_TOKEN` when `recordValidatedPayment` ended with an unclear outcome (network failure, `5xx`, `429`): the saga
         reads whether the payment was recorded as validated before it completes or reverses the income. A read: no
         `Idempotency-Key`, nothing changes. `200` with the stored result when the payment of the tenant of the path is
@@ -3958,7 +3957,7 @@ paths:
           $ref: './_shared.yaml#/components/responses/InternalError'
 
   # ─── Internal: the reservations of a departure that starts or ends (asked by `operations-cost`, G-API4-1) ─
-  # PROPOSED (x-proposed). `SERVICE` role only; the gateway never routes `/internal/`.
+  # SIGNED (2026-11-15). `SERVICE` role only; the gateway never routes `/internal/`.
 
   /internal/tenants/{tenantId}/departures/{departureId}/execution-start:
     parameters:
@@ -3967,7 +3966,7 @@ paths:
     post:
       summary: Move the reservations of a departure into execution
       description: |
-        **PROPOSED (2026-11-15).** The departure started (RN-EJE-001, CA-029). Every `CONFIRMED` reservation of the departure that is
+        **Signed by the Project Lead (2026-11-15).** The departure started (RN-EJE-001, CA-029). Every `CONFIRMED` reservation of the departure that is
         fully paid (`FULLY_PAID`) becomes `IN_EXECUTION`, in one transaction. Cancelled reservations, and the ones not fully paid,
         keep their status. The answer counts the reservations moved (`changed`) and the ones left as they were (`unchanged`). The
         tenant comes from the path, as a service token has none. A replay of the same `Idempotency-Key` answers the original
@@ -3979,7 +3978,6 @@ paths:
       tags: [Internal]
       security:
         - bearerAuth: []
-      x-proposed: true
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
@@ -4009,7 +4007,7 @@ paths:
     post:
       summary: Complete the reservations of a departure that ended
       description: |
-        **PROPOSED (2026-11-15).** The departure ended (RN-EJE-001, CA-029). Every `IN_EXECUTION` reservation of the departure becomes
+        **Signed by the Project Lead (2026-11-15).** The departure ended (RN-EJE-001, CA-029). Every `IN_EXECUTION` reservation of the departure becomes
         `COMPLETED`, in one transaction; the others keep their status. Same answer, idempotency, `404`, `403` and "no personal data"
         rules as `startDepartureExecution`. A departure that is `CANCELLED` answers `422 BUSINESS_RULE_VIOLATION`.
         **Requires:** `SERVICE` role and nothing else. A person's token gets `403`.
@@ -4017,7 +4015,6 @@ paths:
       tags: [Internal]
       security:
         - bearerAuth: []
-      x-proposed: true
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
@@ -5669,7 +5666,7 @@ paths:
           $ref: './_shared.yaml#/components/responses/InternalError'
 
   # ─── Internal: reservations of a departure, for a service (asked by `operations-cost`, G-API6-1) ─
-  # PROPOSED (x-proposed). `SERVICE` role only; the gateway never routes `/internal/`.
+  # SIGNED (2026-11-15). `SERVICE` role only; the gateway never routes `/internal/`.
 
   /internal/tenants/{tenantId}/departures/{departureId}/reservations:
     parameters:
@@ -5678,7 +5675,7 @@ paths:
     get:
       summary: List the reservations of a departure, for a service
       description: |
-        **PROPOSED (2026-11-15).** For every reservation of the departure: its id, status, number of travelers, the id of
+        **Signed by the Project Lead (2026-11-15).** For every reservation of the departure: its id, status, number of travelers, the id of
         the lead customer and the amount validated so far, in cents. Nothing else about the customer travels: no name,
         document or contact. Ordered by creation time, then id; paginated as every list. The tenant comes from the path, as a
         service token has none. The identifier of the departure is its `salidaId`; this service stores no `SAL-NNN` code
@@ -5689,7 +5686,6 @@ paths:
       tags: [Internal]
       security:
         - bearerAuth: []
-      x-proposed: true
       parameters:
         - $ref: './_shared.yaml#/components/parameters/PageParam'
         - $ref: './_shared.yaml#/components/parameters/LimitParam'
