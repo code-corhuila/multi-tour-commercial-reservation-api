@@ -200,9 +200,13 @@ public final class TenantEventController {
             }
             case "SalidaExecutionStarted" -> new SalidaEvent.ExecutionStarted(eventId, tenantId, salidaId, occurredAt);
             case "SalidaFinalized" -> new SalidaEvent.Finalized(eventId, tenantId, salidaId, occurredAt);
-            case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId, occurredAt);
+            case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId, optionalInstant(payload, "cancelledAt"), occurredAt);
             default -> throw new DomainException("eventType", "is not an event this service consumes");
         };
+    }
+
+    private static Instant optionalInstant(JsonNode node, String field) {
+        return optional(node, field) == null ? null : instant(node, field);
     }
 
     private static Instant instant(JsonNode node, String field) {

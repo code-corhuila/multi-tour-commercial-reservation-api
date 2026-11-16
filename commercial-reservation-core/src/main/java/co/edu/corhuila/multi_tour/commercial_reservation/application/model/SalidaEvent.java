@@ -25,7 +25,15 @@ public sealed interface SalidaEvent {
     record Finalized(UUID eventId, UUID tenantId, UUID departureId, Instant occurredAt) implements SalidaEvent {
     }
 
-    record Cancelled(UUID eventId, UUID tenantId, UUID departureId, Instant occurredAt) implements SalidaEvent {
+    // cancelledAt is the instant the payload carries (the same one the saga cancel-departure uses); null when the payload has none, and then the envelope occurredAt counts (spec 023, DP-23.2).
+    record Cancelled(UUID eventId, UUID tenantId, UUID departureId, Instant cancelledAt, Instant occurredAt) implements SalidaEvent {
+        public Cancelled(UUID eventId, UUID tenantId, UUID departureId, Instant occurredAt) {
+            this(eventId, tenantId, departureId, null, occurredAt);
+        }
+
+        public Instant cancellationInstant() {
+            return cancelledAt != null ? cancelledAt : occurredAt;
+        }
     }
 
     record VehiclesChanged(UUID eventId, UUID tenantId, UUID departureId, int vehicleTotalCapacity, Instant occurredAt)
