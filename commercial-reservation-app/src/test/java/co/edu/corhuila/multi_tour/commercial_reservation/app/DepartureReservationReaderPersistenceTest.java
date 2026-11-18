@@ -19,6 +19,7 @@ class DepartureReservationReaderPersistenceTest {
     private JdbcDepartureReservationReader reader;
     private List<UUID> ids;
 
+    // PostgreSQL orders a uuid by its unsigned bytes, which equals the order of its lowercase text; UUID.compareTo is signed and differs.
     @BeforeEach
     void plant() {
         org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv("TEST_DATABASE_USER") != null && System.getenv("TEST_DATABASE_PASSWORD") != null,
@@ -26,7 +27,7 @@ class DepartureReservationReaderPersistenceTest {
         fixture = new ReservationPersistenceFixture();
         reader = new JdbcDepartureReservationReader(fixture.jdbc);
         var reservations = new JdbcReservationRepository(fixture.jdbc, fixture.cipher, fixture.transactions, new JdbcReservationCreatedOutbox(fixture.jdbc));
-        ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()).stream().sorted().toList();
+        ids = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()).stream().sorted(java.util.Comparator.comparing(UUID::toString)).toList();
         ids.forEach(id -> reservations.save(fixture.reservation(id, true)));
     }
 
