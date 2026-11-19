@@ -2,12 +2,15 @@ package co.edu.corhuila.multi_tour.commercial_reservation.app;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReschedulingInternalController;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http.ReschedulingReadController;
+import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcDepartureReservationReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcPaymentDeadlineFreezes;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReschedulingQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReschedulingReads;
 import co.edu.corhuila.multi_tour.commercial_reservation.adapter.out.persistence.JdbcReschedulingRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ConcludeRescheduling;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyExtraordinaryCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.DetermineRefund;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.HandleCancelledDeparture;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.OpenRescheduling;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ReadReschedulings;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.VoidReschedulingProposals;
@@ -15,7 +18,10 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Cu
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.EconomicDeadlineFreezer;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.IdGenerator;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentEventOutbox;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureReservationReader;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.DepartureStateRepository;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ProcessedEvents;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReschedulingQueries;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReschedulingReads;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.ReschedulingRepository;
@@ -23,6 +29,8 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.Re
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.SalidaCapacityHolder;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.TenantStatusReader;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ConcludeReschedulingUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExtraordinaryCancellationUseCase;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.HandleCancelledDepartureUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.OpenReschedulingUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ReadReschedulingsUseCase;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.VoidReschedulingProposalsUseCase;
@@ -56,6 +64,25 @@ class ReschedulingConfiguration {
     OpenRescheduling openRescheduling(ReschedulingRepository episodes, @Lazy ReservationRepository reservations, @Lazy SalidaCapacityHolder holder, EconomicDeadlineFreezer freezer,
             @Lazy PaymentEventOutbox outbox, @Lazy PaymentTransaction transaction, IdGenerator ids, Clock clock) {
         return new OpenReschedulingUseCase(episodes, reservations, holder, freezer, outbox, transaction, ids, clock);
+    }
+
+    // Spec 025: the consumer of ExtraordinaryCancellationRecorded; the route is the branch of TenantEventController. It opens the episode and nothing else.
+    @Bean
+    ApplyExtraordinaryCancellation applyExtraordinaryCancellation(ProcessedEvents processed, @Lazy ReservationRepository reservations, ReschedulingRepository episodes,
+            OpenRescheduling opening, @Lazy PaymentTransaction transaction) {
+        return new ExtraordinaryCancellationUseCase(processed, reservations, episodes, opening, transaction);
+    }
+
+    // Spec 023: what follows the mirror of SalidaCancelled: the episodes of the alive reservations and the void proposals; it marks the event at the end.
+    @Bean
+    DepartureReservationReader departureReservationReader(JdbcTemplate jdbc) {
+        return new JdbcDepartureReservationReader(jdbc);
+    }
+
+    @Bean
+    HandleCancelledDeparture handleCancelledDeparture(@Lazy DepartureStateRepository departures, ProcessedEvents processed, DepartureReservationReader reservations,
+            OpenRescheduling opening, VoidReschedulingProposals voiding, @Lazy PaymentTransaction transaction) {
+        return new HandleCancelledDepartureUseCase(departures, processed, reservations, opening, voiding, transaction);
     }
 
     @Bean

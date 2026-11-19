@@ -53,6 +53,11 @@ public record DepartureState(UUID departureId, UUID tenantId, UUID serviceId, In
                 lastEventOccurredAt, total);
     }
 
+    public DepartureState withStartsAt(Instant start) {
+        return new DepartureState(departureId, tenantId, serviceId, start, status, effectiveCapacity, heldSeats, lastEventOccurredAt,
+                vehicleCapacityCeiling);
+    }
+
     public DepartureState withStatus(DepartureStatus next) {
         return new DepartureState(departureId, tenantId, serviceId, startsAt, next, effectiveCapacity, heldSeats,
                 lastEventOccurredAt, vehicleCapacityCeiling);

@@ -1,14 +1,22 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.AccountLinkOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CancelledDepartureOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ExtraordinaryOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.EmergencyOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.MirrorOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.SalidaEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.TenantEventOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyExtraordinaryCancellation;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyPersonalEmergency;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyTenantEvent;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.HandleCancelledDeparture;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.LinkAccountOnEmailVerified;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.MirrorSalidaState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AccountEmailVerified;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.DomainException;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.ExtraordinaryCancellation;
+import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.PersonalEmergency;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantEvent;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantEventType;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.TenantStatus;
@@ -38,14 +46,21 @@ public final class TenantEventController {
     private final ApplyTenantEvent apply;
     private final LinkAccountOnEmailVerified link;
     private final MirrorSalidaState mirror;
+    private final ApplyPersonalEmergency personalEmergency;
     private final ObjectMapper json;
+    private final ApplyExtraordinaryCancellation extraordinaryCancellation;
+    private final HandleCancelledDeparture cancelledDeparture;
 
-    public TenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link, MirrorSalidaState mirror,
-            ObjectMapper json) {
+    public TenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link, MirrorSalidaState mirror, ApplyPersonalEmergency personalEmergency,
+            ObjectMapper json, ApplyExtraordinaryCancellation extraordinaryCancellation,
+            HandleCancelledDeparture cancelledDeparture) {
         this.apply = apply;
         this.link = link;
         this.mirror = mirror;
+        this.personalEmergency = personalEmergency;
         this.json = json;
+        this.extraordinaryCancellation = extraordinaryCancellation;
+        this.cancelledDeparture = cancelledDeparture;
     }
 
     @PostMapping("/api/v1/commercial-reservation/internal/tenants/{tenantId}/events")
@@ -73,7 +88,23 @@ public final class TenantEventController {
         if (type != null && type.startsWith("Salida")) {
             SalidaEvent salida = toSalidaEvent(body, type, tenantId);
             sameKey(key, salida.eventId());
-            return departureAnswer(mirror.apply(salida), salida.eventId());
+            MirrorOutcome applied = mirror.apply(salida);
+            // Spec 023: a cancelled departure also opens the episodes of its alive reservations; the mark of the event waits for them (the mirror leaves it unmarked).
+            if (salida instanceof SalidaEvent.Cancelled cancelled && (applied == MirrorOutcome.APPLIED || applied == MirrorOutcome.IGNORED_OUT_OF_ORDER)
+                    && cancelledDeparture.handle(cancelled) == CancelledDepartureOutcome.RETRY_LATER) {
+                throw new RetryLaterException(salida.eventId());
+            }
+            return departureAnswer(applied, salida.eventId());
+        }
+        if ("PersonalEmergencyRecorded".equals(type)) {
+            PersonalEmergency emergency = toPersonalEmergency(body, tenantId);
+            sameKey(key, emergency.eventId());
+            return emergencyAnswer(personalEmergency.apply(emergency));
+        }
+        if ("ExtraordinaryCancellationRecorded".equals(type)) {
+            ExtraordinaryCancellation cancellation = toExtraordinaryCancellation(body, tenantId);
+            sameKey(key, cancellation.eventId());
+            return extraordinaryAnswer(extraordinaryCancellation.apply(cancellation));
         }
         TenantEvent event = toEvent(body, tenantId);
         sameKey(key, event.eventId());
@@ -89,6 +120,60 @@ public final class TenantEventController {
             case AWAITING_DEPARTURE -> throw new RetryLaterException(eventId);
             case IGNORED_UNKNOWN -> throw new DomainException("salidaId", "has no row yet; redeliver the event after SalidaScheduled");
         };
+    }
+
+    // Spec 024: a reservation that does not exist for the tenant is 400 and the event stays unmarked, so a corrected redelivery can still apply it.
+    private static ResponseEntity<Void> emergencyAnswer(EmergencyOutcome outcome) {
+        return switch (outcome) {
+            case REFUND_DETERMINED, NO_REFUND -> ResponseEntity.status(HttpStatus.CREATED).build();
+            case DUPLICATE, ALREADY_DETERMINED, IGNORED_CANCELLED -> ResponseEntity.ok().build();
+            case UNKNOWN_RESERVATION -> throw new DomainException("reservationId", "does not exist for the tenant");
+        };
+    }
+
+    // Spec 025: a reservation that does not exist for the tenant, or is not on the departure of the event, is 400 and the event stays unmarked.
+    private static ResponseEntity<Void> extraordinaryAnswer(ExtraordinaryOutcome outcome) {
+        return switch (outcome) {
+            case EPISODE_OPENED -> ResponseEntity.status(HttpStatus.CREATED).build();
+            case DUPLICATE, ALREADY_OPEN, IGNORED_FINAL -> ResponseEntity.ok().build();
+            case UNKNOWN_RESERVATION -> throw new DomainException("reservationId", "does not exist for the tenant on the departure of the event");
+        };
+    }
+
+    // The aggregate of ExtraordinaryCancellationRecorded is the departure, as operations writes it. The justification is free text: it is read only to check its length
+    // (1 to 500 characters) and is dropped here, so it is never stored, logged or copied (spec 025, DP-25.4 default).
+    private static ExtraordinaryCancellation toExtraordinaryCancellation(JsonNode body, UUID pathTenant) {
+        UUID eventId = uuid(body, "eventId");
+        JsonNode version = body.path("eventVersion");
+        if (!version.isIntegralNumber() || version.asInt() < 1) throw new DomainException("eventVersion", "must be an integer of 1 or more");
+        UUID tenantId = uuid(body, "tenantId");
+        JsonNode payload = body.path("payload");
+        if (!tenantId.equals(pathTenant) || !payload.isObject() || !uuid(payload, "tenantId").equals(tenantId)) {
+            throw new DomainException("tenantId", "must be the tenant of the path");
+        }
+        UUID salidaId = uuid(payload, "salidaId");
+        if (!uuid(body, "aggregateId").equals(salidaId)) throw new DomainException("aggregateId", "must be the salidaId of the payload");
+        int length = text(payload, "justification").length();
+        if (length < 1 || length > 500) throw new DomainException("justification", "must have 1 to 500 characters");
+        return new ExtraordinaryCancellation(eventId, tenantId, salidaId, uuid(payload, "reservationId"), instant(body, "occurredAt"));
+    }
+
+    // The aggregate of PersonalEmergencyRecorded is the departure, as operations writes it; the payload carries ids, the travelers affected (`affected`) and who and
+    // when, never the detail of the emergency (spec 024, DP-24.1 settled against the producer).
+    private static PersonalEmergency toPersonalEmergency(JsonNode body, UUID pathTenant) {
+        UUID eventId = uuid(body, "eventId");
+        JsonNode version = body.path("eventVersion");
+        if (!version.isIntegralNumber() || version.asInt() < 1) throw new DomainException("eventVersion", "must be an integer of 1 or more");
+        UUID tenantId = uuid(body, "tenantId");
+        JsonNode payload = body.path("payload");
+        if (!tenantId.equals(pathTenant) || !payload.isObject() || !uuid(payload, "tenantId").equals(tenantId)) {
+            throw new DomainException("tenantId", "must be the tenant of the path");
+        }
+        UUID salidaId = uuid(payload, "salidaId");
+        if (!uuid(body, "aggregateId").equals(salidaId)) throw new DomainException("aggregateId", "must be the salidaId of the payload");
+        JsonNode affected = payload.path("affected");
+        if (!affected.isIntegralNumber() || !affected.canConvertToInt() || affected.asInt() < 1) throw new DomainException("affected", "must be an integer of 1 or more");
+        return new PersonalEmergency(eventId, tenantId, salidaId, uuid(payload, "reservationId"), affected.asInt(), instant(body, "occurredAt"));
     }
 
     // The aggregate of these events is the departure; the payload carries the minimum the mirror needs and no personal data.
@@ -113,11 +198,21 @@ public final class TenantEventController {
                 }
                 yield new SalidaEvent.VehiclesChanged(eventId, tenantId, salidaId, total.asInt(), occurredAt);
             }
+            case "SalidaRescheduled" -> {
+                Instant start = instant(payload, "startsAt");
+                Instant end = instant(payload, "estimatedEndsAt");
+                if (!end.isAfter(start)) throw new DomainException("estimatedEndsAt", "must be after startsAt");
+                yield new SalidaEvent.Rescheduled(eventId, tenantId, salidaId, uuid(payload, "serviceId"), start, end, occurredAt);
+            }
             case "SalidaExecutionStarted" -> new SalidaEvent.ExecutionStarted(eventId, tenantId, salidaId, occurredAt);
             case "SalidaFinalized" -> new SalidaEvent.Finalized(eventId, tenantId, salidaId, occurredAt);
-            case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId, occurredAt);
+            case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId, optionalInstant(payload, "cancelledAt"), occurredAt);
             default -> throw new DomainException("eventType", "is not an event this service consumes");
         };
+    }
+
+    private static Instant optionalInstant(JsonNode node, String field) {
+        return optional(node, field) == null ? null : instant(node, field);
     }
 
     private static Instant instant(JsonNode node, String field) {
