@@ -5,6 +5,42 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-18
+
+Minor release after 3.0.0. Every entry below is a pull request merged into `develop`, promoted to `qa` in five parts with `git cherry-pick -x` and re-applied to `release/3.1.0` the same way; the heading of each group is the user story named in the pull request, and the entry is the title of the original pull request without its type. The frozen head of `qa` is `263e35a39cbf304560363fc05af6c2dc5e76fe4f`.
+
+### Added
+
+#### HU-COM-016 - Authorize and execute a refund
+
+- Determine a refund without an amount ([PR 531](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/531), promoted by [PR 541](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/541))
+- Consume the personal emergency event ([PR 533](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/533), promoted by [PR 542](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/542))
+- Open the decision of an extraordinary cancellation ([PR 534](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/534), promoted by [PR 542](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/542))
+
+#### HU-COM-018 - Reschedule a departure
+
+- Open the episodes when a departure is cancelled ([PR 535](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/535), promoted by [PR 543](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/543))
+- Move the departure row when it is rescheduled ([PR 536](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/536), promoted by [PR 543](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/543))
+- Count cancelled departure clocks from the payload cancelledAt and clear signed x-proposed ([PR 537](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/537), promoted by [PR 543](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/543))
+
+#### Cross-cutting: internal routes for the other services (no single story is named in the pull request)
+
+- Serve the catalog item to a service token on an internal route ([PR 529](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/529), promoted by [PR 539](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/539))
+- List the reservations of a departure for a service token ([PR 527](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/527), promoted by [PR 539](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/539))
+- Move the reservations of a departure when it starts and when it ends ([PR 528](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/528), promoted by [PR 540](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/540))
+
+### Changed
+
+#### Cross-cutting: contract (no single story is named in the pull request)
+
+- Remove x-proposed from the two signed internal reads ([PR 530](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/530), promoted by [PR 540](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/540))
+
+### Fixed
+
+#### Cross-cutting: test fixes (no single story is named in the pull request)
+
+- Order the planted ids as the database does ([PR 538](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/538), promoted by [PR 543](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/543))
+
 ## [3.0.0] - 2026-11-14
 
 Cut 3 release. Every entry below is a pull request merged into `qa` and re-applied to `release/3.0.0` with `git cherry-pick -x`; the heading of each group is the user story named in the pull request, and the entry is the title of the pull request without its type. The frozen head of `qa` is `3ac81b9315a1649f0be515cceff563d3c1fe65c8`.
@@ -348,5 +384,6 @@ Cut 3 release. Every entry below is a pull request merged into `qa` and re-appli
 - Every writing route refuses a request without a token and a role that may not write ([PR 497](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/497))
 - Log only the reasons the verifier writes when it refuses a token ([PR 498](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/498))
 
-[Unreleased]: https://github.com/code-corhuila/multi-tour-commercial-reservation-api/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/code-corhuila/multi-tour-commercial-reservation-api/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/code-corhuila/multi-tour-commercial-reservation-api/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/code-corhuila/multi-tour-commercial-reservation-api/releases/tag/v3.0.0
