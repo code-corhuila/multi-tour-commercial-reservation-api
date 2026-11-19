@@ -1,6 +1,7 @@
 package co.edu.corhuila.multi_tour.commercial_reservation.adapter.in.http;
 
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.AccountLinkOutcome;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.CancelledDepartureOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ExtraordinaryOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.EmergencyOutcome;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.model.MirrorOutcome;
@@ -9,6 +10,7 @@ import co.edu.corhuila.multi_tour.commercial_reservation.application.model.Tenan
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyExtraordinaryCancellation;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyPersonalEmergency;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ApplyTenantEvent;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.HandleCancelledDeparture;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.LinkAccountOnEmailVerified;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.MirrorSalidaState;
 import co.edu.corhuila.multi_tour.commercial_reservation.domain.model.AccountEmailVerified;
@@ -47,15 +49,18 @@ public final class TenantEventController {
     private final ApplyPersonalEmergency personalEmergency;
     private final ObjectMapper json;
     private final ApplyExtraordinaryCancellation extraordinaryCancellation;
+    private final HandleCancelledDeparture cancelledDeparture;
 
     public TenantEventController(ApplyTenantEvent apply, LinkAccountOnEmailVerified link, MirrorSalidaState mirror, ApplyPersonalEmergency personalEmergency,
-            ObjectMapper json, ApplyExtraordinaryCancellation extraordinaryCancellation) {
+            ObjectMapper json, ApplyExtraordinaryCancellation extraordinaryCancellation,
+            HandleCancelledDeparture cancelledDeparture) {
         this.apply = apply;
         this.link = link;
         this.mirror = mirror;
         this.personalEmergency = personalEmergency;
         this.json = json;
         this.extraordinaryCancellation = extraordinaryCancellation;
+        this.cancelledDeparture = cancelledDeparture;
     }
 
     @PostMapping("/api/v1/commercial-reservation/internal/tenants/{tenantId}/events")
@@ -83,7 +88,13 @@ public final class TenantEventController {
         if (type != null && type.startsWith("Salida")) {
             SalidaEvent salida = toSalidaEvent(body, type, tenantId);
             sameKey(key, salida.eventId());
-            return departureAnswer(mirror.apply(salida), salida.eventId());
+            MirrorOutcome applied = mirror.apply(salida);
+            // Spec 023: a cancelled departure also opens the episodes of its alive reservations; the mark of the event waits for them (the mirror leaves it unmarked).
+            if (salida instanceof SalidaEvent.Cancelled cancelled && (applied == MirrorOutcome.APPLIED || applied == MirrorOutcome.IGNORED_OUT_OF_ORDER)
+                    && cancelledDeparture.handle(cancelled) == CancelledDepartureOutcome.RETRY_LATER) {
+                throw new RetryLaterException(salida.eventId());
+            }
+            return departureAnswer(applied, salida.eventId());
         }
         if ("PersonalEmergencyRecorded".equals(type)) {
             PersonalEmergency emergency = toPersonalEmergency(body, tenantId);
@@ -187,11 +198,21 @@ public final class TenantEventController {
                 }
                 yield new SalidaEvent.VehiclesChanged(eventId, tenantId, salidaId, total.asInt(), occurredAt);
             }
+            case "SalidaRescheduled" -> {
+                Instant start = instant(payload, "startsAt");
+                Instant end = instant(payload, "estimatedEndsAt");
+                if (!end.isAfter(start)) throw new DomainException("estimatedEndsAt", "must be after startsAt");
+                yield new SalidaEvent.Rescheduled(eventId, tenantId, salidaId, uuid(payload, "serviceId"), start, end, occurredAt);
+            }
             case "SalidaExecutionStarted" -> new SalidaEvent.ExecutionStarted(eventId, tenantId, salidaId, occurredAt);
             case "SalidaFinalized" -> new SalidaEvent.Finalized(eventId, tenantId, salidaId, occurredAt);
-            case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId, occurredAt);
+            case "SalidaCancelled" -> new SalidaEvent.Cancelled(eventId, tenantId, salidaId, optionalInstant(payload, "cancelledAt"), occurredAt);
             default -> throw new DomainException("eventType", "is not an event this service consumes");
         };
+    }
+
+    private static Instant optionalInstant(JsonNode node, String field) {
+        return optional(node, field) == null ? null : instant(node, field);
     }
 
     private static Instant instant(JsonNode node, String field) {
