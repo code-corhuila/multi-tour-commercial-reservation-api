@@ -3740,6 +3740,26 @@ paths:
         and visible after 20 attempts. This is not a failure of the service and the only use of `503` outside the gateway
         (`07-api/guidelines.md` section 2); a `SalidaScheduled` for a tour the tenant does not have stays `400`. The
         `occurredAt` order rule above is for the tenant events only.
+        **`SalidaCancelled` also opens the rescheduling episodes (PROPOSED 2026-11-15, api spec 023):** after the row of the
+        departure is marked `CANCELLED`, the service opens one episode of rescheduling for every reservation of that departure
+        that is `PENDING_PAYMENT` or `CONFIRMED`, counted from the `occurredAt` of the event (never from the instant of processing),
+        and voids the pending proposals that point to it. It is idempotent by reservation and departure, so the same event twice, or
+        the saga that calls `openRescheduling` first, creates nothing more. The event is marked as received only after every
+        reservation has its episode; if one fails the answer is `503` with `Retry-After: 5` and the redelivery continues where it stopped.
+        **`PersonalEmergencyRecorded` (PROPOSED 2026-11-15, api spec 024):** `aggregateId` is the departure, equal to `payload.salidaId`;
+        the payload carries `tenantId`, `salidaId`, `reservationId`, `affected` (the travelers affected, from 1 up to the people of
+        the reservation), `recordedBy` and `recordedAt`, never the detail. The service determines the refund of that reservation with the
+        policy of its service (spec 026): above zero it authorizes it at once and executable within five business days, with zero it
+        creates no refund. It never cancels the reservation and never changes its status. A reservation that does not exist for the
+        tenant is `400` (field `reservationId`) and the event is not marked as received; a reservation already `CANCELLED` changes nothing
+        and answers `200`; a second event for a reservation that already has a refund of this origin answers `200` and creates nothing.
+        **`ExtraordinaryCancellationRecorded` (PROPOSED 2026-11-15, api spec 025):** `aggregateId` is the departure, equal to
+        `payload.salidaId`; the payload carries `tenantId`, `salidaId`, `reservationId`, `justification` and `recordedBy`. It opens one
+        episode of rescheduling for that reservation, counted from `occurredAt`; it never cancels the reservation and creates no refund
+        (the Administrator decides to propose a new departure or to declare there is none, spec 018). The `justification` is read only
+        to check its length (1 to 500 characters) and is never stored, logged or copied to an event. A reservation that is not of that
+        departure, or does not exist for the tenant, is `400` and the event is not marked; one already `CANCELLED` or `COMPLETED`
+        changes nothing and answers `200`.
         Other stories widen `eventType` with the events they consume (`AccountSessionsRevoked`);
         this operation does not change for that.
         **Requires:** `SERVICE` role and nothing else. A person's token gets `403`; there is no token check
@@ -7731,7 +7751,7 @@ components:
           $ref: './_shared.yaml#/components/schemas/UUID'
         eventType:
           type: string
-          enum: [TenantCreated, TenantInactivated, TenantReactivated, TenantLocalizationChanged, AccountEmailVerified, SalidaScheduled, SalidaVehiclesChanged, SalidaExecutionStarted, SalidaFinalized, SalidaCancelled]
+          enum: [TenantCreated, TenantInactivated, TenantReactivated, TenantLocalizationChanged, AccountEmailVerified, SalidaScheduled, SalidaVehiclesChanged, SalidaExecutionStarted, SalidaFinalized, SalidaCancelled, PersonalEmergencyRecorded, ExtraordinaryCancellationRecorded]
         eventVersion:
           type: integer
           minimum: 1
@@ -7739,7 +7759,7 @@ components:
           $ref: './_shared.yaml#/components/schemas/UUID'
         aggregateId:
           $ref: './_shared.yaml#/components/schemas/UUID'
-          description: The tenant, equal to `tenantId`; for `AccountEmailVerified` it is the account; for the departure events (`Salida...`) it is the departure, equal to `payload.salidaId`
+          description: The tenant, equal to `tenantId`; for `AccountEmailVerified` it is the account; for the departure events (`Salida...`), `PersonalEmergencyRecorded` and `ExtraordinaryCancellationRecorded` it is the departure, equal to `payload.salidaId`
         payload:
           $ref: '#/components/schemas/TenantEventPayload'
         occurredAt:
@@ -7771,6 +7791,24 @@ components:
           type: integer
           minimum: 0
           description: Only for `SalidaVehiclesChanged` (required there); the total capacity of the vehicles of the departure
+        reservationId:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+          description: Only for `PersonalEmergencyRecorded` and `ExtraordinaryCancellationRecorded` (required there); the reservation of the departure
+        affected:
+          type: integer
+          minimum: 1
+          description: Only for `PersonalEmergencyRecorded` (required there); the travelers affected, up to the people of the reservation
+        recordedBy:
+          $ref: './_shared.yaml#/components/schemas/UUID'
+          description: Only for `PersonalEmergencyRecorded` and `ExtraordinaryCancellationRecorded`; the person who recorded it. Never logged
+        recordedAt:
+          $ref: './_shared.yaml#/components/schemas/Timestamp'
+          description: Only for `PersonalEmergencyRecorded`; when the emergency was recorded
+        justification:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Only for `ExtraordinaryCancellationRecorded` (required there); free text. Read only to check its length; never stored, logged or copied
         status:
           type: string
           enum: [SCHEDULED, IN_EXECUTION, FINALIZED, CANCELLED]
