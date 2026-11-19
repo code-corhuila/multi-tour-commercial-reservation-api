@@ -17,7 +17,7 @@ Minor release after 3.0.0. Every entry below is a pull request merged into `deve
 - Consume the personal emergency event ([PR 533](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/533), promoted by [PR 542](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/542))
 - Open the decision of an extraordinary cancellation ([PR 534](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/534), promoted by [PR 542](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/542))
 
-#### HU-COM-018 - Reschedule a departure
+#### HU-COM-018 - Reschedule an affected reservation
 
 - Open the episodes when a departure is cancelled ([PR 535](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/535), promoted by [PR 543](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/543))
 - Move the departure row when it is rescheduled ([PR 536](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/536), promoted by [PR 543](https://github.com/code-corhuila/multi-tour-commercial-reservation-api/pull/543))
