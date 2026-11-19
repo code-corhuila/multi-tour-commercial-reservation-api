@@ -58,7 +58,7 @@ class VoidReschedulingProposalsTest {
         @Override public int release(UUID tenantId, UUID reservationId) { return fakes.release(tenantId, reservationId); }
         @Override public int releaseReschedulingHold(UUID tenantId, UUID reservationId) { journal.add("hold-released:" + reservationId); return 3; }
     };
-    private final DetermineRefund refunds = (tenantId, reservationId, origin, amountCents) -> { journal.add("refund:" + reservationId); return null; };
+    private final DetermineRefund refunds = (tenantId, reservationId, origin, affectedTravelers, occurredAt) -> { journal.add("refund:" + reservationId); return null; };
     private final VoidReschedulingProposalsUseCase voiding = new VoidReschedulingProposalsUseCase(episodes, fakes, holder, refunds, fakes, tenantId -> status, fakes,
             Clock.fixed(NOW, ZoneOffset.UTC));
 
