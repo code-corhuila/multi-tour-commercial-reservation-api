@@ -336,6 +336,7 @@ paths:
         Returns the item **whether it is active or inactive**: a reservation line must always be
         able to resolve its item. An item of another tenant answers `404`.
         **Requires:** `TENANT_ADMINISTRATOR`, `OPERATIONAL_COLLABORATOR`, `MANAGER` or `ANALYST` (the last two read only).
+        A `SERVICE` token reads through `getInternalCatalogService`, which carries the tenant in the path.
       operationId: getCatalogService
       tags: [Catalog services]
       responses:
@@ -543,6 +544,45 @@ paths:
                 error: BUSINESS_RULE_VIOLATION
                 message: The item cannot be reactivated while a restriction applies
                 traceId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
+  # ─── Internal: read of a catalog item by a service token (asked by `operations-cost`, G-API8-1) ─
+  # PROPOSED (x-proposed). A `SERVICE` token has no `tenantId` and is accepted only on `/internal/` routes (`authentication.md`),
+  # so the read the saga `change-departure-vehicles` needs has the tenant in the path, as every internal route has.
+
+  /internal/tenants/{tenantId}/catalog/services/{serviceId}:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdPath'
+      - $ref: '#/components/parameters/ServiceIdPath'
+    get:
+      summary: Get a catalog item, for a service
+      description: |
+        **PROPOSED (2026-11-15).** The same answer as `getCatalogService`, for the `SERVICE` token (the capacity of a tour, which the
+        saga `change-departure-vehicles` reads to lower the ceiling of a departure). The tenant comes from the path, as a service
+        token has none, and never from the body. It reads only: no write is offered here. The item is returned whether it is active
+        or inactive. An item that does not exist for that tenant, or that belongs to another, answers `404`.
+        **Requires:** `SERVICE` role and nothing else. A person's token gets `403`.
+      operationId: getInternalCatalogService
+      tags: [Internal]
+      security:
+        - bearerAuth: []
+      x-proposed: true
+      responses:
+        '200':
+          description: The catalog item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogServiceResponse'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
@@ -5514,6 +5554,57 @@ paths:
         '500':
           $ref: './_shared.yaml#/components/responses/InternalError'
 
+  # ─── Internal: reservations of a departure, for a service (asked by `operations-cost`, G-API6-1) ─
+  # PROPOSED (x-proposed). `SERVICE` role only; the gateway never routes `/internal/`.
+
+  /internal/tenants/{tenantId}/departures/{departureId}/reservations:
+    parameters:
+      - $ref: '#/components/parameters/TenantIdPath'
+      - $ref: '#/components/parameters/DepartureIdPath'
+    get:
+      summary: List the reservations of a departure, for a service
+      description: |
+        **PROPOSED (2026-11-15).** For every reservation of the departure: its id, status, number of travelers, the id of
+        the lead customer and the amount validated so far, in cents. Nothing else about the customer travels: no name,
+        document or contact. Ordered by creation time, then id; paginated as every list. The tenant comes from the path, as a
+        service token has none. The identifier of the departure is its `salidaId`; this service stores no `SAL-NNN` code
+        (the same decision as `setDepartureCapacityCeiling`). A departure that does not exist, or that belongs to another
+        tenant, answers `404`; one with no reservations answers `200` with an empty `data`.
+        **Requires:** `SERVICE` role and nothing else. A person's token gets `403`.
+      operationId: listInternalDepartureReservations
+      tags: [Internal]
+      security:
+        - bearerAuth: []
+      x-proposed: true
+      parameters:
+        - $ref: './_shared.yaml#/components/parameters/PageParam'
+        - $ref: './_shared.yaml#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated reservations of the departure
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InternalDepartureReservation'
+                  meta:
+                    $ref: './_shared.yaml#/components/schemas/PaginatedMeta'
+        '400':
+          $ref: './_shared.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: './_shared.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: './_shared.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: './_shared.yaml#/components/responses/NotFound'
+        '500':
+          $ref: './_shared.yaml#/components/responses/InternalError'
+
   # ─── Internal: sensitive-data retention (HU-COM-019) ───────────────────────────
   # PROPOSED (x-proposed): plan section 2 of HU-COM-019 (G-A). Internal only, `SERVICE` role only (job 6); no public
   # route and no screen. A reservation that is not due is an answer, not an error: no `409`, no `422`.
@@ -6525,6 +6616,17 @@ components:
         previousCeiling: {type: integer, minimum: 0, description: The ceiling before the call (the original one on a replay), x-proposed: true}
         ceiling: {type: integer, minimum: 0, description: The ceiling now, x-proposed: true}
         seatsHeld: {type: integer, minimum: 0, description: Seats held on the departure now; never above `ceiling`, x-proposed: true}
+
+    InternalDepartureReservation:
+      type: object
+      description: PROPOSED (2026-11-15). A reservation of a departure as a service reads it. No personal data beyond the id of the lead customer.
+      required: [reservationId, status, travelers, customerId, validatedAmountCents]
+      properties:
+        reservationId: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        status: {$ref: '#/components/schemas/ReservationStatus'}
+        travelers: {type: integer, minimum: 1, description: People of the reservation (the lead customer and the companions), x-proposed: true}
+        customerId: {$ref: './_shared.yaml#/components/schemas/UUID'}
+        validatedAmountCents: {type: integer, minimum: 0, description: "What was validated so far, in cents: the final value less the pending balance", x-proposed: true}
 
     # ── Modification before execution (HU-COM-012) ────────────────────────────
     # PROPOSED: all names. Money as cents. Wire codes: English. The fields follow the names of the creation
