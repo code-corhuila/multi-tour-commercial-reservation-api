@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
-import co.edu.corhuila.multi_tour.commercial_reservation.application.model.ReservationSnapshot;
+import co.edu.corhuila.multi_tour.commercial_reservation.application.model.RefundBasis;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.in.ExecuteRefund;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.port.out.PaymentTransaction;
 import co.edu.corhuila.multi_tour.commercial_reservation.application.usecase.ExecuteRefundUseCase;
@@ -59,7 +59,7 @@ class RefundInternalHttpTest extends ReservationHttpBase {
         refund = RefundAuthorization.determine(new UUID(51, 10), tenant, reservationId, RefundOrigin.NOT_ATTRIBUTABLE_TO_CUSTOMER, new Cents(100_000),
                 NOW.minus(Duration.ofDays(1)), NOW.plus(Duration.ofDays(4)));
         refunds.refunds.put(refund.id(), refund);
-        snapshots.snapshots.put(reservationId, new ReservationSnapshot(tenant, reservationId, ReservationSnapshot.State.CANCELLED, new Cents(300_000), new Cents(300_000), 0));
+        snapshots.snapshots.put(reservationId, new RefundHttpFixture.MemorySnapshots.Planted(tenant, new RefundBasis(reservationId, new Cents(300_000), 2, new UUID(51, 4), null)));
     }
 
     private MockHttpServletRequestBuilder step(UUID forTenant, UUID id, String step, Map<String, Object> body, String bearer) throws Exception {
@@ -196,15 +196,38 @@ class RefundInternalHttpTest extends ReservationHttpBase {
         assertThat(refunds.events).hasSize(1);
     }
 
-    @Test void aDeterminationNeedsItsKeyTheServiceTokenAndTheRightAmountField() throws Exception {
+
+    @Test void aDeterminationNeedsItsKeyTheServiceTokenAndRefusesAnAmountOrAnEmergencyOrigin() throws Exception {
         Map<String, Object> body = Map.of("reservationId", reservationId.toString(), "origin", "NOT_ATTRIBUTABLE_TO_CUSTOMER");
         CatalogHttpTest.assertField(exchange(determination(tenant, body, null, service), 400), "Idempotency-Key");
         exchange(determination(tenant, body, "determination-02", token(ADMIN)), 403);
+        // refusesAnAmountInTheBody (spec 026, AC-26.2): the field is refused, never ignored, for either origin
         CatalogHttpTest.assertField(exchange(determination(tenant, Map.of("reservationId", reservationId.toString(), "origin", "NOT_ATTRIBUTABLE_TO_CUSTOMER",
                 "amountCents", 5), "determination-03", service), 400), "amountCents");
+        CatalogHttpTest.assertField(exchange(determination(tenant, Map.of("reservationId", reservationId.toString(), "origin", "PERSONAL_EMERGENCY_DURING_EXECUTION",
+                "amountCents", 5), "determination-04", service), 400), "amountCents");
+        // DP-26.1 default: the personal emergency is determined by its own consumer, never by this route
         CatalogHttpTest.assertField(exchange(determination(tenant, Map.of("reservationId", reservationId.toString(), "origin", "PERSONAL_EMERGENCY_DURING_EXECUTION"),
-                "determination-04", service), 400), "amountCents");
+                "determination-06", service), 400), "origin");
+        // looksMissingAReservationOfAnotherTenant
         exchange(determination(otherTenant, body, "determination-05", service), 404);
         assertThat(refunds.events).isEmpty();
+    }
+
+    @Test void aSecondDeterminationWithANewKeyAnswersTheStoredRefundAndNothingPaidIsRefused() throws Exception {
+        refunds.refunds.clear();
+        Map<String, Object> body = Map.of("reservationId", reservationId.toString(), "origin", "NOT_ATTRIBUTABLE_TO_CUSTOMER");
+
+        var first = CatalogHttpTest.json(exchange(determination(tenant, body, "determination-07", service), 201));
+        var second = CatalogHttpTest.json(exchange(determination(tenant, body, "determination-08", service), 200));
+
+        assertThat(second).isEqualTo(first);
+        assertThat(refunds.refunds).hasSize(1);
+        assertThat(refunds.events).hasSize(1);
+
+        UUID unpaid = new UUID(51, 20);
+        snapshots.snapshots.put(unpaid, new RefundHttpFixture.MemorySnapshots.Planted(tenant, new RefundBasis(unpaid, new Cents(0), 2, new UUID(51, 4), null)));
+        exchange(determination(tenant, Map.of("reservationId", unpaid.toString(), "origin", "NOT_ATTRIBUTABLE_TO_CUSTOMER"), "determination-09", service), 422);
+        assertThat(refunds.refunds).hasSize(1);
     }
 }
