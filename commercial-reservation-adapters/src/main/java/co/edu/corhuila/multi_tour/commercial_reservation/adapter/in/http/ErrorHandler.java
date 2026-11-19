@@ -184,7 +184,7 @@ public class ErrorHandler {
         return path.endsWith("/reservation-quotes") || "POST".equals(request.getMethod()) && (path.endsWith("/reservations") || path.endsWith("/customers"))
                 || path.contains("/additional-discount") || path.contains("/payments") || path.contains("/payment-proofs") || path.endsWith("/cancellation")
                 || path.contains("/refund-authorizations/") || path.contains("/financial-decisions/") || path.endsWith("/refund-determinations")
-                || path.contains("/reschedulings") || path.endsWith("/modifications") || path.endsWith("/modification-quote");
+                || path.endsWith("/events") || path.contains("/reschedulings") || path.endsWith("/modifications") || path.endsWith("/modification-quote");
     }
 
     private static String jsonField(Throwable error) {

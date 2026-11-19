@@ -54,6 +54,16 @@ public final class JdbcDepartureStateRepository implements DepartureStateReposit
                 state.effectiveCapacity(), state.heldSeats(), marker(state), state.vehicleCapacityCeiling());
     }
 
+    @Override
+    public void moveSchedule(UUID tenantId, UUID departureId, Instant startsAt, Instant estimatedEndsAt, Instant occurredAt) {
+        jdbc.update("UPDATE commercial_reservation.salida_capacity SET hora_inicio = ?, estimated_ends_at = ?, last_event_occurred_at = ? "
+                + "WHERE tenant_id = ? AND salida_id = ?", utc(startsAt), utc(estimatedEndsAt), utc(occurredAt), tenantId, departureId);
+    }
+
+    private static OffsetDateTime utc(Instant value) {
+        return value.truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC);
+    }
+
     private static OffsetDateTime marker(DepartureState state) {
         return state.lastEventOccurredAt() == null ? null
                 : state.lastEventOccurredAt().truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC);
